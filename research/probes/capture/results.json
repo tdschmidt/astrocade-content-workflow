@@ -1,0 +1,323 @@
+[
+  {
+    "name": "builtin",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "vp8",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "25/1",
+          "avg_frame_rate": "25/1"
+        }
+      ],
+      "format": {
+        "duration": "6.960000",
+        "size": "1340056",
+        "bit_rate": "1540294"
+      }
+    },
+    "totalFrames": 174,
+    "uniqueActive": 150,
+    "activeFrames": 150,
+    "tailRepeats": 24,
+    "firstPts": 0,
+    "lastPts": 6.92,
+    "actualPacketRate": 25,
+    "samples": [
+      {
+        "sec": 1,
+        "frameNumber": 25,
+        "sceneId": 125,
+        "psnrRgb": 27.048648034779035,
+        "ssim": 0.916327
+      },
+      {
+        "sec": 2,
+        "frameNumber": 50,
+        "sceneId": 245,
+        "psnrRgb": 27.055560981172885,
+        "ssim": 0.913571
+      },
+      {
+        "sec": 3,
+        "frameNumber": 75,
+        "sceneId": 365,
+        "psnrRgb": 27.05292665478205,
+        "ssim": 0.91234
+      },
+      {
+        "sec": 4,
+        "frameNumber": 100,
+        "sceneId": 484,
+        "psnrRgb": 29.39055969649941,
+        "ssim": 0.879135
+      },
+      {
+        "sec": 5,
+        "frameNumber": 125,
+        "sceneId": 604,
+        "psnrRgb": 29.644757348001328,
+        "ssim": 0.885616
+      }
+    ]
+  },
+  {
+    "name": "custom",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "30/1",
+          "avg_frame_rate": "30/1"
+        }
+      ],
+      "format": {
+        "duration": "6.066016",
+        "size": "6900709",
+        "bit_rate": "9100812"
+      }
+    },
+    "totalFrames": 182,
+    "uniqueActive": 180,
+    "activeFrames": 180,
+    "tailRepeats": 2,
+    "firstPts": 0,
+    "lastPts": 6.033333,
+    "actualPacketRate": 30.000001657458657,
+    "samples": [
+      {
+        "sec": 1,
+        "frameNumber": 30,
+        "sceneId": 122,
+        "psnrRgb": 38.06166561451225,
+        "ssim": 0.975697
+      },
+      {
+        "sec": 2,
+        "frameNumber": 60,
+        "sceneId": 242,
+        "psnrRgb": 38.39909745023151,
+        "ssim": 0.974724
+      },
+      {
+        "sec": 3,
+        "frameNumber": 90,
+        "sceneId": 362,
+        "psnrRgb": 38.448146234733564,
+        "ssim": 0.974756
+      },
+      {
+        "sec": 4,
+        "frameNumber": 120,
+        "sceneId": 481,
+        "psnrRgb": 28.672962686244894,
+        "ssim": 0.949968
+      },
+      {
+        "sec": 5,
+        "frameNumber": 150,
+        "sceneId": 602,
+        "psnrRgb": 38.467638206598,
+        "ssim": 0.975955
+      }
+    ]
+  },
+  {
+    "name": "display",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "vp8",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "120/1",
+          "avg_frame_rate": "0/0"
+        }
+      ],
+      "format": {
+        "size": "6397812"
+      }
+    },
+    "totalFrames": 181,
+    "uniqueActive": 180,
+    "activeFrames": 180,
+    "tailRepeats": 1,
+    "firstPts": 0,
+    "lastPts": 5.982,
+    "actualPacketRate": 30.09027081243731,
+    "samples": [
+      {
+        "sec": 1,
+        "frameNumber": 30,
+        "sceneId": 119,
+        "psnrRgb": 26.422803913670872,
+        "ssim": 0.909075
+      },
+      {
+        "sec": 2,
+        "frameNumber": 60,
+        "sceneId": 239,
+        "psnrRgb": 24.945205657663752,
+        "ssim": 0.868208
+      },
+      {
+        "sec": 3,
+        "frameNumber": 90,
+        "sceneId": 359,
+        "psnrRgb": 24.753385276451837,
+        "ssim": 0.861951
+      },
+      {
+        "sec": 4,
+        "frameNumber": 120,
+        "sceneId": 479,
+        "psnrRgb": 25.095584417999394,
+        "ssim": 0.874387
+      },
+      {
+        "sec": 5,
+        "frameNumber": 150,
+        "sceneId": 599,
+        "psnrRgb": 25.21841390754236,
+        "ssim": 0.870778
+      }
+    ]
+  },
+  {
+    "name": "displaymp4",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "vp9",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "60/1",
+          "avg_frame_rate": "452500/15111"
+        }
+      ],
+      "format": {
+        "duration": "6.046100",
+        "size": "3873456",
+        "bit_rate": "5125229"
+      }
+    },
+    "totalFrames": 181,
+    "uniqueActive": 180,
+    "activeFrames": 180,
+    "tailRepeats": 1,
+    "firstPts": 0,
+    "lastPts": 6.0128,
+    "actualPacketRate": 29.936136242682277,
+    "samples": [
+      {
+        "sec": 1,
+        "frameNumber": 30,
+        "sceneId": 120,
+        "psnrRgb": 39.56246073953907,
+        "ssim": 0.994821
+      },
+      {
+        "sec": 2,
+        "frameNumber": 60,
+        "sceneId": 240,
+        "psnrRgb": 39.72381016740015,
+        "ssim": 0.995573
+      },
+      {
+        "sec": 3,
+        "frameNumber": 90,
+        "sceneId": 360,
+        "psnrRgb": 39.63972700702159,
+        "ssim": 0.995564
+      },
+      {
+        "sec": 4,
+        "frameNumber": 120,
+        "sceneId": 480,
+        "psnrRgb": 39.645321262991416,
+        "ssim": 0.995485
+      },
+      {
+        "sec": 5,
+        "frameNumber": 150,
+        "sceneId": 600,
+        "psnrRgb": 39.658402056643865,
+        "ssim": 0.99555
+      }
+    ]
+  },
+  {
+    "name": "displayvp9",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "vp9",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "120/1",
+          "avg_frame_rate": "0/0"
+        }
+      ],
+      "format": {
+        "size": "4032499"
+      }
+    },
+    "totalFrames": 180,
+    "uniqueActive": 180,
+    "activeFrames": 180,
+    "tailRepeats": 0,
+    "firstPts": 0,
+    "lastPts": 5.957,
+    "actualPacketRate": 30.048682222595268,
+    "samples": [
+      {
+        "sec": 1,
+        "frameNumber": 30,
+        "sceneId": 120,
+        "psnrRgb": 39.49732445195419,
+        "ssim": 0.994587
+      },
+      {
+        "sec": 2,
+        "frameNumber": 60,
+        "sceneId": 240,
+        "psnrRgb": 39.709839798520214,
+        "ssim": 0.995563
+      },
+      {
+        "sec": 3,
+        "frameNumber": 90,
+        "sceneId": 360,
+        "psnrRgb": 39.62957173652028,
+        "ssim": 0.995535
+      },
+      {
+        "sec": 4,
+        "frameNumber": 120,
+        "sceneId": 480,
+        "psnrRgb": 39.62647999986095,
+        "ssim": 0.995465
+      },
+      {
+        "sec": 5,
+        "frameNumber": 150,
+        "sceneId": 600,
+        "psnrRgb": 39.672176314262344,
+        "ssim": 0.995594
+      }
+    ]
+  }
+]

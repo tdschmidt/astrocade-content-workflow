@@ -1,0 +1,5 @@
+{
+  "browser": "148.0.7778.96",
+  "playwright": "1.62.1",
+  "nativeScreenRecording": "Error: cdpSession.send: Protocol error (Page.startScreenRecording): 'Page.startScreenRecording' wasn't found"
+}

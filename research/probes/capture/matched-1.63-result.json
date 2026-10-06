@@ -1,0 +1,59 @@
+{
+  "ready": true,
+  "error": null,
+  "settings": {
+    "aspectRatio": 0.5625,
+    "cursor": "motion",
+    "deviceId": "web-contents-media-stream://7:8",
+    "displaySurface": "browser",
+    "frameRate": 30,
+    "height": 1920,
+    "logicalSurface": true,
+    "resizeMode": "crop-and-scale",
+    "screenPixelRatio": 1,
+    "width": 1080
+  },
+  "runtime": {
+    "browser": "153.0.8010.12",
+    "playwright": "1.63.0",
+    "executable": "/private/tmp/astrocade-browser-research-20261006/browsers/chromium-1243/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+  },
+  "flush": {
+    "beforeStopChunks": 5,
+    "afterStopChunks": 6,
+    "chunkSizes": [
+      600968,
+      595608,
+      555339,
+      860160,
+      584955,
+      515901
+    ],
+    "recorderState": "inactive",
+    "trackStates": [
+      "ended"
+    ]
+  },
+  "probe": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "vp9",
+        "width": 1080,
+        "height": 1920,
+        "r_frame_rate": "30/1",
+        "avg_frame_rate": "30/1"
+      }
+    ],
+    "format": {
+      "size": "3712931"
+    }
+  },
+  "decodedFrames": 180,
+  "distinctSceneIds": 180,
+  "firstPts": 0,
+  "lastPts": 5.965,
+  "actualPacketRate": 30.008382229673092,
+  "note": "Matched-version confirmation of native tab capture and stop/flush. Does not repeat quality measurements or test live Astrocade."
+}

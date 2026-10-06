@@ -1,0 +1,124 @@
+{
+  "researchedAt": "2026-10-06",
+  "note": "Synthetic local fixture. Normal stop + final chunk flushing and cancellation during an outstanding append. Not a crash/disk-full/live-Astrocade test.",
+  "attempts": [
+    {
+      "label": "normal",
+      "token": "AstroCapture-ae095240-1724-42ee-94dc-d2929bdf67f5",
+      "runtime": {
+        "browser": "153.0.8010.12",
+        "playwright": "1.63.0"
+      },
+      "startup": {
+        "error": null,
+        "settings": {
+          "aspectRatio": 0.5625,
+          "cursor": "motion",
+          "deviceId": "web-contents-media-stream://7:8",
+          "displaySurface": "browser",
+          "frameRate": 30,
+          "height": 1920,
+          "logicalSurface": true,
+          "resizeMode": "crop-and-scale",
+          "screenPixelRatio": 1,
+          "width": 1080
+        }
+      },
+      "bytes": 2169126,
+      "appendedSequences": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "writesInFlightWhenStopped": 0,
+      "flush": {
+        "beforeStopChunks": 3,
+        "receivedChunks": 4,
+        "pendingBytes": 0,
+        "maximumPendingBytes": 615899,
+        "recorderState": "inactive"
+      },
+      "trackStates": [
+        "ended"
+      ],
+      "beforePromotion": {
+        "readyExists": false,
+        "partialExists": true
+      },
+      "measurement": {
+        "probe": {
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "codec_name": "vp9",
+              "width": 1080,
+              "height": 1920
+            }
+          ],
+          "format": {
+            "size": "2169126"
+          }
+        },
+        "decodedFrames": 102,
+        "distinctSceneIds": 102,
+        "firstPts": 0,
+        "lastPts": 3.367,
+        "actualPacketRate": 29.997029997029998,
+        "completeDecode": true
+      },
+      "afterBrowserStopped": {
+        "readyExists": true,
+        "partialExists": false
+      }
+    },
+    {
+      "label": "cancel",
+      "token": "AstroCapture-0d70b05e-b44d-4d49-a56c-5e1e91104f13",
+      "runtime": {
+        "browser": "153.0.8010.12",
+        "playwright": "1.63.0"
+      },
+      "startup": {
+        "error": null,
+        "settings": {
+          "aspectRatio": 0.5625,
+          "cursor": "motion",
+          "deviceId": "web-contents-media-stream://7:8",
+          "displaySurface": "browser",
+          "frameRate": 30,
+          "height": 1920,
+          "logicalSurface": true,
+          "resizeMode": "crop-and-scale",
+          "screenPixelRatio": 1,
+          "width": 1080
+        }
+      },
+      "bytes": 610728,
+      "appendedSequences": [
+        0,
+        1
+      ],
+      "writesInFlightWhenStopped": 1,
+      "flush": {
+        "beforeStopChunks": 1,
+        "receivedChunks": 2,
+        "pendingBytes": 0,
+        "maximumPendingBytes": 610728,
+        "recorderState": "inactive"
+      },
+      "trackStates": [
+        "ended"
+      ],
+      "beforePromotion": {
+        "readyExists": false,
+        "partialExists": true
+      },
+      "afterBrowserStopped": {
+        "readyExists": false,
+        "partialExists": false
+      }
+    }
+  ]
+}
