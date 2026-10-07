@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { runProcess } from '../../src/server/media/process.js';
 import { ensureNewOutput, mediaExecutables, preflightMediaTools, probeMedia, promoteMedia, requireLocalFile, validateVideo, type MediaInfo, type MediaTools } from '../../src/server/media/probe.js';
 import { buildTimeline, musicWindow, validateEditPlan, type EditPlan, type Segment, type SegmentMapping } from './schema.js';
+import { enforceEncodedAudioPeak } from './audio-peak.js';
 
 const experimentRoot = dirname(fileURLToPath(import.meta.url));
 const num = (value: number) => Number(value.toFixed(6)).toString();
@@ -215,25 +216,22 @@ export async function renderEdit(options: RenderOptions): Promise<Record<string,
       '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', '30', '-fps_mode', 'cfr',
       '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-t', num(duration), '-movflags', '+faststart', partial);
     await runProcess(ffmpeg, args, { signal: options.signal, cwd: work, timeoutMs: 300_000 });
-    const result = await validateVideo(partial, tools, options.signal);
+    const audio = await enforceEncodedAudioPeak({ ffmpeg, path: partial, outputDirectory: work, signal: options.signal });
+    const result = await validateVideo(audio.path, tools, options.signal);
     validateOutput(result, duration);
-    const loudness = await runProcess(ffmpeg, ['-hide_banner', '-nostdin', '-i', partial, '-af', 'loudnorm=I=-14:TP=-1.5:LRA=9:print_format=json', '-f', 'null', '-'], { signal: options.signal, timeoutMs: 90_000 });
-    const loudnessMatch = loudness.stderr.match(/\{\s*"input_i"[\s\S]*?\}/u);
-    const loudnessData = loudnessMatch ? JSON.parse(loudnessMatch[0]) as Record<string, string> : undefined;
-    if (!loudnessData || !Number.isFinite(Number(loudnessData.input_i)) || Number(loudnessData.input_tp) > -1) throw new Error(`Output has unusable loudness or a true peak above −1 dBTP: ${JSON.stringify(loudnessData??null)}`);
     const manifest = { version: 1, renderer: 'troll-editor-experiment/1', planPath: resolve(options.planPath), outputPath,
       createdAt: new Date().toISOString(), source: { path: plan.sourcePath, ...source }, plan, timeline,
       intendedDuration: duration, output: result, music: { assetPath: musicPath, excerptStartOutputSeconds: plan.music.dropAt-plan.music.leadInSeconds, excerptSourceStartSeconds: plan.music.sourceStart-plan.music.leadInSeconds, intendedDropOutputSeconds:plan.music.dropAt, intendedDropSourceSeconds:plan.music.sourceStart, leadInSeconds:plan.music.leadInSeconds, beatAlignmentBasis: catalog ? 'Catalog machine-measured energy-rise candidate; no listening claim' : 'Procedural first beat', leadIn: catalog ? 'Real catalog waveform; no procedural audio' : 'quiet pulsing tone plus short noise riser' },
       effectiveSoundCues,
       musicDucking: catalog ? {gainDuringCue:0.28,attackSeconds:0.04,releaseSeconds:0.14} : null,
       audioCatalog: catalog ?? null, faceAttachments: plan.faceAttachments.map(attachment => ({ ...attachment, sourceTimestamp: timeline[attachment.segmentIndex]!.sourceStart, outputStart: timeline[attachment.segmentIndex]!.outputStart, outputEnd: timeline[attachment.segmentIndex]!.outputEnd, compositedBeforeCameraShake: true })),
-      audioMeasurement: loudnessData, tooling: preflight,
+      audioMeasurement: audio.measurement, audioPeakCorrections: audio.attempts, tooling: preflight,
       review: { decodedWithoutErrors: true, timingValidated: true, visualReviewRequired: true, listeningReviewRequired: true },
     };
     const partialManifest = join(work, 'manifest.json');
     await writeFile(partialManifest, JSON.stringify(manifest, null, 2) + '\n');
     options.signal?.throwIfAborted();
-    await promoteMedia(partial, outputPath);
+    await promoteMedia(audio.path, outputPath);
     try { await promoteMedia(partialManifest, manifestPath); } catch (error) { await rm(outputPath, { force: true }); throw error; }
     return manifest;
   } finally { await rm(work, { recursive: true, force: true }); }
