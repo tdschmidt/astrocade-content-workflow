@@ -461,6 +461,7 @@ test('source reuse passes bounded action observations as search hints without tr
   await writeFile(join(feedback, 'decision-03.json'), JSON.stringify({ ...record, sampledFrames: [{ elapsedMs: 3200 }, { elapsedMs: 2500 }] }));
   await writeFile(join(feedback, 'decision-04.json'), JSON.stringify({ elapsedMs: 5000, observation: 'Legacy observation has no action-time range.' }));
   await writeFile(join(feedback, 'decision-05-proposal.json'), JSON.stringify({ ...record, observation: 'Rejected proposal must not become a hint.' }));
+  await writeFile(join(feedback, 'decision-06.json'), JSON.stringify({ ...record, observation: '   ' }));
   await writeFile(join(feedback, 'decision-06.json'), 'invalid JSON');
   const manifestPath = join(directory, 'run.json');
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));

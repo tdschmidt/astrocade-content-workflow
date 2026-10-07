@@ -55,7 +55,7 @@ export type CoreServices = typeof defaults;
 async function hashFile(path: string) { return createHash('sha256').update(await readFile(path)).digest('hex'); }
 
 const hintRecordSchema = z.object({
-  observation: z.string().min(1).max(1200), elapsedMs: z.number().nonnegative(),
+  observation: z.string().trim().min(1).max(1200), elapsedMs: z.number().nonnegative(),
   sampledFrames: z.array(z.object({ elapsedMs: z.number().nonnegative() })).min(1).max(6),
 });
 

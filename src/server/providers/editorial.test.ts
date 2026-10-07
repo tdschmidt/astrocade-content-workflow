@@ -785,3 +785,41 @@ test('reel observation hints enforce bounded text, count and valid finite source
   assert.equal(valid.usable, false);
   assert.deepEqual(sampled, [1]);
 });
+
+test('verified cut boundaries allow decimal roundoff while real gaps, overlaps and source limits remain strict', () => {
+  const events = [{ startSeconds: 28.749000000000002, endSeconds: 34.249 }];
+  const exact = [{ startSeconds: 28.749, endSeconds: 34.24900000000001 }];
+  assert.deepEqual(validateCuts(exact, 40, events), exact);
+  assert.throws(() => validateCuts([{ startSeconds: 28.749 - 1e-7, endSeconds: 31.949 }], 40, events), /outside the verified action windows/);
+  assert.throws(() => validateCuts([{ startSeconds: 30, endSeconds: 34.249 + 1e-7 }], 40, events), /outside the verified action windows/);
+  assert.throws(() => validateCuts([{ startSeconds: 1, endSeconds: 5 }], 10, [{ startSeconds: 0, endSeconds: 3 }, { startSeconds: 3 + 1e-7, endSeconds: 6 }]), /outside the verified action windows/);
+  assert.throws(() => validateCuts([{ startSeconds: 1, endSeconds: 4 }, { startSeconds: 4 - 1e-10, endSeconds: 5 }], 10), /overlap/, 'the containment tolerance does not relax repeated-footage checks');
+  assert.throws(() => validateCuts([{ startSeconds: -1e-10, endSeconds: 2 }], 10), /outside the recorded footage/);
+  assert.throws(() => validateCuts([{ startSeconds: 1, endSeconds: 10 + 1e-10 }], 10), /outside the recorded footage/);
+});
+
+test('the saved Ben10 millisecond cuts survive both verified-window and referenced-event checks', async () => {
+  // Exact bounds from 9dd29c: the first start is a mapped relative decimal,
+  // while the proposed cut uses its mathematically identical millisecond value.
+  const bounds = [[28.749000000000002, 34.249], [201.159, 203.726], [237.823, 239.323], [239.841, 247.59]];
+  const source: Capture = { ...reelCapture, durationSeconds: 431.832, analysis: { ...reelCapture.analysis!,
+    events: bounds.map(([startSeconds, endSeconds], index) => ({ ...reelCapture.analysis!.events[index % 3]!, startSeconds: startSeconds!, endSeconds: endSeconds! })),
+  } };
+  const choice = reelChoice();
+  choice.shots = [
+    { ...choice.shots[1]!, eventIndex: 0, startSeconds: 28.749, endSeconds: 31.949, purpose: 'opening' },
+    { ...choice.shots[2]!, eventIndex: 1, startSeconds: 201.159, endSeconds: 203.726, purpose: 'contrast' },
+    { ...choice.shots[1]!, eventIndex: 3, startSeconds: 239.841, endSeconds: 247.59, purpose: 'ending', feature: 'powered flight' },
+  ];
+  const assessed = { ...reelReview,
+    shots: choice.shots.map((shot, shotIndex) => ({ shotIndex, activeSeconds: [3, 2, 6][shotIndex]!, feature: shot.feature, demonstratesFeature: true, navigationObstruction: false, agencyEvidence: shot.visibleChange })),
+    ending: { readableFromSeconds: 246, essentialText: '', evidence: 'The flight reaches the street and the grounded character remains visible.' },
+  };
+  const result = await draftScript({ ...reelInput, capture: source }, googleFixture([choice, assessed]));
+  assert.deepEqual(result.cuts, choice.shots.map(({ startSeconds, endSeconds }) => ({ startSeconds, endSeconds })));
+  // An overlapping observation cannot launder real footage outside the specific
+  // referenced event, even when the general union contains the proposed shot.
+  const overlapping = { ...source, analysis: { ...source.analysis!, events: [...source.analysis!.events, { ...source.analysis!.events[0]!, startSeconds: 28, endSeconds: 40 }] } };
+  const outside = { ...choice, shots: choice.shots.map((shot, index) => index ? shot : { ...shot, startSeconds: 28.749 - 1e-7 }) };
+  await assert.rejects(draftScript({ ...reelInput, capture: overlapping }, googleFixture([outside])), /outside its referenced observed moment/);
+});

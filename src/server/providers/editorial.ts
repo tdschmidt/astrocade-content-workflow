@@ -17,6 +17,14 @@ function validRange(cut: Cut, duration: number): boolean {
     && cut.startSeconds >= 0 && cut.endSeconds > cut.startSeconds && cut.endSeconds <= duration;
 }
 
+// Mapping window-relative decimals can differ from their JSON spelling by a
+// few floating-point bits. One nanosecond permits equality roundoff, not frames.
+const timeRoundoffSeconds = 1e-9;
+function withinObserved(cut: Cut, observed: Cut): boolean {
+  return cut.startSeconds >= observed.startSeconds - timeRoundoffSeconds
+    && cut.endSeconds <= observed.endSeconds + timeRoundoffSeconds;
+}
+
 function unionRanges(ranges: Cut[]): Cut[] {
   const merged: Cut[] = [];
   for (const range of [...ranges].sort((a, b) => a.startSeconds - b.startSeconds)) {
@@ -36,7 +44,7 @@ export function validateCuts(cuts: Cut[], duration: number, observedEvents?: Cut
   if (observedEvents) {
     if (observedEvents.some(event => !validRange(event, duration))) throw new NeedsAttention('The observed event timestamps are invalid.');
     const observed = unionRanges(observedEvents);
-    if (cuts.some(cut => !observed.some(event => cut.startSeconds >= event.startSeconds && cut.endSeconds <= event.endSeconds))) {
+    if (cuts.some(cut => !observed.some(event => withinObserved(cut, event)))) {
       throw new NeedsAttention('A proposed cut contains footage outside the verified action windows. Analyze or capture more gameplay first.');
     }
   }
@@ -406,7 +414,7 @@ const reelReviewSchema = hookReviewSchema.extend({
   }).strict()).min(2).max(6),
   ending: z.object({ readableFromSeconds: z.number().nonnegative().nullable(), essentialText: z.string().max(1000), evidence: z.string().min(1).max(800) }).strict(),
 }).strict();
-const reelHookInstructions = `Write a native gaming reaction someone would send with a Roblox/brainrot clip: recognition, disbelief that this is playable, nostalgic investment, fictional trash talk, or an absurd crossover. Prefer the natural comic reaction or POV over the line that names the most verified features: slang plus a literal feature summary is still a feature announcement. Let a specific playable absurdity, cultural contrast or nostalgic frustration carry the joke; straight disbelief works when that premise supplies a reason to watch. The brief's examples are voice references, not templates to paste everywhere. A short "why does [visible meme] have a health bar" or group-chat reaction can be better than a literal description of every action. Do not default to workplace/payroll metaphors, generic object personification, trivia, or a prediction question.
+const reelHookInstructions = `Write a native gaming reaction someone would send with a Roblox/brainrot clip: recognition, disbelief that this is playable, nostalgic investment, fictional trash talk, or an absurd crossover. Prefer the natural comic reaction or POV over the line that names the most verified features: slang plus a literal feature summary is still a feature announcement. Let a specific playable absurdity, cultural contrast or nostalgic frustration carry the joke; straight disbelief works when that premise supplies a reason to watch. The brief's examples are voice references, not templates to paste everywhere. A short "why does [visible meme] have a health bar" or group-chat reaction can be better than a literal description of every action. Do not default to workplace, payroll or commuting metaphors, generic object personification, trivia, or a prediction question.
 Preserve conversational exaggeration: "why am i sweating", "opened this ironically now i need to win", and a clearly comic "POV: 14 last tries" express a gaming feeling, not a verified session log. Wanting/needing to win or collect all the game's stated options is a fictional intention, NOT a claim that completion has already happened; do not require footage of every option to permit that aspiration. Do not demand evidence of the speaker's autobiography or flatten these into a bureaucratic play-by-play. Fictional in-game satire/trash talk is allowed. Still reject concrete claims of actual measured attempts/hours, achieved wins/streaks, current popularity, game features or real-person allegations absent evidence. A montage's gaps never prove continuous speed or a single uninterrupted run. Exact score claims require readable frames.
 Write three different comic premises, then choose the most culturally specific and natural one for the actual opening. No forced four-word compression: keep a strong line within 12 words/84 characters, at most three short lines, no word over 22 characters, emoji or special styling. It must read at roughly three words per second (minimum two seconds) and leave at least 0.8s clear gameplay. Caption <=180 characters, a natural follow-up, not a report, hashtag pile or repeated hook. No URLs or attribution; the server adds those. A subjective reaction need not narrate an outcome.`;
 
@@ -432,7 +440,7 @@ Return exactly three alternative concepts (angle, hook, caption, visual evidence
   if (new Set(choice.alternatives.map(item => item.hook.trim().toLowerCase())).size !== 3) throw new NeedsAttention('The hook alternatives must contain three distinct concepts.');
   if (new Set(choice.shots.map(shot => shot.eventIndex)).size < 2) throw new NeedsAttention('A reel cannot fabricate variety by splitting one observed event into multiple shots.');
   const cuts = validateCuts(choice.shots.map(({ startSeconds, endSeconds }) => ({ startSeconds, endSeconds })), capture.durationSeconds, events);
-  if (choice.shots.some(shot => shot.startSeconds < events[shot.eventIndex]!.startSeconds || shot.endSeconds > events[shot.eventIndex]!.endSeconds)) throw new NeedsAttention('A reel shot extends outside its referenced observed moment.');
+  if (choice.shots.some(shot => !withinObserved(shot, events[shot.eventIndex]!))) throw new NeedsAttention('A reel shot extends outside its referenced observed moment.');
   const sourceOrder = [...cuts].sort((a, b) => a.startSeconds - b.startSeconds);
   if (!sourceOrder.some((cut, index) => index > 0 && cut.startSeconds - sourceOrder[index - 1]!.endSeconds >= 0.5 - 1e-9)) throw new NeedsAttention('A reel needs nonadjacent source moments; adjacent slices of one continuous beat are not a montage.');
   const duration = cuts.reduce((sum, cut) => sum + cut.endSeconds - cut.startSeconds, 0);
