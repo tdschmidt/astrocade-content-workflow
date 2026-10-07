@@ -321,6 +321,40 @@ test('native look preserves setup cursor origin across executors and moves witho
   assert.deepEqual(await events(), beforeRejected, 'unlocked look must emit no native input');
 });
 
+test('repeated native look preserves exact deltas beyond every viewport edge across new executors', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
+  const { page, events, surface, waitForLock } = await lookFixture(t);
+  await new InputExecutor(page, surface).step({ type: 'click', target: { selector: 'canvas', frames: ['#game'] } });
+  await waitForLock();
+  let count = (await events()).length;
+  let x = 240, y = 260; // The observed fixture canvas center, including its frame offset.
+  const extents = { minX: x, maxX: x, minY: y, maxY: y };
+  let totalX = 0, totalY = 0;
+  const phases = [
+    { dx: 200, dy: 200, count: 6 },
+    { dx: -200, dy: -200, count: 14 },
+    { dx: 200, dy: -200, count: 10 },
+    { dx: -200, dy: 200, count: 10 },
+  ];
+  for (const phase of phases) for (let index = 0; index < phase.count; index++) {
+    // Each batch gets a new executor, as inspection and capture do in production.
+    await new InputExecutor(page, surface).execute({ type: 'look', dx: phase.dx, dy: phase.dy, durationMs: 80 });
+    const all = await events(), motion = all.slice(count);
+    count = all.length;
+    assert.ok(motion.length > 0);
+    assert.ok(motion.every(event => event.type === 'mousemove' && event.buttons === 0 && event.trusted && event.locked));
+    assert.equal(motion.reduce((sum, event) => sum + event.dx, 0), phase.dx, `horizontal drift at native origin ${x},${y}`);
+    assert.equal(motion.reduce((sum, event) => sum + event.dy, 0), phase.dy, `vertical drift at native origin ${x},${y}`);
+    assert.ok(motion.every(event => event.dx * phase.dx >= 0 && event.dy * phase.dy >= 0), 'no opposite-direction recentering event may be hidden inside a correct net delta');
+    x += phase.dx; y += phase.dy; totalX += phase.dx; totalY += phase.dy;
+    extents.minX = Math.min(extents.minX, x); extents.maxX = Math.max(extents.maxX, x);
+    extents.minY = Math.min(extents.minY, y); extents.maxY = Math.max(extents.maxY, y);
+  }
+  assert.ok(extents.minX < -800 && extents.minY < -800 && extents.maxX > 800 && extents.maxY > 800, 'the test must cross both edges of both viewport axes by a substantial margin');
+  assert.equal(x, 240 + totalX);
+  assert.equal(y, 260 + totalY);
+  await waitForLock();
+});
+
 test('a locked look rejects an unknown native origin without guessing or moving', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
   const { page, frame, events, surface, waitForLock } = await lookFixture(t);
   // The fixture deliberately acquires lock outside the executor's ownership.
