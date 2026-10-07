@@ -82,18 +82,33 @@ export async function discoverGames(options: {
         } else {
           const links = await page.locator('a[href*="/games/"]').evaluateAll(anchors => anchors.map(anchor => {
             const element = anchor as HTMLAnchorElement;
-            const explicitCard = element.closest('article, [data-game-id], [role="listitem"]') as HTMLElement | null;
+            const explicitCard = element.closest('article, [data-testid="game-card"], [data-game-id], [role="listitem"]') as HTMLElement | null;
             const parent = element.parentElement;
             const parentGameUrls = parent ? new Set(Array.from(parent.querySelectorAll('a[href*="/games/"]')).map(a => a.getAttribute('href')?.split(/[?#]/)[0])) : new Set();
             const card = explicitCard ?? (parent && parent.innerText.length < 700 && parentGameUrls.size === 1 ? parent : element);
             const image = element.querySelector('img') ?? card.querySelector('img');
             const heading = card.querySelector('h1,h2,h3,h4,[data-game-title]');
+            const creator = (card.querySelector('a[data-testid="profile-item-link"],a[href^="/profile/"]') as HTMLElement | null)?.innerText.trim() || '';
+            const imageAlt = image?.getAttribute('alt')?.trim() || '';
+            const creatorSuffix = creator ? ` by ${creator}` : '';
+            const alt = creatorSuffix && imageAlt.endsWith(creatorSuffix) ? imageAlt.slice(0, -creatorSuffix.length).trim() : imageAlt;
+            // Current cards expose the title in image alt and only a counter inside the game link.
+            const bareCount = /^\d[\d,]*(?:\.\d+)?\s*[kmb]?$/i;
+            const counter = /^(?:\d[\d,]*(?:\.\d+)?\s*[kmb]?(?:\s+(?:plays?|players?|likes?|favou?rites?))?|(?:plays?|players?|likes?|favou?rites?)\s*:\s*\d[\d,.]*\s*[kmb]?)$/i;
+            const visibleTitle = heading?.textContent?.trim() || element.innerText.trim().split('\n').map(line => line.trim()).find(line => line && line !== creator && !counter.test(line)) || '';
+            const metricLabels = Array.from(card.querySelectorAll('[aria-label],[aria-labelledby],[title],svg title')).flatMap(node => {
+              if (node.closest('[aria-hidden="true"]')) return [];
+              const referenced = node.getAttribute('aria-labelledby')?.split(/\s+/).map(id => document.getElementById(id)?.textContent || '').join(' ');
+              const label = node.getAttribute('aria-label') || referenced || node.getAttribute('title') || (node.tagName.toLowerCase() === 'title' ? node.textContent : '') || '';
+              const value = (node as HTMLElement).innerText?.trim() || (node.closest('[data-slot="badge"]') as HTMLElement | null)?.innerText.trim() || '';
+              return [label.trim(), bareCount.test(value) ? `${value} ${label.trim()}` : ''].filter(Boolean);
+            });
             return {
               url: element.href,
-              visibleTitle: heading?.textContent?.trim() || element.innerText.trim().split('\n').find(Boolean) || '',
-              alt: image?.getAttribute('alt')?.trim() || '',
+              visibleTitle, alt, creator,
               thumbnailUrl: image?.currentSrc || image?.getAttribute('src') || '',
-              text: card.innerText.slice(0, 1500),
+              text: [card.innerText, imageAlt ? `Image alt: ${imageAlt}` : '', ...metricLabels].filter(Boolean).join('\n').slice(0, 1500),
+              metricText: [card.innerText, ...metricLabels].join('\n'),
             };
           }));
           for (const link of links) {
@@ -109,10 +124,10 @@ export async function discoverGames(options: {
             }
             if (candidates.size >= limit) continue;
             const title = link.visibleTitle || link.alt || decodeURIComponent(parts.at(-2)!).replaceAll('-', ' ');
-            const creator = link.text.match(/(?:^|\n)\s*(?:by|creator:)\s+([^\n]{1,100})/i)?.[1]?.trim();
+            const creator = link.creator || link.text.match(/(?:^|\n)\s*(?:by|creator:)\s+([^\n]{1,100})/i)?.[1]?.trim();
             let thumbnailUrl: string | undefined;
             try { const thumbnail = new URL(link.thumbnailUrl, url); if (link.thumbnailUrl && /^https?:$/.test(thumbnail.protocol)) thumbnailUrl = thumbnail.href; } catch { /* Missing or malformed artwork is unknown. */ }
-            candidates.set(gameUrl, { id, url: gameUrl, title, titleSource: link.visibleTitle ? 'visible_text' : link.alt ? 'image_alt' : 'url_slug', creator, thumbnailUrl, metrics: parsePublicMetrics(link.text), observations: [observation] });
+            candidates.set(gameUrl, { id, url: gameUrl, title, titleSource: link.visibleTitle ? 'visible_text' : link.alt ? 'image_alt' : 'url_slug', creator, thumbnailUrl, metrics: parsePublicMetrics(link.metricText), observations: [observation] });
           }
           source.candidateCount = links.filter(l => canonicalGameUrl(l.url, url)).length;
           source.status = source.candidateCount ? 'ok' : 'empty';
