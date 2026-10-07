@@ -35,6 +35,8 @@ export const coreRunSchema = z.object({
   status: z.enum(['running', 'paused', 'failed', 'complete']),
   playMode: z.enum(['timed', 'feedback']).default('timed'),
   contentBrief: contentBriefSchema.default(defaultContentBrief),
+  provenance: z.object({ sourceRunId: z.string(), sourceRunPath: z.string(), discoveryPath: z.string() }).optional(),
+  presenterPath: z.string().optional(), presenterSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   candidates: z.array(gameCandidateSchema).default([]),
   shortlist: z.array(nominationSchema).default([]), attempts: z.array(attemptSchema).default([]),
   selectedGameId: z.string().optional(), script: scriptSchema.optional(),
@@ -48,6 +50,34 @@ const defaults = { discoverGames, nominateGames, inspectGame, learnGameProfile, 
 export type CoreServices = typeof defaults;
 
 async function hashFile(path: string) { return createHash('sha256').update(await readFile(path)).digest('hex'); }
+
+/** Reuse source evidence by reference, without altering the original run or copying media. */
+async function editFromRun(sourceDirectory: string, directory: string, model: string, provider: 'gemini' | 'codex', brief?: ContentBrief): Promise<CoreRun> {
+  const sourceRunPath = resolve(sourceDirectory);
+  if (sourceRunPath === directory) throw new Error('--from-run needs a new output directory; use --resume to continue an existing run.');
+  try {
+    await readFile(join(directory, 'run.json'));
+    throw new Error('--from-run cannot replace an existing run. Choose a new output directory.');
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  const source = coreRunSchema.parse(JSON.parse(await readFile(join(sourceRunPath, 'run.json'), 'utf8')));
+  if (!source.attempts.some(attempt => attempt.capture)) throw new Error('--from-run needs at least one saved recording.');
+  for (const attempt of source.attempts) {
+    if (attempt.capture && await hashFile(attempt.capture.path) !== attempt.sourceSha256) throw new Error(`Saved source changed for ${attempt.capture.game.title}. Start a new run instead of reusing stale edit decisions.`);
+  }
+  const ids = new Set(source.candidates.map(candidate => candidate.id));
+  if (!source.shortlist.length || source.shortlist.some(choice => !ids.has(choice.gameId) || !source.attempts.some(attempt => attempt.gameId === choice.gameId))) throw new Error('The source run has incomplete candidate or shortlist evidence.');
+  return coreRunSchema.parse({
+    version: 1, id: basename(directory), createdAt: new Date().toISOString(), model, provider, status: 'running',
+    playMode: source.playMode, contentBrief: brief ?? source.contentBrief, candidates: source.candidates, shortlist: source.shortlist,
+    attempts: source.attempts.map(attempt => {
+      if (attempt.inspectionPath) attempt.inspectionPath = resolve(attempt.inspectionPath);
+      if (attempt.feedbackPath) attempt.feedbackPath = resolve(attempt.feedbackPath);
+      if (attempt.capture) attempt.capture.path = resolve(attempt.capture.path);
+      return attempt;
+    }),
+    provenance: { sourceRunId: source.id, sourceRunPath, discoveryPath: source.provenance?.discoveryPath ?? join(sourceRunPath, 'discovery.json') },
+  });
+}
 function message(error: unknown, secret: string) {
   const text = error instanceof Error ? error.message : String(error);
   return (secret ? text.replaceAll(secret, '[redacted]') : text).slice(0, 1500);
@@ -73,7 +103,10 @@ async function report(directory: string, run: CoreRun) {
   const lines = [
     '# Astrocade run', '', `Status: **${run.status}** · Current provider/model: \`${run.provider}/${run.model}\` · Started: ${run.createdAt}`, '',
     'This is an evidence trace: observable inputs, actions, results, and concise decision summaries. It does not contain private internal model reasoning.', '',
-    '- [Full event trace](trace.jsonl)', '- [Run data](run.json)', '- [Editorial brief](content-brief.json)', '- [Discovery evidence](discovery.json)', '', '## Candidate decisions', '',
+    '- [Full event trace](trace.jsonl)', '- [Run data](run.json)', '- [Editorial brief](content-brief.json)', `- [Discovery evidence](${run.provenance ? link(run.provenance.discoveryPath) : 'discovery.json'})`, '',
+    ...(run.provenance ? [`Re-edit of [${run.provenance.sourceRunId}](${link(join(run.provenance.sourceRunPath, 'report.md'))}). Saved recordings and observations are referenced; the original run is unchanged.`, ''] : []),
+    ...(run.presenterPath ? [`Fictional AI commentator: [generated asset supplied](${link(run.presenterPath)}). This is not a recording of a real person playing. Publishing is manual.`, ''] : []),
+    '## Candidate decisions', '',
     'Content scores are editorial heuristics out of 30, not probabilities of audience performance. Zero clarity, payoff, or readability rejects a candidate regardless of visual appeal.', '',
   ];
   for (const choice of run.shortlist) {
@@ -117,11 +150,13 @@ async function report(directory: string, run: CoreRun) {
 }
 
 export async function runPipeline(options: {
-  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; playMode?: 'timed' | 'feedback'; contentBrief?: ContentBrief; signal?: AbortSignal; quiet?: boolean;
+  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; playMode?: 'timed' | 'feedback'; contentBrief?: ContentBrief; fromRun?: string; presenterPath?: string; signal?: AbortSignal; quiet?: boolean;
 }, config: Configuration, overrides: Partial<CoreServices> = {}): Promise<CoreRun> {
   const directory = resolve(options.directory);
+  if (options.fromRun && resolve(options.fromRun) === directory) throw new Error('--from-run needs a new output directory; use --resume to continue an existing run.');
   const services = { ...defaults, ...overrides };
-  const stage = options.stage ?? 'all';
+  if (options.fromRun && options.stage && !['edit', 'all'].includes(options.stage)) throw new Error('--from-run only supports the edit stage.');
+  const stage = options.fromRun ? 'edit' : options.stage ?? 'all';
   const limit = options.shortlistSize ?? 3;
   const providerName = options.provider ?? 'gemini';
   const requestedBrief = options.contentBrief ? contentBriefSchema.parse(options.contentBrief) : undefined;
@@ -132,8 +167,18 @@ export async function runPipeline(options: {
   const settings = { ...config.get(), reasoningModel: options.model };
   let store: JsonStore<CoreRun> | undefined;
   try {
-    const opened = await JsonStore.open(join(directory, 'run.json'), coreRunSchema, coreRunSchema.parse({ version: 1, id: basename(directory), createdAt: new Date().toISOString(), model: options.model, status: 'running', contentBrief: requestedBrief ?? defaultContentBrief }));
+    const initial = options.fromRun
+      ? await editFromRun(options.fromRun, directory, options.model, providerName, requestedBrief)
+      : coreRunSchema.parse({ version: 1, id: basename(directory), createdAt: new Date().toISOString(), model: options.model, status: 'running', contentBrief: requestedBrief ?? defaultContentBrief });
+    if (options.presenterPath) { initial.presenterPath = resolve(options.presenterPath); initial.presenterSha256 = await hashFile(initial.presenterPath); }
+    const opened = await JsonStore.open(join(directory, 'run.json'), coreRunSchema, initial);
     if (requestedBrief && JSON.stringify(requestedBrief) !== JSON.stringify(opened.read().contentBrief)) throw new Error('A saved editorial brief cannot be changed while resuming. Start a new run for a different brief.');
+    if (options.presenterPath && resolve(options.presenterPath) !== opened.read().presenterPath) throw new Error('A saved presenter cannot be changed while resuming. Use --from-run to make a new edit.');
+    const verifyPresenter = async () => {
+      const saved = opened.read();
+      if (saved.presenterPath && await hashFile(saved.presenterPath) !== saved.presenterSha256) throw new Error('The saved presenter asset changed. Use --from-run to make a new edit.');
+    };
+    await verifyPresenter();
     store = opened;
     if (options.playMode && options.playMode !== store.read().playMode && store.read().attempts.length) throw new Error('Start a new run to change the gameplay mode.');
     if (options.playMode) await store.update(run => { run.playMode = options.playMode!; });
@@ -301,7 +346,8 @@ export async function runPipeline(options: {
     // A crash between rendering and saving the manifest cannot block a later render.
     const outputPath = join(directory, `highlight-${randomUUID().slice(0, 8)}.mp4`);
     trace.event('render', 'started', 'Rendering a portrait highlight from the verified cuts.');
-    const artifact = await services.renderPortrait({ outputPath, cuts: run.script!.cuts.map(cut => ({ ...cut, path: selected.path, crop: selected.crop })), hook: run.script!.hook, overlays: run.script!.overlays, attribution: `${selected.game.title} · ${selected.game.creator ?? 'Astrocade'}`, ffmpeg: config.mediaTools, signal: options.signal });
+    await verifyPresenter();
+    const artifact = await services.renderPortrait({ outputPath, cuts: run.script!.cuts.map(cut => ({ ...cut, path: selected.path, crop: selected.crop })), hook: run.script!.hook, overlays: run.script!.overlays, presenter: run.presenterPath ? { path: run.presenterPath } : undefined, attribution: `${selected.game.title} · ${selected.game.creator ?? 'Astrocade'}`, ffmpeg: config.mediaTools, signal: options.signal });
     const videoSha256 = await hashFile(artifact.path);
     await save(state => { state.videoPath = artifact.path; state.videoSha256 = videoSha256; });
     trace.event('render', 'completed', `${artifact.durationSeconds.toFixed(2)}-second video ready. Publishing is manual.`, artifact);

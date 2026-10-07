@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
+import { promisify } from 'node:util';
 import { z } from 'zod';
 import { Configuration } from '../server/config.js';
 import { NeedsAttention } from '../server/jobs.js';
@@ -379,4 +381,96 @@ test('scheduled overlays reach the renderer and the report retains editorial alt
   assert.match(report, /SYNTHETIC six seconds preserve approach and result/);
   assert.match(report, /SYNTHETIC labels remain readable/);
   assert.match(report, /SYNTHETIC tradeoff between choice and surprise/);
+});
+
+test('a new edit reuses captured evidence without discovery, capture or analysis and leaves its source unchanged', async t => {
+  const { directory, config, services, calls, candidate } = await fixture(t);
+  const sourceBrief = { ...defaultContentBrief, audience: 'SYNTHETIC source audience.' };
+  const options = { directory, model: 'fixture-model', provider: 'codex' as const, quiet: true };
+  const source = await runPipeline({ ...options, contentBrief: sourceBrief }, config, services);
+  // Preserve failed probes too; an edit-only variation must not retry them.
+  const manifest = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
+  manifest.candidates.push({ ...candidate, id: 'failed-probe' });
+  manifest.shortlist.push({ gameId: 'failed-probe', hypothesis: 'Fixture', viewerQuestion: 'Fixture?', controlRisk: 'Fixture' });
+  manifest.attempts.push({ gameId: 'failed-probe', unsupported: false, evidence: [], limitations: [], error: 'SYNTHETIC failed capture.' });
+  await writeFile(join(directory, 'run.json'), JSON.stringify(manifest));
+  const original = await readFile(join(directory, 'run.json'), 'utf8');
+  const originalTrace = await readFile(join(directory, 'trace.jsonl'), 'utf8');
+  const variation = await runPipeline({ ...options, directory: join(directory, 'variation'), fromRun: directory }, config, services);
+  assert.equal(variation.status, 'complete');
+  assert.notEqual(variation.id, source.id);
+  assert.notEqual(variation.createdAt, source.createdAt);
+  assert.notEqual(variation.videoPath, source.videoPath);
+  assert.deepEqual(variation.contentBrief, sourceBrief);
+  assert.deepEqual(variation.attempts[0], source.attempts[0]);
+  assert.equal(variation.attempts[1]!.error, 'SYNTHETIC failed capture.');
+  assert.equal(variation.provenance!.sourceRunId, source.id);
+  assert.equal(variation.provenance!.sourceRunPath, directory);
+  assert.equal(variation.provenance!.discoveryPath, join(directory, 'discovery.json'));
+  assert.deepEqual(calls, { discover: 1, inspect: 1, capture: 1, analyze: 1, draft: 2, render: 2, validate: 0 });
+  assert.equal(await readFile(join(directory, 'run.json'), 'utf8'), original);
+  assert.equal(await readFile(join(directory, 'trace.jsonl'), 'utf8'), originalTrace);
+  assert.match(await readFile(join(directory, 'variation', 'report.md'), 'utf8'), /Re-edit of/);
+  const newBrief = { ...sourceBrief, voice: 'SYNTHETIC different editorial voice.' };
+  const alternative = await runPipeline({ ...options, directory: join(directory, 'alternative'), fromRun: directory, contentBrief: newBrief }, config, services);
+  assert.deepEqual(alternative.contentBrief, newBrief);
+  assert.equal(calls.analyze, 1);
+  assert.equal(calls.capture, 1);
+  assert.equal(await readFile(join(directory, 'run.json'), 'utf8'), original);
+});
+
+test('re-edit refuses replaced source footage or an existing destination before making another edit', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const options = { directory, model: 'fixture-model', quiet: true };
+  const source = await runPipeline(options, config, services);
+  const originalTrace = await readFile(join(directory, 'trace.jsonl'), 'utf8');
+  await assert.rejects(runPipeline({ ...options, fromRun: directory }, config, services), /new output directory/);
+  assert.equal(await readFile(join(directory, 'trace.jsonl'), 'utf8'), originalTrace);
+  await assert.rejects(runPipeline({ ...options, fromRun: directory, directory: join(directory, 'wrong-stage'), stage: 'capture' }, config, services), /only supports the edit stage/);
+  const variation = join(directory, 'variation');
+  await runPipeline({ ...options, directory: variation, fromRun: directory }, config, services);
+  const savedVariation = await readFile(join(variation, 'run.json'), 'utf8');
+  await assert.rejects(runPipeline({ ...options, directory: variation, fromRun: directory }, config, services), /cannot replace an existing run/);
+  assert.equal(await readFile(join(variation, 'run.json'), 'utf8'), savedVariation);
+  await writeFile(source.attempts[0]!.capture!.path, 'SYNTHETIC replacement bytes');
+  await assert.rejects(runPipeline({ ...options, fromRun: directory, directory: join(directory, 'changed-source') }, config, services), /Saved source changed/);
+  assert.equal(calls.draft, 2);
+});
+
+test('re-edit requires saved recordings and CLI rejects contradictory run modes before setup', async t => {
+  const { directory, config, services } = await fixture(t);
+  await runPipeline({ directory, model: 'fixture-model', stage: 'discover', quiet: true }, config, services);
+  await assert.rejects(runPipeline({ directory: join(directory, 'variation'), fromRun: directory, model: 'fixture-model', quiet: true }, config, services), /at least one saved recording/);
+  await assert.rejects(promisify(execFile)(process.execPath, ['--import', 'tsx', 'src/core/cli.ts', '--resume', 'unused', '--from-run', 'unused']), error => {
+    assert.match((error as { stderr: string }).stderr, /mutually exclusive/);
+    return true;
+  });
+});
+
+test('a supplied presenter is hashed, sent to the renderer and cannot change on resume', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const presenterPath = join(directory, '..', 'presenter.mp4');
+  const otherPresenter = join(directory, '..', 'other-presenter.mp4');
+  await writeFile(presenterPath, 'SYNTHETIC generated presenter, not actual video');
+  await writeFile(otherPresenter, 'SYNTHETIC alternate generated presenter');
+  const render = services.renderPortrait!;
+  services.renderPortrait = async options => {
+    assert.deepEqual(options.presenter, { path: presenterPath });
+    return render(options);
+  };
+  const options = { directory, model: 'fixture-model', quiet: true };
+  const run = await runPipeline({ ...options, presenterPath }, config, services);
+  assert.equal(run.presenterPath, presenterPath);
+  assert.match(run.presenterSha256!, /^[a-f0-9]{64}$/);
+  assert.match(await readFile(join(directory, 'report.md'), 'utf8'), /Fictional AI commentator/);
+  const original = await readFile(join(directory, 'run.json'), 'utf8');
+  await assert.rejects(runPipeline({ ...options, presenterPath: otherPresenter }, config, services), /saved presenter cannot be changed/);
+  assert.equal(await readFile(join(directory, 'run.json'), 'utf8'), original);
+  await runPipeline(options, config, services);
+  assert.equal(calls.render, 1);
+  assert.equal(calls.validate, 1);
+  await writeFile(presenterPath, 'SYNTHETIC changed presenter');
+  await assert.rejects(runPipeline(options, config, services), /saved presenter asset changed/);
+  assert.equal(calls.render, 1);
+  assert.equal(calls.validate, 1);
 });
