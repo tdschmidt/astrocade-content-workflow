@@ -23,3 +23,9 @@ test('editable caption text cannot inject ASS style overrides', () => {
   assert.ok(!ass.includes('{\\pos'));
   assert.ok(ass.includes('｛＼pos(0,0)｝'));
 });
+
+test('an oversized hook is rejected instead of spilling into the game view', () => {
+  assert.doesNotThrow(() => makeSubtitles('Which gate grows the crowd?', 'Creator', [], 5, 'Noto Sans'));
+  assert.throws(() => makeSubtitles('A'.repeat(33), undefined, [], 5, 'Noto Sans'), /reserved header/);
+  assert.throws(() => makeSubtitles(Array(10).fill('abcdefghij').join(' '), undefined, [], 5, 'Noto Sans'), /reserved header/);
+});

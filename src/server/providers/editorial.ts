@@ -108,14 +108,31 @@ export function mapWindowEvents(events: Event[], window: Cut, sourceDuration: nu
 export async function analyzeFootage(capture: Capture, google: GoogleServices, signal?: AbortSignal): Promise<FootageAnalysis> {
   if (!Number.isFinite(capture.durationSeconds) || capture.durationSeconds <= 0) throw new NeedsAttention('The recording duration is invalid.');
   return google.withVideo(capture.path, async video => {
+    if (capture.durationSeconds <= 20) {
+      const analysis = verifiedAnalysisSchema.parse(await google.json(
+        `Inspect this entire 8 FPS recording of ${JSON.stringify(capture.game.title)}. Its measured duration is ${capture.durationSeconds} seconds.
+Every timestamp is ABSOLUTE SOURCE TIME in [0, ${capture.durationSeconds}], measured from the recording's start. No window-relative offsets are used.
+Find the strongest visible decision and its consequence. Each event is ONE CONTIGUOUS interval with enough approach to read the choice (about two seconds when available), the action, and a brief view of the result (about one second when available). Do not isolate only the instant of contact. Describe its setup, action and result with concrete visual evidence.
+Prefer one coherent moment over a catalogue of movement. Return at most three useful events, best short-video potential first.
+Exclude opening/stage banners that obscure the action, menus, loading, idle movement and redundant travel. Do not fill the recording's duration merely because footage exists.
+A failure or a visible count change can be a complete result. Do not invent a win, collision, score change or completion between sampled frames. State uncertainty explicitly.
+Only report exact numbers if the before value, action/gate value and after value are clearly readable and mutually consistent. Check simple arithmetic when it describes the visible mechanic. If readings disagree or are unclear, omit exact numbers and state the uncertainty; do not turn identical before/after values into a claimed decrease.
+The chosen interval starts close enough to the decision to understand it and ends shortly after its consequence is visible. There is no minimum event length.
+Set usable=false and events=[] if no understandable action and visible consequence are supported.`,
+        verifiedAnalysisSchema, [{ type: 'video', uri: video.uri, mime_type: video.mimeType, processing: { type: 'static', fps: 8 } }], signal,
+      ));
+      if (analysis.events.some(event => !validRange(event, capture.durationSeconds))) throw new NeedsAttention('Video analysis returned timestamps outside the recording.');
+      if (!analysis.usable || !analysis.events.length) return { ...analysis, usable: false, events: [] };
+      return { ...analysis, events: analysis.events.map(event => ({ ...event, evidence: `8 FPS review: ${event.evidence}` })) };
+    }
     const coarse = verifiedAnalysisSchema.parse(await google.json(
       `Inspect this recording of ${JSON.stringify(capture.game.title)}. Its measured duration is ${capture.durationSeconds} seconds.
 It is sampled at 1 FPS: identify candidate action windows, not precise collisions or outcomes between frames.
 Return up to six useful windows, best short-video potential first, with absolute source seconds within [0, ${capture.durationSeconds}].
 Describe only visible mechanics, controls' visible effects, progress, and outcomes. Mark uncertainty explicitly.
-Menus, loading screens, pointer movement without game response, static/idle footage, and unseen promised payoffs are not usable action.
+Opening banners that obscure the action, menus, loading screens, pointer movement without game response, static/idle footage, and unseen promised payoffs are not usable action.
 Each event must state concrete visual evidence and what actually happens. A failure can be usable; a promised victory without visible proof cannot.
-Prefer 6–16 second action windows with their setup and visible result; never pad with idle footage. Set usable=false and events=[] when no meaningful action is seen.`,
+Prefer a single understandable decision with its setup and visible result; do not pad an event to a duration target. Set usable=false and events=[] when no meaningful action is seen.`,
       verifiedAnalysisSchema, [{ type: 'video', uri: video.uri, mime_type: video.mimeType, processing: { type: 'static', fps: 1 } }], signal,
     ));
     if (coarse.events.some(event => !validRange(event, capture.durationSeconds))) throw new NeedsAttention('Coarse video analysis returned timestamps outside the recording.');
@@ -137,7 +154,7 @@ Prefer 6–16 second action windows with their setup and visible result; never p
       const detail = denseSchema.parse(await google.json(
         `Inspect only this 8 FPS gameplay window. The source interval is ${window.startSeconds}–${window.endSeconds} seconds.
 IMPORTANT: return timebase="window_relative". Every event timestamp is seconds from THIS WINDOW'S START, between 0 and ${duration}, not the original video's clock.
-Verify actual action, its visible consequence and any claimed payoff. Exclude loading, menus and inactivity. Do not adopt the coarse analysis as evidence.
+Verify actual action, its visible consequence and any claimed payoff. Exclude opening banners that obscure play, loading, menus and inactivity. Do not adopt the coarse analysis as evidence.
 Each event is a contiguous usable action interval with concrete visual evidence; outcome must describe what is visible, or explicitly say the outcome is unknown.
 Do not claim a win, hit, combo, score change or objective completion unless visible in these frames. usable=false/events=[] is better than invented action.`,
         denseSchema, [{ type: 'video', uri: video.uri, mime_type: video.mimeType, processing: { type: 'static', fps: 8, start_offset: `${window.startSeconds}s`, end_offset: `${window.endSeconds}s` } }], signal,
@@ -186,17 +203,21 @@ Source duration: ${capture.durationSeconds}s. Verified observations: ${JSON.stri
 Topic: ${JSON.stringify(topic)}
 Research: ${JSON.stringify(research ?? null)}
 Choose non-overlapping source cuts entirely inside the verified action intervals; no loading, idle padding, repeats, freeze-frame filler or invented off-screen payoff.
-The finished edit should be about ${target.toFixed(1)} seconds; ${format === 'highlight' ? 'keep narration empty and let the visible action carry the hook.' : `use no more than 40 seconds of cuts and at most ${Math.floor(target * 2.2)} spoken words. There is no minimum duration: use only the meaningful observed action. Use short natural sentences; leave breathing room.`}
+${format === 'highlight' ? 'Return EXACTLY ONE contiguous source cut around ONE strongest observed decision and its consequence. Include a readable approach (about two seconds when the verified interval allows it), the complete action, and a brief visible result (about one second when available). Do not stitch multiple gate contacts into a rushed montage or cut only the instant of impact.' : 'Preserve an understandable setup, action and result in the selected footage.'}
+Exclude obstructing opening/stage banners and redundant travel. Explain the setup/action/result choices in the rationale. These context durations are guidance, not a requirement to pad, freeze or repeat footage.
+Use exact numbers in the hook or caption only when the supplied before/action/after evidence is clearly readable and consistent; otherwise describe the visible change without numeric claims and retain the uncertainty.
+${target.toFixed(1)} seconds is an upper creative budget, not a duration to fill. There is no minimum duration. ${format === 'highlight' ? 'Keep narration empty and let the visible action carry the hook. Prefer a shorter complete moment over using all available footage.' : `Use no more than 40 seconds of cuts and at most ${Math.floor(target * 2.2)} spoken words. Use short natural sentences; leave breathing room.`}
 ${format === 'recommendation' ? 'Recommend the visible mechanic to a specific type of player. Do not invent difficulty, popularity, multiplayer, pricing, platform availability, success or game features.' : ''}
 ${format === 'story' ? factual
       ? 'This is factual storytelling. Every factual claim must have a claims entry with an exact short supporting quote copied from a supplied source and that exact source URL. Use only supplied evidence. Do not present gameplay as footage of the real event.'
       : 'Write an ORIGINAL FICTIONAL micro-story with a clear setup, turn and ending. No copied anecdotes, alleged real events or real-person allegations. Gameplay is background, not evidence. Caption must identify the story as original fiction. claims must be empty.'
     : 'Use no research-based factual claims; claims must be empty. All gameplay claims must come from the verified observations.'}
-The hook must be short and truthful. Caption should invite interest without spam, fabricated performance claims or misleading urgency. Include the game name and URL.
+The hook must be truthful, at most eight words and 60 characters, and fit a short header. Caption should invite interest without spam, fabricated performance claims or misleading urgency. Include the game name and URL.
 Rationale must explain the visible hook/payoff, cut choice and any uncertainty. Do not say you watched social videos or verified trends from text-only research.`,
     draftResponseSchema, [], signal,
   ));
   validateCuts(response.cuts, capture.durationSeconds, analysis.events);
+  if (format === 'highlight' && response.cuts.length !== 1) throw new NeedsAttention('A gameplay highlight needs one contiguous decision-and-result cut, not a montage of separate moments.');
   const duration = response.cuts.reduce((sum, cut) => sum + cut.endSeconds - cut.startSeconds, 0);
   if (format !== 'highlight' && duration > 40) throw new NeedsAttention('The narrated script exceeds the 40-second edit target. Choose a shorter sequence of observed action.');
   if (format !== 'highlight' && !response.narration.trim()) throw new NeedsAttention('This narrated format needs a spoken line grounded in the observed action.');

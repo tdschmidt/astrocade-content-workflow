@@ -58,6 +58,21 @@ function googleFixture(responses: unknown[], sampled: number[] = []): GoogleServ
   } as unknown as GoogleServices;
 }
 
+test('a short recording gets one full 8 FPS review with absolute timestamps', async () => {
+  const shortCapture = { ...capture, durationSeconds: 12.948 };
+  const event = { ...capture.analysis!.events[0]!, startSeconds: 3.2, endSeconds: 7.4 };
+  const sampled: number[] = [];
+  const result = await analyzeFootage(shortCapture, googleFixture([{ ...capture.analysis!, events: [event] }], sampled));
+  assert.deepEqual(sampled, [8]);
+  assert.deepEqual(result.events, [{ ...event, evidence: `8 FPS review: ${event.evidence}` }]);
+  for (const invalid of [{ ...event, endSeconds: 12.949 }, { ...event, startSeconds: -1 }, { ...event, endSeconds: event.startSeconds }]) {
+    await assert.rejects(analyzeFootage(shortCapture, googleFixture([{ ...capture.analysis!, events: [invalid] }])), /outside the recording|greater than|Too small/);
+  }
+  const idle = await analyzeFootage(shortCapture, googleFixture([{ ...capture.analysis!, usable: false, reason: 'Opening banner obscures the only action', events: [event] }]));
+  assert.equal(idle.usable, false);
+  assert.deepEqual(idle.events, []);
+});
+
 test('analysis uses one coarse and at most three dense calls, mapping only verified events', async () => {
   const event = capture.analysis!.events[0]!;
   const coarse = { ...capture.analysis!, events: [0, 20, 40, 60].map(start => ({ ...event, startSeconds: start, endSeconds: start + 10 })) };
@@ -78,6 +93,13 @@ test('coarse apparent action cannot survive a dense review that found only idle 
 });
 
 const script = { hook: 'Watch the landing', narration: 'The tiny explorer found a way home.', caption: 'A short story.', cuts: [{ startSeconds: 0, endSeconds: 25 }], rationale: 'Visible jumps', claims: [] };
+
+test('a core highlight preserves one contiguous event instead of joining short contacts', async () => {
+  const single = { ...script, narration: '', cuts: [{ startSeconds: 3, endSeconds: 7 }] };
+  const result = await draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([single]));
+  assert.deepEqual(result.cuts, single.cuts);
+  await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([{ ...single, cuts: [{ startSeconds: 4.5, endSeconds: 5.625 }, { startSeconds: 9.5, endSeconds: 11.125 }] }])), /one contiguous/);
+});
 
 test('fiction is labeled and a script cannot cut unobserved footage', async () => {
   const result = await draftScript({ capture, format: 'story', topic: 'An original fictional story' }, googleFixture([script]));
