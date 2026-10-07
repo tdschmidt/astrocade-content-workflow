@@ -1,0 +1,111 @@
+{
+  "id": "car-wash-simulator",
+  "name": "Car Wash Simulator",
+  "gameUrl": "https://www.astrocade.com/games/car-wash-simulator/01M3J5ZVKCWQ7K5XGXWZ6RRRTY",
+  "verification": "verified",
+  "verificationNotes": "Two fresh captures of this exact model-generated timed plan passed on 2026-10-07 UTC: Red Sedan earned Perfect (3 stars), Clean 100%, 148 coins; Blue SUV earned Perfect (3 stars), Clean 100%, 168 coins. Both completed the first customer, observed at about 22s. Full recordings: 34.398s/34.453s. Other vehicles, special requests, and later customers are not verified.",
+  "viewport": {
+    "width": 720,
+    "height": 1280
+  },
+  "surface": {
+    "selector": "#game-canvas",
+    "frames": [
+      "iframe[title=\"Astrocade Game\"]"
+    ]
+  },
+  "ready": {
+    "selector": "#start-btn",
+    "frames": [
+      "iframe[title=\"Astrocade Game\"]"
+    ]
+  },
+  "setup": [
+    {
+      "type": "click",
+      "target": {
+        "selector": "[aria-label=\"Start playing\"]",
+        "frames": []
+      }
+    }
+  ],
+  "start": [
+    {
+      "type": "click",
+      "target": {
+        "selector": "#start-btn",
+        "frames": [
+          "iframe[title=\"Astrocade Game\"]"
+        ]
+      }
+    },
+    {
+      "type": "wait",
+      "durationMs": 700
+    }
+  ],
+  "reset": [],
+  "focus": "focus",
+  "objective": "Clean the first vehicle and record a visible customer result. Two fresh tests earned a three-star Perfect result; assess the actual result in each capture and do not claim to finish the level.",
+  "maxDurationMs": 43000,
+  "controller": {
+    "type": "timed",
+    "actions": [
+      {"type":"tap","point":{"x":0.08,"y":0.85}},
+      {"type":"drag","from":{"x":0.08,"y":0.38},"to":{"x":0.92,"y":0.38},"durationMs":550},
+      {"type":"drag","from":{"x":0.92,"y":0.45},"to":{"x":0.08,"y":0.45},"durationMs":550},
+      {"type":"drag","from":{"x":0.08,"y":0.52},"to":{"x":0.92,"y":0.52},"durationMs":550},
+      {"type":"drag","from":{"x":0.92,"y":0.59},"to":{"x":0.08,"y":0.59},"durationMs":550},
+      {"type":"drag","from":{"x":0.14,"y":0.61},"to":{"x":0.86,"y":0.36},"durationMs":550},
+      {"type":"tap","point":{"x":0.22,"y":0.85}},
+      {"type":"drag","from":{"x":0.08,"y":0.38},"to":{"x":0.92,"y":0.38},"durationMs":550},
+      {"type":"drag","from":{"x":0.92,"y":0.44},"to":{"x":0.08,"y":0.44},"durationMs":550},
+      {"type":"drag","from":{"x":0.08,"y":0.5},"to":{"x":0.92,"y":0.5},"durationMs":550},
+      {"type":"drag","from":{"x":0.92,"y":0.57},"to":{"x":0.08,"y":0.57},"durationMs":550},
+      {"type":"drag","from":{"x":0.12,"y":0.6},"to":{"x":0.86,"y":0.36},"durationMs":550},
+      {"type":"drag","from":{"x":0.88,"y":0.59},"to":{"x":0.18,"y":0.36},"durationMs":550},
+      {"type":"tap","point":{"x":0.36,"y":0.85}},
+      {"type":"drag","from":{"x":0.07,"y":0.37},"to":{"x":0.93,"y":0.37},"durationMs":650},
+      {"type":"drag","from":{"x":0.93,"y":0.42},"to":{"x":0.07,"y":0.42},"durationMs":650},
+      {"type":"drag","from":{"x":0.07,"y":0.47},"to":{"x":0.93,"y":0.47},"durationMs":650},
+      {"type":"drag","from":{"x":0.93,"y":0.52},"to":{"x":0.07,"y":0.52},"durationMs":650},
+      {"type":"drag","from":{"x":0.07,"y":0.57},"to":{"x":0.93,"y":0.57},"durationMs":650},
+      {"type":"drag","from":{"x":0.12,"y":0.61},"to":{"x":0.12,"y":0.41},"durationMs":650},
+      {"type":"drag","from":{"x":0.25,"y":0.61},"to":{"x":0.25,"y":0.36},"durationMs":650},
+      {"type":"drag","from":{"x":0.39,"y":0.61},"to":{"x":0.39,"y":0.35},"durationMs":650},
+      {"type":"drag","from":{"x":0.53,"y":0.61},"to":{"x":0.53,"y":0.35},"durationMs":650},
+      {"type":"drag","from":{"x":0.67,"y":0.61},"to":{"x":0.67,"y":0.36},"durationMs":650},
+      {"type":"drag","from":{"x":0.81,"y":0.61},"to":{"x":0.81,"y":0.39},"durationMs":650},
+      {"type":"drag","from":{"x":0.92,"y":0.57},"to":{"x":0.92,"y":0.45},"durationMs":650},
+      {"type":"drag","from":{"x":0.08,"y":0.58},"to":{"x":0.84,"y":0.36},"durationMs":650},
+      {"type":"drag","from":{"x":0.18,"y":0.36},"to":{"x":0.93,"y":0.58},"durationMs":650},
+      {"type":"drag","from":{"x":0.08,"y":0.49},"to":{"x":0.86,"y":0.61},"durationMs":650},
+      {"type":"drag","from":{"x":0.92,"y":0.48},"to":{"x":0.18,"y":0.61},"durationMs":650},
+      {"type":"drag","from":{"x":0.1,"y":0.6},"to":{"x":0.34,"y":0.48},"durationMs":650},
+      {"type":"tap","point":{"x":0.5,"y":0.85}},
+      {"type":"drag","from":{"x":0.07,"y":0.38},"to":{"x":0.93,"y":0.38},"durationMs":550},
+      {"type":"drag","from":{"x":0.93,"y":0.44},"to":{"x":0.07,"y":0.44},"durationMs":550},
+      {"type":"drag","from":{"x":0.07,"y":0.5},"to":{"x":0.93,"y":0.5},"durationMs":550},
+      {"type":"drag","from":{"x":0.93,"y":0.57},"to":{"x":0.07,"y":0.57},"durationMs":550},
+      {"type":"drag","from":{"x":0.12,"y":0.6},"to":{"x":0.86,"y":0.36},"durationMs":550},
+      {"type":"drag","from":{"x":0.88,"y":0.59},"to":{"x":0.18,"y":0.36},"durationMs":550},
+      {"type":"drag","from":{"x":0.2,"y":0.35},"to":{"x":0.2,"y":0.61},"durationMs":550},
+      {"type":"drag","from":{"x":0.78,"y":0.37},"to":{"x":0.78,"y":0.61},"durationMs":550},
+      {"type":"tap","point":{"x":0.78,"y":0.85}},
+      {"type":"drag","from":{"x":0.08,"y":0.38},"to":{"x":0.92,"y":0.38},"durationMs":600},
+      {"type":"drag","from":{"x":0.92,"y":0.44},"to":{"x":0.08,"y":0.44},"durationMs":600},
+      {"type":"drag","from":{"x":0.08,"y":0.5},"to":{"x":0.92,"y":0.5},"durationMs":600},
+      {"type":"drag","from":{"x":0.92,"y":0.57},"to":{"x":0.08,"y":0.57},"durationMs":600},
+      {"type":"drag","from":{"x":0.12,"y":0.6},"to":{"x":0.86,"y":0.36},"durationMs":600},
+      {"type":"drag","from":{"x":0.88,"y":0.59},"to":{"x":0.18,"y":0.36},"durationMs":600},
+      {"type":"drag","from":{"x":0.16,"y":0.36},"to":{"x":0.16,"y":0.61},"durationMs":600},
+      {"type":"drag","from":{"x":0.38,"y":0.35},"to":{"x":0.38,"y":0.61},"durationMs":600},
+      {"type":"drag","from":{"x":0.62,"y":0.35},"to":{"x":0.62,"y":0.61},"durationMs":600},
+      {"type":"drag","from":{"x":0.84,"y":0.39},"to":{"x":0.84,"y":0.61},"durationMs":600},
+      {"type":"drag","from":{"x":0.08,"y":0.47},"to":{"x":0.88,"y":0.6},"durationMs":600},
+      {"type":"drag","from":{"x":0.9,"y":0.47},"to":{"x":0.16,"y":0.6},"durationMs":600},
+      {"type":"wait","durationMs":2200}
+    ],
+    "repetitions": 1
+  }
+}
