@@ -105,17 +105,54 @@ test('coarse apparent action cannot survive a dense review that found only idle 
 
 const script = { hook: 'Watch the landing', narration: 'The tiny explorer found a way home.', caption: 'A short story.', cuts: [{ startSeconds: 0, endSeconds: 25 }], rationale: 'Visible jumps', claims: [] };
 
-test('a highlight selects an event and cannot discard its readable context or join contacts', async () => {
+test('a highlight preserves the whole context of a single selected event', async () => {
   const shortCapture = { ...capture, durationSeconds: 12.948, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, startSeconds: 2, endSeconds: 6.6 }] } };
-  const choice = { eventIndex: 0, hook: script.hook, rationale: script.rationale };
+  const choice = { eventIndexes: [0], hook: script.hook, rationale: script.rationale };
   const result = await draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([choice]));
   assert.deepEqual(result.cuts, [{ startSeconds: 2, endSeconds: 6.6 }]);
   assert.equal(result.narration, '');
   assert.equal(result.caption, `${shortCapture.game.title}\n${shortCapture.analysis.events[0]!.outcome}\nPlay: ${shortCapture.game.url}`, 'caption uses the selected observation without another invented claim');
-  await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, eventIndex: 1 }])), /unknown observed event/);
+  await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, eventIndexes: [1] }])), /unknown observed event/);
+  await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, eventIndexes: [0, 0] }])), /duplicate observed events/);
+  for (const eventIndexes of [[], [0, 1, 2, 3], [-1], [0.5]]) {
+    await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, eventIndexes }])));
+  }
   for (const cuts of [[{ startSeconds: 3.5, endSeconds: 5.6 }], [{ startSeconds: 4.5, endSeconds: 5.625 }, { startSeconds: 9.5, endSeconds: 11.125 }]]) {
     await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, cuts }])), /Unrecognized key/);
   }
+});
+
+test('a highlight joins overlapping transformation phases once and captions them chronologically', async () => {
+  const phases = [
+    { startSeconds: 11, endSeconds: 14, event: 'Earned result panel', evidence: 'A three-star panel appears after the customer leaves', outcome: 'The result panel shows three stars.' },
+    { startSeconds: 1, endSeconds: 5, event: 'Dirty before-state and first wash', evidence: 'Dirt covers the car before soap spreads', outcome: 'Soap spreads across the dirty car.' },
+    { startSeconds: 4, endSeconds: 12, event: 'Cleaning changes the car', evidence: 'Visible dirt vanishes and the customer leaves', outcome: 'The car becomes clean and the customer leaves.' },
+  ];
+  const transformationCapture = { ...capture, analysis: { ...capture.analysis!, events: phases } };
+  const original = structuredClone(transformationCapture);
+  const result = await draftScript({ capture: transformationCapture, format: 'highlight', topic: '' }, googleFixture([
+    { eventIndexes: [0, 2, 1], hook: 'A dirty car earns three stars', rationale: 'Shows the dirty setup, cleaning and visible result.' },
+  ]));
+  assert.deepEqual(result.cuts, [{ startSeconds: 1, endSeconds: 14 }], 'overlapping verified phases never repeat source frames');
+  assert.equal(result.caption, `${capture.game.title}\n${phases[1]!.outcome}\n${phases[2]!.outcome}\n${phases[0]!.outcome}\nPlay: ${capture.game.url}`);
+  assert.deepEqual(transformationCapture, original, 'selection must not reorder or merge the saved observations');
+});
+
+test('a highlight orders separate verified phases without filling gaps or exceeding 40 seconds', async () => {
+  const event = capture.analysis!.events[0]!;
+  const choice = { eventIndexes: [1, 0], hook: script.hook, rationale: script.rationale };
+  const separated = { ...capture, analysis: { ...capture.analysis!, events: [
+    { ...event, startSeconds: 1, endSeconds: 10 }, { ...event, startSeconds: 20, endSeconds: 25 },
+  ] } };
+  const result = await draftScript({ capture: separated, format: 'highlight', topic: '' }, googleFixture([choice]));
+  assert.deepEqual(result.cuts, [{ startSeconds: 1, endSeconds: 10 }, { startSeconds: 20, endSeconds: 25 }]);
+  const overlap = { ...capture, analysis: { ...capture.analysis!, events: [
+    { ...event, startSeconds: 0, endSeconds: 30 }, { ...event, startSeconds: 20, endSeconds: 40 },
+  ] } };
+  const forty = await draftScript({ capture: overlap, format: 'highlight', topic: '' }, googleFixture([choice]));
+  assert.deepEqual(forty.cuts, [{ startSeconds: 0, endSeconds: 40 }], 'the duration budget counts overlapping frames only once');
+  const tooLong = { ...capture, analysis: { ...capture.analysis!, events: [{ ...event, startSeconds: 0, endSeconds: 40.01 }] } };
+  await assert.rejects(draftScript({ capture: tooLong, format: 'highlight', topic: '' }, googleFixture([{ ...choice, eventIndexes: [0] }])), /40-second edit target/);
 });
 
 test('fiction is labeled and a script cannot cut unobserved footage', async () => {
