@@ -3,10 +3,10 @@ import { dirname, join, resolve } from 'node:path';
 import { mediaExecutables, probeMedia, type MediaTools } from './probe.js';
 import { runProcess } from './process.js';
 
-export interface VideoFrameProcessing { fps: 1 | 8; start_offset?: string; end_offset?: string }
+export interface VideoFrameProcessing { fps: 1 | 2 | 8; start_offset?: string; end_offset?: string }
 export interface VideoFrames {
   sourcePath: string;
-  fps: 1 | 8;
+  fps: 1 | 2 | 8;
   startSeconds: number;
   endSeconds: number;
   /** Actual presentation times, never nominal frame index / requested FPS. */
@@ -28,7 +28,7 @@ export async function extractVideoFrames(
 ): Promise<VideoFrames> {
   signal?.throwIfAborted();
   const fps = processing.fps;
-  if (fps !== 1 && fps !== 8) throw new Error('Frame sampling supports only 1 or 8 FPS.');
+  if (fps !== 1 && fps !== 2 && fps !== 8) throw new Error('Frame sampling supports only 1, 2 or 8 FPS.');
   const sourcePath = resolve(path), directory = resolve(outputDir);
   const startSeconds = offset(processing.start_offset, 0);
   const requestedEnd = offset(processing.end_offset, Number.NaN);
