@@ -61,7 +61,7 @@ function visualFilter(segment: Segment): string {
   return '';
 }
 
-export function segmentFilter(segment: Segment, mapping: SegmentMapping, sourceHasAudio: boolean, sourceCrop?: EditPlan['sourceCrop']): string {
+export function segmentFilter(segment: Segment, mapping: SegmentMapping, sourceHasAudio: boolean, sourceCrop?: EditPlan['sourceCrop'], sourceSize?: { width: number; height: number }): string {
   const duration = mapping.outputEnd - mapping.outputStart;
   const trim = segment.kind === 'clip'
     ? sourceWindowVideoFilter(segment.end - segment.start, segment.speed)
@@ -69,14 +69,17 @@ export function segmentFilter(segment: Segment, mapping: SegmentMapping, sourceH
   const enlargedW = Math.ceil(WIDTH * segment.zoom / 2) * 2, enlargedH = Math.ceil(HEIGHT * segment.zoom / 2) * 2;
   const zoom = segment.zoom > 1 ? `,scale=${enlargedW}:${enlargedH},crop=${WIDTH}:${HEIGHT}` : '';
   const crop = sourceCrop ? `,crop=${sourceCrop.width}:${sourceCrop.height}:${sourceCrop.x}:${sourceCrop.y}` : '';
-  const video = `[0:v]${trim}${crop},fps=${FPS},tpad=stop_mode=clone:stop_duration=0.1,trim=duration=${num(duration)},setsar=1,split[background][foreground];[background]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},gblur=sigma=22,eq=brightness=-0.18:saturation=0.6[blur];[foreground]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease[sharp];[blur][sharp]overlay=(W-w)/2:(H-h)/2:shortest=1${zoom}${visualFilter(segment)},format=yuv420p[video]`;
+  // Old browser recordings can briefly change decoded dimensions. Keep the
+  // source clock, then restore the probed surface before applying its crop.
+  const geometry = sourceSize ? `,scale=${sourceSize.width}:${sourceSize.height}:force_original_aspect_ratio=decrease,pad=${sourceSize.width}:${sourceSize.height}:(ow-iw)/2:(oh-ih)/2,setsar=1` : '';
+  const video = `[0:v]${trim}${geometry}${crop},fps=${FPS},tpad=stop_mode=clone:stop_duration=0.1,trim=duration=${num(duration)},setsar=1,split[background][foreground];[background]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},gblur=sigma=22,eq=brightness=-0.18:saturation=0.6[blur];[foreground]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease[sharp];[blur][sharp]overlay=(W-w)/2:(H-h)/2:shortest=1${zoom}${visualFilter(segment)},format=yuv420p[video]`;
   const audio = sourceHasAudio && segment.kind === 'clip'
     ? `[0:a]atrim=start=0:end=${num(segment.end - segment.start)},aresample=48000:async=1:first_pts=0,asetpts=N/SR/TB,${tempo(segment.speed)},aformat=channel_layouts=stereo,volume=-15dB,apad,atrim=duration=${num(duration)}[audio]`
     : `anullsrc=r=48000:cl=stereo,atrim=duration=${num(duration)}[audio]`;
   return `${video};${audio}`;
 }
 
-function finalFilter(plan: EditPlan, duration: number, stickerInput: number | undefined, musicInput: number, cueInputs: number[]): string {
+export function finalFilter(plan: EditPlan, duration: number, stickerInput: number | undefined, musicInput: number, cueInputs: number[]): string {
   const filters: string[] = [];
   let video = '0:v';
   const totalFaces = plan.faceAttachments.length + plan.stickers.length;
@@ -106,7 +109,9 @@ function finalFilter(plan: EditPlan, duration: number, stickerInput: number | un
   }
   filters.push(`[${video}]subtitles=captions.ass:fontsdir=fonts,format=yuv420p[video]`);
   const audioLabels = ['[game]', '[music]'];
-  filters.push(`[0:a]atrim=duration=${num(duration)},asetpts=PTS-STARTPTS[game]`);
+  // Stream-copy concatenation retains AAC priming packets at each cut. Restore
+  // a continuous sample clock before amix can inherit those discontinuities.
+  filters.push(`[0:a]aresample=48000:async=1:first_pts=0,atrim=duration=${num(duration)},asetpts=N/SR/TB[game]`);
   const selectedMusic=musicWindow(plan,duration);
   const musicStartOutput = selectedMusic.outputStart;
   const musicDuration = selectedMusic.duration;
@@ -129,7 +134,7 @@ function finalFilter(plan: EditPlan, duration: number, stickerInput: number | un
   });
   // Leave AAC/intersample headroom on abrupt real meme transients. The encoded
   // file is still measured below; a sample limiter alone cannot prove true peak.
-  filters.push(`${audioLabels.join('')}amix=inputs=${audioLabels.length}:duration=longest:normalize=0,atrim=duration=${num(duration)},loudnorm=I=-14:TP=-2.5:LRA=9,alimiter=limit=0.7:level=false,aresample=48000[audio]`);
+  filters.push(`${audioLabels.join('')}amix=inputs=${audioLabels.length}:duration=longest:normalize=0,atrim=duration=${num(duration)},loudnorm=I=-14:TP=-2.5:LRA=9,alimiter=limit=0.7:level=false:latency=true,aresample=48000,asetpts=N/SR/TB,apad,atrim=duration=${num(duration)}[audio]`);
   return filters.join(';\n');
 }
 
@@ -195,7 +200,7 @@ export async function renderEdit(options: RenderOptions): Promise<Record<string,
     for (const [index, segment] of plan.segments.entries()) {
       const mapping = timeline[index]!;
       const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', ...sourceSeekArgs(mapping.sourceStart), '-reinit_filter', '0', '-i', plan.sourcePath,
-        '-filter_complex_threads', '1', '-filter_complex', segmentFilter(segment, mapping, !!source.audio, plan.sourceCrop),
+        '-filter_complex_threads', '1', '-filter_complex', segmentFilter(segment, mapping, !!source.audio, plan.sourceCrop, source.video),
         '-map', '[video]', '-map', '[audio]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-fps_mode', 'cfr',
         '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2', '-t', num(mapping.outputEnd - mapping.outputStart), join(work, `segment-${index}.mp4`)];
       await runProcess(ffmpeg, args, { signal: options.signal, cwd: work, timeoutMs: 180_000 });

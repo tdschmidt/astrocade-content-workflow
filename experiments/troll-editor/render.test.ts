@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { delayedAudioFilter, experimentTools, makeCaptions, segmentFilter } from './render.js';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { delayedAudioFilter, experimentTools, finalFilter, makeCaptions, segmentFilter } from './render.js';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runProcess } from '../../src/server/media/process.js';
 import { z } from 'zod';
-import { ClimaxAgentPlanSchema, EditPlanSchema, RevisedAgentPlanSchema, musicWindow, validateEditPlan } from './schema.js';
+import { ClimaxAgentPlanSchema, EditPlanSchema, RevisedAgentPlanSchema, buildTimeline, musicWindow, validateEditPlan } from './schema.js';
+import { sourceSeekArgs } from '../../src/server/media/source-window.js';
 
 function validPlan(): Record<string, unknown> {
   return { version: 1, id: 'timing-test', title: 'A visible reversal', style: 'troll-freeze', sourcePath: '/tmp/source.mp4',
@@ -117,4 +118,59 @@ test('actual FFmpeg delayed waveform retains silence until its intended late out
     assert.ok(rms(2.01,2.49)>0.04,'The real decoded waveform begins at the planned late cue');
     assert.ok(rms(2.51,2.99)<1e-6,'The half-second source does not repeat or move later');
   } finally {await rm(dir,{recursive:true,force:true});}
+});
+
+test('AAC segment boundaries cannot advance the music or truncate its closing fade', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'troll-concat-audio-'));
+  const ffmpeg = experimentTools().ffmpegPath ?? 'ffmpeg';
+  try {
+    await runProcess(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'color=blue:s=32x32:r=30:d=8.5',
+      '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '160k', '-t', '8.5', join(dir, 'segment.mp4')]);
+    await writeFile(join(dir, 'segments.txt'), "file 'segment.mp4'\nduration 8.5\nfile 'segment.mp4'\nduration 8.5\n");
+    await runProcess(ffmpeg, ['-v', 'error', '-f', 'concat', '-i', join(dir, 'segments.txt'), '-c', 'copy', join(dir, 'base.mp4')]);
+    await runProcess(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=733:sample_rate=48000:duration=17', '-c:a', 'pcm_s16le', join(dir, 'music.wav')]);
+    const plan = EditPlanSchema.parse({ ...validPlan(), sourcePath: join(dir, 'base.mp4'), style: 'velocity', audioCatalogPath: '/fixture/catalog.json',
+      segments: [{ kind: 'clip', start: 0, end: 8.5, speed: 1 }, { kind: 'clip', start: 8.5, end: 17, speed: 1 }],
+      stickers: [], captions: [], punches: [], soundCues: [], music: { asset: 'velocity', dropAt: 0.95, sourceStart: 0.95, leadInSeconds: 0.95, leadInGainDb: -22, gainDb: -12 } });
+    await writeFile(join(dir, 'captions.ass'), makeCaptions(plan, 'sans-serif'));
+    await runProcess(ffmpeg, ['-v', 'error', '-i', 'base.mp4', '-i', 'music.wav', '-filter_complex_threads', '1',
+      '-filter_complex', finalFilter(plan, 17, undefined, 1, []), '-map', '[video]', '-map', '[audio]',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-t', '17', 'mixed.mp4'], { cwd: dir });
+    await runProcess(ffmpeg, ['-v', 'error', '-i', join(dir, 'mixed.mp4'), '-map', '0:a:0', '-ac', '1', '-ar', '48000', '-f', 'f32le', join(dir, 'samples.f32')]);
+    const bytes = await readFile(join(dir, 'samples.f32')), samples = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.length / 4);
+    assert.equal(samples.length, 17 * 48000, 'The whole fade must survive AAC segment priming and the final encode');
+    const rms = (start: number, end: number) => { const part = samples.subarray(start, end); return Math.sqrt(part.reduce((sum, sample) => sum + sample * sample, 0) / part.length); };
+    assert.ok(rms(10 * 48000, 11 * 48000) > 0.04, 'The post-cut music remains audible');
+    assert.ok(rms(samples.length - 240, samples.length) < 0.003, 'The last 5ms resolves the fade instead of cutting active music');
+    const packets = JSON.parse((await runProcess('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_packets', '-show_entries', 'packet=pts_time,duration_time', '-of', 'json', join(dir, 'mixed.mp4')])).stdout).packets as Array<{ pts_time: string; duration_time: string }>;
+    assert.ok(packets.slice(0, -1).every(packet => Math.abs(Number(packet.duration_time) - 1024 / 48000) < 0.000002), 'AAC packets use a continuous sample clock, without zero-length or stretched packets');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('a changing decoded source size cannot corrupt the saved gameplay crop or its clock', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'troll-crop-resize-'));
+  const ffmpeg = experimentTools().ffmpegPath ?? 'ffmpeg';
+  try {
+    for (const [index, size] of ['160x240', '80x120', '160x240'].entries()) {
+      await runProcess(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', `color=${['red', 'blue', 'green'][index]}:size=${size}:rate=10:duration=1`,
+        '-c:v', 'libvpx-vp9', '-deadline', 'realtime', join(dir, `${index}.webm`)]);
+    }
+    await writeFile(join(dir, 'segments.txt'), "file '0.webm'\nfile '1.webm'\nfile '2.webm'\n");
+    await runProcess(ffmpeg, ['-v', 'error', '-f', 'concat', '-i', join(dir, 'segments.txt'), '-c', 'copy', join(dir, 'source.webm')]);
+    const plan = EditPlanSchema.parse({ ...validPlan(), segments: [{ kind: 'clip', start: 0.2, end: 1.8, speed: 1 }],
+      stickers: [], captions: [], punches: [], soundCues: [], music: { asset: 'velocity', dropAt: 0 } });
+    const timeline = buildTimeline(plan);
+    await runProcess(ffmpeg, ['-v', 'error', ...sourceSeekArgs(0.2), '-reinit_filter', '0', '-i', join(dir, 'source.webm'),
+      '-filter_complex_threads', '1', '-filter_complex', segmentFilter(plan.segments[0]!, timeline[0]!, false, { x: 10, y: 10, width: 140, height: 220 }, { width: 160, height: 240 }),
+      '-map', '[video]', '-map', '[audio]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-t', '1.6', join(dir, 'cropped.mp4')]);
+    await runProcess(ffmpeg, ['-v', 'error', '-i', join(dir, 'cropped.mp4'), '-vf', 'scale=1:1', '-pix_fmt', 'rgb24', '-f', 'rawvideo', join(dir, 'pixels.rgb')]);
+    const pixels = await readFile(join(dir, 'pixels.rgb'));
+    assert.equal(pixels.length, 48 * 3, 'The source resize must not restart or discard the timeline');
+    for (let frame = 0; frame < 48; frame++) {
+      const red = pixels[frame * 3]!, green = pixels[frame * 3 + 1]!, blue = pixels[frame * 3 + 2]!;
+      assert.ok(frame < 24 ? red > 190 && blue < 30 : blue > 190 && red < 30, `The saved crop contains corrupted or mistimed pixels at frame ${frame}`);
+      assert.ok(green < 30, 'No green uninitialized edge pixels or next-window source leaks into the crop');
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
