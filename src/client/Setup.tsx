@@ -239,7 +239,103 @@ function ToolConnections({ state, busy, mutate }: ScreenProps) {
           )}
         </div>
       </form>
+      <ModelSettings state={state} busy={busy} mutate={mutate} />
     </section>
+  );
+}
+
+const modelFields = [
+  {
+    key: "reasoningModel",
+    label: "Analysis and writing model",
+    fallback: "gemini-3.8-flash",
+  },
+  {
+    key: "speechModel",
+    label: "Speech model",
+    fallback: "gemini-3.8-flash-lite-tts",
+  },
+  {
+    key: "transcriptionModel",
+    label: "Transcription model",
+    fallback: "gemini-3.5-transcribe",
+  },
+  { key: "voice", label: "Narration voice", fallback: "Kore" },
+] as const;
+type ModelSetting = (typeof modelFields)[number]["key"];
+
+function ModelSettings({
+  state,
+  busy,
+  mutate,
+}: Pick<ScreenProps, "state" | "busy" | "mutate">) {
+  const [changes, setChanges] = useState<Partial<Record<ModelSetting, string>>>(
+    {},
+  );
+  const [saved, setSaved] = useState(false);
+  const currentValue = (field: (typeof modelFields)[number]) =>
+    savedString(state.settings, field.key) || field.fallback;
+  const value = (field: (typeof modelFields)[number]) =>
+    changes[field.key] ?? currentValue(field);
+  const dirty = modelFields.some(
+    (field) => value(field).trim() !== currentValue(field),
+  );
+  const complete = modelFields.every((field) => value(field).trim().length > 0);
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    const patch = Object.fromEntries(
+      modelFields
+        .filter((field) => value(field).trim() !== currentValue(field))
+        .map((field) => [field.key, value(field).trim()]),
+    );
+    if (await mutate("/api/settings", patch)) {
+      setChanges({});
+      setSaved(true);
+    }
+  };
+  return (
+    <details className="advanced-panel">
+      <summary>Advanced · models and voice</summary>
+      <form className="advanced-body form-stack" onSubmit={save}>
+        <p className="field-hint">
+          Use model IDs and a voice available to your Gemini account. Access and
+          quota are checked when used.
+        </p>
+        {modelFields.map((field) => (
+          <Field key={field.key} label={field.label}>
+            <input
+              required
+              maxLength={200}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={busy}
+              value={value(field)}
+              onChange={(event) => {
+                setChanges((previous) => ({
+                  ...previous,
+                  [field.key]: event.target.value,
+                }));
+                setSaved(false);
+              }}
+            />
+          </Field>
+        ))}
+        <div className="button-row">
+          <button
+            className="button secondary"
+            disabled={busy || !dirty || !complete}
+          >
+            Save model settings
+          </button>
+          {saved && (
+            <span className="saved-message" role="status">
+              <Icon name="check" size={15} />
+              Model settings saved
+            </span>
+          )}
+        </div>
+      </form>
+    </details>
   );
 }
 
