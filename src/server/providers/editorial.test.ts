@@ -130,6 +130,41 @@ test('coarse apparent action cannot survive a dense review that found only idle 
   assert.deepEqual(result.events, []);
 });
 
+test('a good dense window cannot admit another window with a disqualifying content dimension', async () => {
+  const event = capture.analysis!.events[0]!;
+  const coarse = { ...capture.analysis!, events: [20, 0].map(start => ({ ...event, startSeconds: start, endSeconds: start + 10 })) };
+  const goodContent = { ...content, clarity: 3, participation: 3, payoff: 3, readability: 3, distinctiveness: 3 };
+  const good = { timebase: 'window_relative', analysis: { ...capture.analysis!, content: goodContent, playableStartSeconds: 0, playableEndSeconds: 11, events: [{ ...event, startSeconds: 1, endSeconds: 8 }] } };
+  for (const dimension of ['clarity', 'payoff', 'readability']) {
+    const rejected = { ...good, analysis: { ...good.analysis, visualScore: 5, content: { ...goodContent, [dimension]: 0 }, events: [{ ...event, startSeconds: 1, endSeconds: 8, outcome: 'Unverifiable result' }] } };
+    const result = await analyzeFootage(capture, googleFixture([coarse, good, rejected]));
+    assert.equal(result.events.length, 1);
+    assert.equal(result.events[0]!.startSeconds, 19);
+    assert.equal(result.visualScore, good.analysis.visualScore, 'rejected windows must not inflate the score');
+    assert.deepEqual(result.content, goodContent);
+    const onlyRejected = await analyzeFootage(capture, googleFixture([{ ...coarse, events: coarse.events.slice(1) }, rejected]));
+    assert.equal(onlyRejected.usable, false);
+    assert.deepEqual(onlyRejected.events, []);
+  }
+});
+
+test('granular setup events cannot evict their own failure payoff from the global event budget', async () => {
+  const longCapture = { ...capture, durationSeconds: 140 };
+  const event = capture.analysis!.events[0]!;
+  const coarse = { ...capture.analysis!, events: [128, 86].map(start => ({ ...event, startSeconds: start, endSeconds: start + 8 })) };
+  const completion = { timebase: 'window_relative', analysis: { ...capture.analysis!, playableStartSeconds: 0, playableEndSeconds: 10, events: [1, 3, 5, 7].map((start, index) => ({ ...event, startSeconds: start, endSeconds: start + 0.5, outcome: index === 3 ? 'Board complete' : `Correct placement ${index + 1}` })) } };
+  const failure = { ...completion, analysis: { ...completion.analysis, events: completion.analysis.events.map((event, index) => ({ ...event, outcome: index === 3 ? 'Wrong drop; red X and lost combo' : event.outcome })) } };
+  const result = await analyzeFootage(longCapture, googleFixture([coarse, completion, failure]));
+  assert.equal(result.events.length, 2, 'each overlapping sequence is one episode before applying the six-event limit');
+  assert.match(result.events[0]!.outcome, /Correct placement 1[\s\S]*Wrong drop; red X and lost combo/);
+  assert.match(result.events[0]!.evidence, /Impact: 92–92.5s/);
+  assert.deepEqual([result.events[0]!.startSeconds, result.events[0]!.endSeconds], [85, 93.5]);
+  assert.match(result.events[1]!.outcome, /Board complete/);
+  const separated = { ...failure, analysis: { ...failure.analysis, events: [{ ...event, startSeconds: 1, endSeconds: 2 }, { ...event, startSeconds: 7, endSeconds: 8 }] } };
+  const gaps = await analyzeFootage(longCapture, googleFixture([{ ...coarse, events: coarse.events.slice(1) }, separated]));
+  assert.deepEqual(gaps.events.map(({ startSeconds, endSeconds }) => ({ startSeconds, endSeconds })), [{ startSeconds: 85, endSeconds: 88 }, { startSeconds: 90, endSeconds: 94 }], 'merging must never fill an unverified gap');
+});
+
 test('long analysis keeps a late high-priority payoff when earlier windows produce many events', async () => {
   const event = capture.analysis!.events[0]!;
   const coarse = { ...capture.analysis!, events: [60, 0, 20].map(start => ({ ...event, startSeconds: start, endSeconds: start + 10 })) };
@@ -137,7 +172,7 @@ test('long analysis keeps a late high-priority payoff when earlier windows produ
   const densePayoff = { timebase: 'window_relative', analysis: { ...capture.analysis!, playableStartSeconds: 0, playableEndSeconds: 12, events: [payoff] } };
   const denseEarly = { timebase: 'window_relative', analysis: { ...capture.analysis!, playableStartSeconds: 0, playableEndSeconds: 11, events: [1, 3, 5, 7].map(start => ({ ...event, startSeconds: start, endSeconds: start + 1 })) } };
   const result = await analyzeFootage(capture, googleFixture([coarse, densePayoff, denseEarly, denseEarly]));
-  assert.deepEqual(result.events.map(event => event.startSeconds), [0, 1, 3, 5, 19, 64], 'retain the six highest-priority verified events, then present them chronologically');
+  assert.deepEqual(result.events.map(event => event.startSeconds), [0, 19, 64], 'retain coherent episodes in priority order, then present them chronologically');
   assert.equal(result.events.at(-1)!.outcome, payoff.outcome, 'early actions must not evict the verified completion');
   assert.equal(result.events.at(-1)!.endSeconds, 70, 'the late payoff keeps its observed reading time');
 });

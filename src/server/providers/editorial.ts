@@ -110,7 +110,7 @@ Score each content dimension 0–3 (0 absent/unreadable, 1 weak, 2 clear, 3 unus
 A zero in clarity, payoff or readability disqualifies footage; spectacle or popularity cannot compensate. Prefer an understandable mistake/recovery, surprising rule, transformation, or risky choice over routine progress or a result panel alone.
 Choose textPlacement upper or lower for a short overlay on the FULL game view: upper starts at y=12.5%; lower ends at y=80%; text spans roughly x=11–83%. Identify the less obstructive area and explain placementReason. Protect goals, timers, decisive objects and controls. State any conflict if neither works.
 Find compact self-contained sequences: roughly 6–10s for a small reveal, 10–18s for choice/failure/recovery, 12–25s for transformation; these are creative budgets, NOT required lengths. Keep a readable setup, actual causal action, and 1–2s of payoff. Remove inference waits and repeated sweeps once they stop adding visible information; never omit the action explaining a result or fabricate continuous play across gaps.`;
-const playableContextInstructions = `Report playableStartSeconds/playableEndSeconds for one continuous span containing unobscured gameplay and, when earned by the visible action, its brief result panel or celebration. When the source supports it, include about one to two seconds AFTER the earned panel or celebration settles within this playable span so a viewer can read the result. Stop before prolonged idle. Exclude obstructing opening banners, navigation menus, loading and pauses. Use null for both if there is no such span.
+const playableContextInstructions = `Report playableStartSeconds/playableEndSeconds for one continuous span containing unobscured gameplay and its visible consequence, including failure feedback, an earned result panel or celebration. When the source supports it, include about one to two seconds AFTER that consequence settles within this playable span so a viewer can read the result. A failed action also needs brief aftermath: retain the red X, lost state or object snapping back and its settled state, not just the instant of rejection. Stop before prolonged idle. Exclude obstructing opening banners, navigation menus, loading and pauses. Use null for both if there is no such span.
 Each event's startSeconds/endSeconds identifies the central action and visible consequence, such as a gate contact through the resulting count change. These are IMPACT bounds, not final edit boundaries. Describe the readable approach, action and result with concrete visual evidence. All event bounds must lie inside the reported playable span. There is no minimum event length. The server will retain up to two seconds before the impact and one second afterward, clipped to the observed playable span.`;
 
 function retainPlayableContext(response: z.infer<typeof playableAnalysisSchema>, duration: number, sourceOffset = 0): FootageAnalysis {
@@ -132,6 +132,20 @@ export function mapWindowEvents(events: Event[], window: Cut, sourceDuration: nu
   const duration = window.endSeconds - window.startSeconds;
   if (events.some(event => !validRange(event, duration))) throw new NeedsAttention('Dense analysis returned timestamps outside its video window.');
   return events.map(event => ({ ...event, startSeconds: event.startSeconds + window.startSeconds, endSeconds: event.endSeconds + window.startSeconds }));
+}
+
+function mergeContextualEvents(events: Event[]): Event[] {
+  const episodes: Event[] = [];
+  for (const event of [...events].sort((a, b) => a.startSeconds - b.startSeconds)) {
+    const previous = episodes.at(-1);
+    if (previous && event.startSeconds <= previous.endSeconds) {
+      previous.endSeconds = Math.max(previous.endSeconds, event.endSeconds);
+      previous.event += `; ${event.event}`;
+      previous.evidence += `\n${event.evidence}`;
+      previous.outcome += `\n${event.outcome}`;
+    } else episodes.push({ ...event });
+  }
+  return episodes;
 }
 
 export async function analyzeFootage(capture: Capture, google: Inference, signal?: AbortSignal): Promise<FootageAnalysis> {
@@ -187,20 +201,22 @@ ${contentInstructions}
 IMPORTANT: return timebase="window_relative". Every event AND playable-span timestamp is seconds from THIS WINDOW'S START, between 0 and ${duration}, not the original video's clock.
 ${playableContextInstructions}
 Verify actual action, its visible consequence and any claimed payoff. Do not adopt the coarse analysis as evidence. Outcome must describe what is visible, or explicitly say the outcome is unknown. For a transformation, preserve its before-state, active change and result when supported by this window.
+Prefer coherent episodes over one event per routine piece or input. Keep the decisive failure, recovery or completion connected to its necessary setup; do not split the payoff away from the sequence that explains it.
 Do not claim a win, hit, combo, score change or objective completion unless visible in these frames. usable=false/events=[] is better than invented action.`,
         denseSchema, [{ type: 'video', uri: video.uri, mime_type: video.mimeType, processing: { type: 'static', fps: 8, start_offset: `${window.startSeconds}s`, end_offset: `${window.endSeconds}s` } }], signal,
       ));
       const analysis = retainPlayableContext(detail.analysis, duration, window.startSeconds);
-      const events = mapWindowEvents(analysis.events, window, capture.durationSeconds);
-      reasons.push(analysis.reason);
-      if (analysis.usable) {
+      const events = mapWindowEvents(mergeContextualEvents(analysis.events), window, capture.durationSeconds);
+      const eligible = analysis.usable && contentScore(detail.analysis.content) >= 0;
+      reasons.push(eligible ? analysis.reason : `Excluded window ${window.startSeconds}–${window.endSeconds}s: ${analysis.reason}`);
+      if (eligible) {
         scores.push(analysis.visualScore);
         assessments.push(detail.analysis.content);
         confirmed.push(...events);
       }
     }
-    // Windows arrive in editorial priority order; cap before sorting so an early
-    // sequence with many events cannot crowd out a later, higher-priority payoff.
+    // Merge each window's overlapping context before this cap so granular setup
+    // events cannot consume the budget and detach their own decisive payoff.
     const events = confirmed
       .filter((event, index, all) => !all.slice(0, index).some(prior => event.startSeconds >= prior.startSeconds && event.endSeconds <= prior.endSeconds))
       .slice(0, 6)
