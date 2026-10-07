@@ -7,7 +7,7 @@ import { contentAssessmentSchema, contentBriefSchema, contentScore, defaultConte
 
 const candidate: GameCandidate = { id: 'real', title: 'Observed game', titleSource: 'visible_text', url: 'https://www.astrocade.com/games/observed/real', metrics: [], observations: [] };
 const legacyNomination = { gameId: 'real', hypothesis: 'Look for a visible consequence.', viewerQuestion: 'Which gate works?', controlRisk: 'Controls are not yet inspected.' };
-const nomination = { ...legacyNomination, angle: 'prediction', captureGoal: 'Show both gates, a choice, and its visible consequence.', rejectIf: 'The gate labels or resulting change are unreadable.' };
+const nomination = { ...legacyNomination, angle: 'prediction', gameplayFamily: 'route choice', socialPremise: 'The obvious gate choice backfires.', trendTopic: null, captureGoal: 'Show both gates, a choice, and its visible consequence.', rejectIf: 'The gate labels or resulting change are unreadable.' };
 
 test('shortlisting rejects invented and duplicate IDs before inspecting any game', async () => {
   for (const games of [[{ ...nomination, gameId: 'invented' }], [nomination, nomination]]) {
@@ -80,4 +80,9 @@ test('freshness includes its stated endpoint but never outlives the fourteen-day
   assert.doesNotMatch(summarizeBrief(brief, new Date('2026-10-07T12:00:00.001Z')), /boundary topic/);
   assert.throws(() => summarizeBrief(brief, new Date('invalid')), /evaluation date is invalid/);
   assert.equal(contentBriefSchema.safeParse({ ...brief, trends: [{ ...brief.trends[0], observedAt: 'yesterday' }] }).success, false);
+});
+
+test('a nomination cannot invent a current trend when the brief has none', async () => {
+  const provider = { json: async () => ({ games: [{ ...nomination, trendTopic: 'invented viral meme' }] }) } as unknown as Inference;
+  await assert.rejects(nominateGames([candidate], [], provider, 1), /unknown or expired trend/);
 });
