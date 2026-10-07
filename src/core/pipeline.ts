@@ -47,7 +47,7 @@ export const coreRunSchema = z.object({
   videoPath: z.string().optional(), videoSha256: z.string().optional(), error: z.string().optional(),
 });
 export type CoreRun = z.infer<typeof coreRunSchema>;
-export type CoreStage = 'discover' | 'capture' | 'edit' | 'all';
+export type CoreStage = 'discover' | 'capture' | 'analyze' | 'edit' | 'all';
 
 const defaults = { discoverGames, nominateGames, inspectGame, learnGameProfile, learnFeedbackProfile, createFeedbackController, runCaptureAttempt, analyzeFootage, draftScript, renderPortrait, presenterVideoDuration, validateVideo };
 export type CoreServices = typeof defaults;
@@ -194,8 +194,8 @@ export async function runPipeline(options: {
   const directory = resolve(options.directory);
   if (options.fromRun && resolve(options.fromRun) === directory) throw new Error('--from-run needs a new output directory; use --resume to continue an existing run.');
   const services = { ...defaults, ...overrides };
-  if (options.fromRun && options.stage && !['edit', 'all'].includes(options.stage)) throw new Error('--from-run only supports the edit stage.');
-  const stage = options.fromRun ? 'edit' : options.stage ?? 'all';
+  if (options.fromRun && options.stage && !['analyze', 'edit', 'all'].includes(options.stage)) throw new Error('--from-run only supports the analyze or edit stage.');
+  const stage = options.stage === 'analyze' ? 'analyze' : options.fromRun ? 'edit' : options.stage ?? 'all';
   const captureGoal = options.captureGoal === undefined ? undefined : z.string().trim().min(1).max(800).parse(options.captureGoal);
   if (captureGoal && (!options.game || options.fromRun)) throw new Error('A capture goal requires an explicit game and a new capture; source reuse cannot change it.');
   const limit = options.shortlistSize ?? 3;
@@ -255,7 +255,7 @@ export async function runPipeline(options: {
       const game = saved.candidates.find(candidate => candidate.id === choice.gameId)!;
       return game.id === options.game || canonicalGameUrl(game.url) === canonicalGameUrl(options.game!) || new URL(game.url).pathname.split('/').at(-2) === options.game;
     })) throw new Error('A saved shortlist cannot be changed while resuming. Start a new run for a different game.');
-    if (saved.videoPath) {
+    if (saved.videoPath && stage !== 'analyze') {
       if (!saved.script || !saved.attempts.some(attempt => attempt.gameId === saved.selectedGameId && attempt.capture)) throw new Error('The saved video is missing its source or edit decisions. Start a new run.');
       for (const attempt of saved.attempts) await verifySource(attempt);
       if (await hashFile(saved.videoPath) !== saved.videoSha256) throw new Error('The finished video was modified outside the workflow. Start a new run.');
@@ -263,9 +263,10 @@ export async function runPipeline(options: {
       trace.event('render', 'reused', 'The completed video passed validation. No candidate work is repeated.');
       return await finish();
     }
-    if (stage === 'edit' && !store.read().attempts.some(attempt => attempt.capture)) throw new Error('Editing needs a saved recording. Use --resume with a run that completed capture.');
+    if ((stage === 'edit' || stage === 'analyze') && !saved.attempts.some(attempt => attempt.capture)) throw new Error(`${stage === 'analyze' ? 'Analysis' : 'Editing'} needs a saved recording. Use --resume or --from-run with a run that completed capture.`);
+    if (stage === 'analyze') for (const attempt of saved.attempts) await verifySource(attempt);
 
-    if (!store.read().candidates.length) {
+    if (stage !== 'analyze' && !store.read().candidates.length) {
       trace.event('discover', 'started', 'Reading current public Astrocade pages.');
       const directUrl = options.game && canonicalGameUrl(options.game);
       // An explicit public game URL need not remain on today's front page. Its
@@ -280,7 +281,7 @@ export async function runPipeline(options: {
       await save(run => { run.candidates = result.candidates; });
       trace.event('discover', 'completed', directUrl ? 'Explicit game URL saved for live inspection; title is derived from its URL.' : `Found ${result.candidates.length} games. Unlabeled popularity counters remain unknown.`, { sources: result.sources });
     }
-    if (!store.read().shortlist.length) {
+    if (stage !== 'analyze' && !store.read().shortlist.length) {
       const candidates = store.read().candidates;
       let shortlist;
       if (options.game) {
@@ -299,7 +300,7 @@ export async function runPipeline(options: {
     }
     if (stage === 'discover') { await save(run => { run.status = 'paused'; }); return store.read(); }
 
-    for (const choice of store.read().shortlist) {
+    for (const choice of stage === 'analyze' ? [] : store.read().shortlist) {
       options.signal?.throwIfAborted();
       const game = store.read().candidates.find(candidate => candidate.id === choice.gameId)!;
       const intent = { captureGoal: choice.captureGoal, rejectIf: choice.rejectIf, maxDurationMs: store.read().captureSeconds === undefined ? undefined : store.read().captureSeconds! * 1000,
@@ -387,7 +388,7 @@ export async function runPipeline(options: {
     if (stage === 'capture') { await save(run => { run.status = 'paused'; }); return store.read(); }
 
     const editingStyle = store.read().contentBrief.editingStyle ?? 'episode';
-    for (const attempt of store.read().script ? [] : store.read().attempts) {
+    for (const attempt of store.read().script && stage !== 'analyze' ? [] : store.read().attempts) {
       if (!attempt.capture || (attempt.capture.analysis?.content && (attempt.analysisEditingStyle ?? 'episode') === editingStyle)) continue;
       trace.event('analyze', 'started', `Finding distinct playable moments in ${attempt.capture.game.title}.`);
       const provider = getProvider(); // Missing credentials are a run-level setup failure, not bad footage.
@@ -407,6 +408,12 @@ export async function runPipeline(options: {
       await updateAttempt(attempt.gameId, item => { item.capture!.analysis = analysis; item.analysisModel = options.model; item.analysisProvider = providerName; item.analysisEditingStyle = editingStyle; delete item.error; });
       trace.artifact(`analysis-${attempt.gameId}.json`, analysis);
       trace.event('analyze', analysis.usable && contentScore(analysis.content!) >= 0 ? 'completed' : 'rejected', analysis.reason, analysis);
+    }
+    if (stage === 'analyze') {
+      if (!store.read().attempts.some(attempt => attempt.capture?.analysis?.content && (attempt.analysisEditingStyle ?? 'episode') === editingStyle)) throw new Error('No recording produced a valid analysis. Inspect report.md and resume to retry failed analyses.');
+      await save(run => { run.status = 'paused'; });
+      trace.event('run', 'paused', 'Saved footage analysis is ready. Editing and rendering were not requested.');
+      return store.read();
     }
     if (!store.read().script) {
       const usable = store.read().attempts.filter(item => {

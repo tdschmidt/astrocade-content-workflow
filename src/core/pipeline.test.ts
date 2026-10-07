@@ -111,6 +111,89 @@ test('capture stage stops before model analysis and refuses changed source bytes
   assert.equal(calls.capture, 1);
 });
 
+for (const mode of ['resume', 'from-run'] as const) test(`analysis-only ${mode} saves rejected footage evidence without capturing or editing`, async t => {
+  const { directory, config, services, calls, candidate } = await fixture(t);
+  const options = { directory, model: 'fixture-model', quiet: true };
+  await runPipeline({ ...options, stage: 'capture' }, config, services);
+  const manifest = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
+  manifest.candidates.push({ ...candidate, id: 'uncaptured' });
+  manifest.shortlist.push({ gameId: 'uncaptured', hypothesis: 'Fixture', viewerQuestion: 'Fixture?', controlRisk: 'Fixture' });
+  manifest.attempts.push({ gameId: 'uncaptured', error: 'SYNTHETIC failed capture.' });
+  await writeFile(join(directory, 'run.json'), JSON.stringify(manifest));
+  const original = await readFile(join(directory, 'run.json'), 'utf8');
+  const originalTrace = await readFile(join(directory, 'trace.jsonl'), 'utf8');
+  const analyze = services.analyzeFootage!;
+  services.analyzeFootage = async (...args) => ({ ...await analyze(...args), usable: false,
+    reason: 'SYNTHETIC only one demonstrated feature; retain evidence for another editing workflow.' });
+  services.discoverGames = services.inspectGame = services.runCaptureAttempt = services.draftScript = services.renderPortrait = async () => assert.fail('Analysis must not discover, open a browser, capture, draft or render.');
+  const destination = mode === 'resume' ? directory : join(directory, 'analysis-only');
+  const analyzed = await runPipeline({ ...options, directory: destination, stage: 'analyze', ...(mode === 'from-run' ? { fromRun: directory } : {}) }, config, services);
+  assert.equal(analyzed.status, 'paused');
+  assert.equal(analyzed.attempts[0]!.capture!.analysis!.usable, false, 'editorial rejection does not discard the analysis');
+  assert.equal(analyzed.attempts[0]!.capture!.analysis!.events.length, 1);
+  assert.equal(analyzed.attempts[1]!.error, 'SYNTHETIC failed capture.');
+  assert.equal(analyzed.script, undefined);
+  assert.equal(analyzed.selectedGameId, undefined);
+  assert.equal(analyzed.videoPath, undefined);
+  assert.equal(JSON.parse(await readFile(join(destination, 'analysis-fixture.json'), 'utf8')).usable, false);
+  assert.equal(JSON.parse(await readFile(join(destination, 'run.json'), 'utf8')).status, 'paused');
+  const trace = (await readFile(join(destination, 'trace.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(trace.some(event => ['select', 'edit', 'render'].includes(event.stage)), false);
+  assert.ok(trace.some(event => event.stage === 'analyze' && event.status === 'rejected'));
+  await runPipeline({ ...options, directory: destination, stage: 'analyze' }, config, services);
+  assert.deepEqual(calls, { discover: 1, inspect: 1, capture: 1, analyze: 1, draft: 0, render: 0, validate: 0 });
+  if (mode === 'from-run') {
+    assert.equal(analyzed.provenance!.sourceRunPath, directory);
+    assert.equal(await readFile(join(directory, 'run.json'), 'utf8'), original);
+    assert.equal(await readFile(join(directory, 'trace.jsonl'), 'utf8'), originalTrace);
+  }
+});
+
+test('analysis requires existing unchanged recordings before discovery, model work or capture', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const options = { directory, model: 'fixture-model', quiet: true };
+  await assert.rejects(runPipeline({ ...options, stage: 'analyze' }, config, services), /Analysis needs a saved recording/);
+  assert.deepEqual(calls, { discover: 0, inspect: 0, capture: 0, analyze: 0, draft: 0, render: 0, validate: 0 });
+  await runPipeline({ ...options, stage: 'discover' }, config, services);
+  await assert.rejects(runPipeline({ ...options, stage: 'analyze' }, config, services), /Analysis needs a saved recording/);
+  await assert.rejects(runPipeline({ ...options, directory: join(directory, 'empty-analysis'), fromRun: directory, stage: 'analyze' }, config, services), /at least one saved recording/);
+  assert.equal(calls.capture, 0);
+  const source = await runPipeline({ ...options, stage: 'capture' }, config, services);
+  await writeFile(source.attempts[0]!.capture!.path, 'SYNTHETIC replaced source');
+  await assert.rejects(runPipeline({ ...options, stage: 'analyze' }, config, services), /Saved source changed/);
+  await assert.rejects(runPipeline({ ...options, directory: join(directory, 'changed-analysis'), fromRun: directory, stage: 'analyze' }, config, services), /Saved source changed/);
+  assert.equal(calls.analyze, 0);
+  assert.equal(calls.capture, 1);
+});
+
+test('analysis-only resume refreshes legacy evidence even when an edit exists, without touching the video', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const options = { directory, model: 'fixture-model', quiet: true };
+  const completed = await runPipeline(options, config, services);
+  const originalVideo = await readFile(completed.videoPath!);
+  const manifest = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
+  delete manifest.attempts[0].capture.analysis.content;
+  await writeFile(join(directory, 'run.json'), JSON.stringify(manifest));
+  const analyzed = await runPipeline({ ...options, stage: 'analyze' }, config, services);
+  assert.equal(analyzed.status, 'paused');
+  assert.deepEqual(analyzed.script, completed.script);
+  assert.equal(analyzed.videoPath, completed.videoPath);
+  assert.deepEqual(await readFile(analyzed.videoPath!), originalVideo);
+  assert.ok(analyzed.attempts[0]!.capture!.analysis!.content);
+  assert.deepEqual(calls, { discover: 1, inspect: 1, capture: 1, analyze: 2, draft: 1, render: 1, validate: 0 });
+});
+
+test('invalid analysis cannot be reported as a completed analysis-only stage', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const options = { directory, model: 'fixture-model', quiet: true };
+  await runPipeline({ ...options, stage: 'capture' }, config, services);
+  services.analyzeFootage = async () => { calls.analyze++; throw new NeedsAttention('SYNTHETIC invalid evidence window'); };
+  await assert.rejects(runPipeline({ ...options, stage: 'analyze' }, config, services), /No recording produced a valid analysis/);
+  assert.equal(JSON.parse(await readFile(join(directory, 'run.json'), 'utf8')).status, 'failed');
+  assert.equal(calls.draft, 0);
+  assert.equal(calls.render, 0);
+});
+
 test('a live run lock rejects a second writer before discovery', async t => {
   const { directory, config, services, calls } = await fixture(t);
   const { mkdir } = await import('node:fs/promises');
@@ -731,7 +814,7 @@ test('re-edit refuses replaced source footage or an existing destination before 
   const originalTrace = await readFile(join(directory, 'trace.jsonl'), 'utf8');
   await assert.rejects(runPipeline({ ...options, fromRun: directory }, config, services), /new output directory/);
   assert.equal(await readFile(join(directory, 'trace.jsonl'), 'utf8'), originalTrace);
-  await assert.rejects(runPipeline({ ...options, fromRun: directory, directory: join(directory, 'wrong-stage'), stage: 'capture' }, config, services), /only supports the edit stage/);
+  await assert.rejects(runPipeline({ ...options, fromRun: directory, directory: join(directory, 'wrong-stage'), stage: 'capture' }, config, services), /only supports the analyze or edit stage/);
   const variation = join(directory, 'variation');
   await runPipeline({ ...options, directory: variation, fromRun: directory }, config, services);
   const savedVariation = await readFile(join(variation, 'run.json'), 'utf8');
@@ -750,6 +833,12 @@ test('re-edit requires saved recordings and CLI rejects contradictory run modes 
     assert.match((error as { stderr: string }).stderr, /mutually exclusive/);
     return true;
   });
+  await assert.rejects(promisify(execFile)(process.execPath, ['--import', 'tsx', 'src/core/cli.ts', '--stage', 'analyze']), error => {
+    assert.match((error as { stderr: string }).stderr, /requires --resume or --from-run with saved recordings/);
+    return true;
+  });
+  const help = await promisify(execFile)(process.execPath, ['--import', 'tsx', 'src/core/cli.ts', '--help']);
+  assert.match(help.stdout, /--from-run data\/runs\/RUN_DIRECTORY --stage analyze/);
 });
 
 test('presenter video duration bounds new edits and the hashed asset cannot change on resume', async t => {
