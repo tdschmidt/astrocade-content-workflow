@@ -102,7 +102,7 @@ export async function runCaptureAttempt(options: {
     try {
       for (const step of profile.start) await executor.step(step);
       lastBounds = await gameBounds(page, profile.surface).catch(() => lastBounds!);
-      if (profile.focus === 'click') await withAbort(locate(page, profile.surface).click(), controlSignal);
+      if (profile.focus === 'click') await executor.step({ type: 'click', target: profile.surface });
       else await withAbort(locate(page, profile.surface).focus(), controlSignal);
       if (profile.controller.type === 'timed') {
         for (let iteration = 0; iteration < profile.controller.repetitions; iteration++) {
@@ -115,7 +115,8 @@ export async function runCaptureAttempt(options: {
           controlSignal.throwIfAborted();
           const observationId = `${attemptId}:${index}`;
           const elapsedMs = Math.round(performance.now() - recordingStarted);
-          const image = await withAbort(locate(page, profile.surface).screenshot({ type: 'jpeg', quality: 70, timeout: 5000 }), controlSignal);
+          const clip = await withAbort(gameBounds(page, profile.surface), controlSignal);
+          const image = await withAbort(page.screenshot({ clip, type: 'jpeg', quality: 70, timeout: 5000 }), controlSignal);
           options.onProgress?.({ stage: 'deciding', message: `Visual decision ${index + 1} of ${profile.controller.maxDecisions}.` });
           const decision = controlDecisionSchema.parse(await withAbort(options.decide!({ observationId, image, mimeType: 'image/jpeg', gameName: profile.name, objective: profile.objective, elapsedMs, remainingMs: Math.max(0, profile.maxDurationMs - elapsedMs), previousActions, signal: controlSignal }), controlSignal));
           controlSignal.throwIfAborted();

@@ -10,14 +10,72 @@ export function locate(page: Page, target: SurfaceLocator): Locator {
   return scope.locator(target.selector);
 }
 
-export async function gameBounds(page: Page, target: SurfaceLocator): Promise<GameBounds> {
-  const bounds = await locate(page, target).boundingBox();
-  if (!bounds || bounds.width < 1 || bounds.height < 1) throw new Error('Game surface is missing or has no visible area.');
+async function elementGeometry(locator: Locator) {
+  return locator.evaluate(element => {
+    // getBoundingClientRect includes scale within this document. Chromium's cross-frame
+    // boundingBox can omit the iframe's transform, so compose document boundaries ourselves.
+    for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
+      const transform = getComputedStyle(ancestor).transform;
+      if (transform === 'none') continue;
+      const matrix = new DOMMatrixReadOnly(transform);
+      if (!matrix.is2D || matrix.a <= 0 || matrix.d <= 0 || Math.abs(matrix.b) > 0.00001 || Math.abs(matrix.c) > 0.00001) throw new Error('Rotated, mirrored, or perspective game surfaces are unsupported.');
+    }
+    const rect = element.getBoundingClientRect();
+    const html = element as HTMLElement;
+    return {
+      bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      viewport: { width: innerWidth, height: innerHeight },
+      layout: { width: html.offsetWidth, height: html.offsetHeight, borderLeft: element.clientLeft, borderTop: element.clientTop },
+    };
+  });
+}
+
+function assertInside(bounds: GameBounds, viewport: { width: number; height: number }) {
+  if (bounds.width < 1 || bounds.height < 1) throw new Error('Game surface is missing or has no visible area.');
+  if (bounds.x < 0 || bounds.y < 0 || bounds.x + bounds.width > viewport.width + 0.5 || bounds.y + bounds.height > viewport.height + 0.5) throw new Error('Game surface is clipped or outside the viewport. Adjust the profile viewport before capture.');
+}
+
+async function assertHit(locator: Locator, bounds: GameBounds) {
+  const visible = await locator.evaluate((element, point) => {
+    const hit = document.elementFromPoint(point.x, point.y);
+    return hit !== null && (hit === element || element.contains(hit));
+  }, { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
+  if (!visible) throw new Error('The requested game control is covered by another element.');
+}
+
+async function composedBounds(page: Page, target: SurfaceLocator, checkHit = false): Promise<GameBounds> {
+  let scope: Page | FrameLocator = page;
+  const frames: Locator[] = [];
+  for (const selector of target.frames) {
+    frames.push(scope.locator(selector));
+    scope = scope.frameLocator(selector);
+  }
+  const locator = scope.locator(target.selector);
+  const geometry = await elementGeometry(locator);
+  let bounds = geometry.bounds;
+  assertInside(bounds, geometry.viewport);
+  if (checkHit) await assertHit(locator, bounds);
+  for (const frame of frames.reverse()) {
+    const parent = await elementGeometry(frame);
+    const scaleX = parent.bounds.width / parent.layout.width;
+    const scaleY = parent.bounds.height / parent.layout.height;
+    bounds = {
+      x: parent.bounds.x + (parent.layout.borderLeft + bounds.x) * scaleX,
+      y: parent.bounds.y + (parent.layout.borderTop + bounds.y) * scaleY,
+      width: bounds.width * scaleX, height: bounds.height * scaleY,
+    };
+    assertInside(bounds, parent.viewport);
+    if (checkHit) await assertHit(frame, bounds);
+  }
   return bounds;
 }
 
+export async function gameBounds(page: Page, target: SurfaceLocator): Promise<GameBounds> {
+  return composedBounds(page, target);
+}
+
 export function withinGame(bounds: GameBounds, point: { x: number; y: number }): { x: number; y: number } {
-  // boundingBox already includes iframe offsets and uses CSS pixels.
+  // Composed bounds include every iframe's displayed scale and border offset.
   return { x: bounds.x + Math.min(bounds.width - 1, point.x * bounds.width), y: bounds.y + Math.min(bounds.height - 1, point.y * bounds.height) };
 }
 
@@ -78,7 +136,14 @@ export class InputExecutor {
 
   async step(step: UiStep): Promise<void> {
     this.signal?.throwIfAborted();
-    if (step.type === 'click') await withAbort(locate(this.page, step.target).click({ timeout: 5000 }), this.signal);
+    if (step.type === 'click') {
+      const target = locate(this.page, step.target);
+      await withAbort(target.waitFor({ state: 'visible', timeout: 5000 }), this.signal);
+      if (!await target.isEnabled()) throw new Error('The requested game control is disabled.');
+      const bounds = await withAbort(composedBounds(this.page, step.target, true), this.signal);
+      this.signal?.throwIfAborted();
+      await this.page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    }
     else if (step.type === 'waitFor') await withAbort(locate(this.page, step.target).waitFor({ state: 'visible', timeout: 5000 }), this.signal);
     else await this.execute(step);
   }
