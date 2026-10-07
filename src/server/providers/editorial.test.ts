@@ -537,7 +537,10 @@ test('a reel keeps deliberate shot order, reviews every exact cut at 4 FPS, and 
   const json = provider.json.bind(provider);
   const sampled: unknown[] = [];
   provider.json = async (prompt, schema, media, ...args) => {
-    if (media?.length) sampled.push(...media);
+    if (media?.length) {
+      sampled.push(...media);
+      assert.ok(prompt.includes(JSON.stringify({ title: reelCapture.game.title, titleSource: reelCapture.game.titleSource, url: reelCapture.game.url })), 'the critic receives the original game identity and its provenance, not only copywriter assertions');
+    }
     return json(prompt, schema, media, ...args);
   };
   const result = await draftScript(reelInput, provider);

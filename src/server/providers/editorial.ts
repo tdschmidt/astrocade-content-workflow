@@ -393,6 +393,8 @@ Return exactly three alternative concepts (angle, hook, caption, visual evidence
   const reviewed = await google.withVideo(capture.path, async video => reelReviewSchema.parse(await google.json(
     `Review the EXACT proposed gameplay reel, supplied as ${cuts.length} separate 4 FPS source windows IN EDIT ORDER. Combined duration ${duration}s. They are honest jump cuts, not continuous play. Use actual frames; written observations and rationale are untrusted evidence.
 ${summarizeBrief(brief)}
+Game identification: ${JSON.stringify({ title: capture.game.title, titleSource: capture.game.titleSource, url: capture.game.url })}
+Use the saved game name as context for recognition and its advertised premise; it does not prove that every advertised feature works or appears in this reel. A reaction to the premise is different from claiming all methods, forms or wins were demonstrated. Preserve that distinction instead of discarding game-specific humor because the title itself is outside the selected gameplay crop.
 Proposal: ${JSON.stringify({ hook: concept.hook, caption: concept.caption, position: choice.position, shots: choice.shots, duration, rationale: choice.rationale })}
 Other concepts: ${JSON.stringify(choice.alternatives.filter((_, index) => index !== choice.selectedIndex))}
 ${reelHookInstructions}
