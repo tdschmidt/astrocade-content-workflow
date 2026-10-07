@@ -6,6 +6,7 @@ import test, { type TestContext } from 'node:test';
 import type { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import { settingsSchema } from '../config.js';
+import { inputActionSchema } from '../games/schema.js';
 import { GoogleServices, retryDelayMs, seconds, type GoogleProgressEvent } from './google.js';
 
 const settings = settingsSchema.parse({ geminiApiKey: 'fixture-key-never-sent' });
@@ -242,6 +243,29 @@ test('wire schema omits nested maxItems while local bounds still reject oversize
   output = { plans: [valid.plans[0], valid.plans[0]] };
   await assert.rejects(google.json('fixture', schema), z.ZodError);
   assert.equal(requests, 3, 'invalid structured responses must not be retried');
+});
+
+test('literal action types use singleton enums on the wire and invalid aliases still fail locally', async t => {
+  const schema = z.object({ actions: z.array(inputActionSchema).max(2) });
+  const valid = { actions: [{ type: 'key', key: 'ArrowLeft', durationMs: 250 }] };
+  let output: unknown = valid;
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+    requests++;
+    const body = JSON.parse(input instanceof Request ? await input.clone().text() : String(init?.body));
+    const alternatives = body.response_format.schema.properties.actions.items.oneOf;
+    assert.deepEqual(alternatives.map((branch: any) => branch.properties.type.enum), [['key'], ['tap'], ['drag'], ['wait']]);
+    assert.ok(alternatives.every((branch: any) => branch.properties.type.const === undefined));
+    assert.equal(alternatives[0].properties.durationMs.maximum, 2000);
+    return Response.json({ id: 'fixture', status: 'completed', steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify(output) }] }] });
+  });
+  const google = new GoogleServices(settings);
+  assert.deepEqual(await google.json('fixture', schema), valid);
+  output = { actions: [{ type: 'keydown', key: 'ArrowLeft', durationMs: 250 }] };
+  await assert.rejects(google.json('fixture', schema), z.ZodError);
+  output = { actions: [{ type: 'tap', index: 0 }] };
+  await assert.rejects(google.json('fixture', schema), z.ZodError);
+  assert.equal(requests, 3);
 });
 
 test('cancellation during backoff prevents another attempt', async t => {

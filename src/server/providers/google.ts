@@ -107,9 +107,15 @@ export class GoogleServices {
   }
 
   async json<T>(prompt: string, schema: z.ZodType<T>, media: MediaInput[] = [], signal?: AbortSignal): Promise<T> {
-    // Gemini rejects the full control-plan grammar with maxItems. Enforce those
-    // limits through the original Zod schema after decoding the response.
-    const jsonSchema = z.toJSONSchema(schema, { override: ({ jsonSchema }) => { delete jsonSchema.maxItems; } });
+    // Gemini rejects maxItems in the full control-plan grammar and does not
+    // reliably enforce const. Use singleton enums; retain every local Zod check.
+    const jsonSchema = z.toJSONSchema(schema, { override: ({ jsonSchema }) => {
+      delete jsonSchema.maxItems;
+      if (jsonSchema.const !== undefined) {
+        jsonSchema.enum = [jsonSchema.const];
+        delete jsonSchema.const;
+      }
+    } });
     delete jsonSchema.$schema;
     return this.modelRequest('json', this.settings.reasoningModel, async options => {
       const response = await this.client.interactions.create({
