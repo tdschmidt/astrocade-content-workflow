@@ -55,7 +55,7 @@ supported and high confidence require visible evidence. Record limitations hones
       id: `feedback-${candidate.id.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60)}`, name: candidate.title, gameUrl: inspection.gameUrl,
       verification: 'unverified', verificationNotes: 'Learned visible mechanics; outcome still requires current-session feedback and independent footage review.',
       viewport: inspection.viewport, surface: inspection.surface, ready: inspection.ready, setup: inspection.setup, start, focus: 'focus',
-      objective: proposal.objective, maxDurationMs: 120000,
+      objective: proposal.objective, maxDurationMs: 175000,
       controller: { type: 'sparse', maxDecisions: 10, instructions: proposal.instructions, allowedKeys: proposal.allowedKeys, allowPointer: proposal.allowPointer },
     });
   }
@@ -105,7 +105,7 @@ Recent observations/lessons (may be mistaken; verify against images): ${JSON.str
 ${observation.previousImage ? 'Image 1 is BEFORE the previous actions. Image 2 is NOW. Compare the actual result; do not assume actions worked.' : 'The image is the initial CURRENT game state. No gameplay actions have been executed yet. Return at most ONE reversible action to test the control hypothesis; the next screenshot verifies whether it worked.'}
 Remaining wall time: ${observation.remainingMs}ms. ${observation.isFinal ? 'This is the FINAL evaluation: stop=true, actions=[]. Report what was actually achieved.' : 'Decide the next batch or stop if done/stalled.'}
 Identify visible progress and outcome separately from the intended next action. Never claim victory, score or completion from button labels or planned actions. success requires an explicit completed board/result or clearly completed visible goal. Stop on death or completion; do not restart and lose the result.
-Learn from mistakes: if an object snaps back or a meter does not improve, change the target, coordinates, tool, or duration. Do not repeat ineffective motion. For cleaning, cover visibly dirty parts including edges, monitor meters and change tools when appropriate. For matching, use CURRENT shapes/positions: first test one placement, then make up to four distinct placements per batch once placement works. Recheck the board after each batch. Only interact with in-game controls, not purchases/accounts/sharing.
+Learn from mistakes: if an object snaps back or a meter does not improve, change the target, coordinates, tool, or duration. Do not repeat ineffective motion. For cleaning, cover visibly dirty parts including edges, monitor meters and change tools when appropriate. For matching, use CURRENT shapes/positions: first test one placement, then consistently attempt up to four clearly matched remaining items per batch once dragging works. One failed match does not require re-probing already confirmed drag mechanics: correct that target or leave the ambiguous item and place other clear matches. Recheck the board after each batch. Only interact with in-game controls, not purchases/accounts/sharing.
 Actions use normalized x,y in [0,1] relative to the current screenshot. Native formats: {"type":"tap","point":{"x":0.5,"y":0.5}}, {"type":"drag","from":{"x":0.2,"y":0.5},"to":{"x":0.8,"y":0.5},"durationMs":1000}, {"type":"key","key":"ArrowLeft","durationMs":100}, {"type":"wait","durationMs":500}. A drag holds the pointer the whole time. Key presses hold then release. Choose no more than 8 actions totaling 10 seconds; prefer a single meaningful action unless a same-tool sweep is needed. Use exact schema, no extra fields.
 Inference takes seconds while the game continues. No reflex targeting, hidden-state access, or game-time manipulation. Return a concise observed result, lesson and reason for the action, not private reasoning.`,
       requestSchema, [
@@ -114,7 +114,7 @@ Inference takes seconds while the game continues. No reflex targeting, hidden-st
       ], observation.signal,
     )), profile);
     if (observation.isFinal && !decision.stop) throw new Error('The final feedback evaluation cannot request further input.');
-    stalled = decision.outcome === 'no_progress' ? stalled + 1 : 0;
+    stalled = observation.previousActions.length && decision.outcome === 'no_progress' ? stalled + 1 : 0;
     if (stalled >= 3) { decision.stop = true; decision.actions = []; decision.reason = 'Stopped after three consecutive observations without progress. ' + decision.reason; }
     history.push({ observation: decision.observation, outcome: decision.outcome, lesson: decision.lesson });
     const evidence = { observationId: observation.observationId, elapsedMs: observation.elapsedMs, previousActions: observation.previousActions, decisionMs: Math.round(performance.now() - started), imagePath: join(directory, `${stem}.jpg`), ...decision };

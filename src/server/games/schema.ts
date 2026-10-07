@@ -65,7 +65,7 @@ export const gameProfileSchema = z.object({
   reset: z.array(uiStepSchema).max(20).default([]),
   focus: z.enum(['click', 'focus']).default('click'),
   objective: z.string().min(1).max(1000),
-  maxDurationMs: z.number().int().min(1000).max(120000).default(60000),
+  maxDurationMs: z.number().int().min(1000).max(175000).default(60000),
   controller: z.discriminatedUnion('type', [
     z.object({ type: z.literal('timed'), actions: z.array(inputActionSchema).min(1).max(60), repetitions: z.number().int().min(1).max(20).default(1) }),
     z.object({

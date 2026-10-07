@@ -168,7 +168,7 @@ export async function runPipeline(options: {
         const game = candidates.find(candidate => candidate.id === options.game || canonicalGameUrl(candidate.url) === canonicalGameUrl(options.game!) || new URL(candidate.url).pathname.split('/').at(-2) === options.game);
         if (!game) throw new Error('The requested game is not in this run’s discovered catalog. Use an exact ID, slug, or URL from discovery.json.');
         shortlist = [{ gameId: game.id, hypothesis: 'Operator-selected candidate; suitability still requires actual play.', viewerQuestion: 'What visible decision and consequence does this game offer?', controlRisk: 'Inspect the actual controls before capturing.' }];
-      } else shortlist = await services.nominateGames(candidates, verifiedProfiles, getProvider(), limit, options.signal);
+      } else shortlist = await services.nominateGames(candidates, verifiedProfiles, getProvider(), limit, options.signal, store.read().playMode);
       await save(run => { run.shortlist = shortlist; run.attempts = shortlist.map(item => attemptSchema.parse({ gameId: item.gameId })); });
       trace.artifact('shortlist.json', shortlist);
       trace.event('shortlist', 'completed', 'Provisional choices saved. Actual recordings will determine the edit.', shortlist);

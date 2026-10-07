@@ -61,9 +61,11 @@ test('three consecutive no-progress observations stop instead of repeating indef
   t.after(() => rm(directory, { recursive: true, force: true }));
   const provider = { json: async () => ({ ...answer, outcome: 'no_progress' }) } as unknown as Pick<Inference, 'json'>;
   const decide = createFeedbackController(profile, provider, directory);
-  assert.equal((await decide(observation)).stop, false);
-  assert.equal((await decide(observation)).stop, false);
-  const result = await decide(observation);
+  assert.equal((await decide(observation)).stop, false, 'initial view has no failed input');
+  const afterMove = { ...observation, previousActions: [move] };
+  assert.equal((await decide(afterMove)).stop, false);
+  assert.equal((await decide(afterMove)).stop, false);
+  const result = await decide(afterMove);
   assert.equal(result.stop, true);
   assert.deepEqual(result.actions, []);
 });
@@ -87,5 +89,5 @@ test('feedback setup skips reflex games and never treats learned mechanics as ve
   assert.equal(learned.profile?.verification, 'unverified');
   assert.equal(learned.profile?.focus, 'focus');
   assert.equal(learned.profile?.controller.type, 'sparse');
-  assert.equal(learned.profile?.maxDurationMs, 120000);
+  assert.equal(learned.profile?.maxDurationMs, 175000);
 });
