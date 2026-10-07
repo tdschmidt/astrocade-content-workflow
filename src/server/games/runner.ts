@@ -4,6 +4,7 @@ import type { Page } from 'playwright';
 import { createGameCapture, type CaptureArtifact, type CaptureOptions, type GameCapture } from '../media/recorder.js';
 import { isAllowedGameUrl } from './discovery.js';
 import { gameBounds, gameHasPointerLock, InputExecutor, locate, withAbort, type GameBounds } from './input.js';
+import { readVisibleText } from './visible-text.js';
 import { controlDecisionSchema, gameProfileSchema, type GameProfile, type InputAction, type UiStep } from './schema.js';
 
 export type CaptureFailure = 'unreachable' | 'offline' | 'authentication_required' | 'unverified_profile' | 'missing_controls' | 'controller_unavailable' | 'canceled' | 'capture_failed';
@@ -108,7 +109,7 @@ export async function runCaptureAttempt(options: {
     try { response = await withAbort(page.goto(profile.gameUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }), options.signal); }
     catch (error) { throw new GameCaptureError('unreachable', 'The live game page could not be reached.', { cause: error }); }
     if (response && response.status() >= 400) throw new GameCaptureError('unreachable', `Game page returned HTTP ${response.status()}.`);
-    const body = (await page.locator('body').innerText()).slice(0, 5000);
+    const body = await readVisibleText(page.locator('body'), 5000);
     if (/you(?:'|’)re offline|you are offline|check your internet connection/i.test(body)) throw new GameCaptureError('offline', 'Astrocade displayed its offline page. No gameplay was captured.');
     if (/\/login(?:\/|\?|$)/.test(page.url())) throw new GameCaptureError('authentication_required', 'The game requires sign-in; this profile does not supply an Astrocade session.');
     try {
@@ -156,7 +157,7 @@ export async function runCaptureAttempt(options: {
           const surface = locate(page, profile.surface);
           const textSurface = await withAbort(surface.evaluate(element => element.tagName === 'IFRAME'), controlSignal)
             ? surface.contentFrame().locator('body') : surface;
-          const text = await withAbort(textSurface.evaluate(element => element.ownerDocument.body.innerText.slice(0, 6000)), controlSignal);
+          const text = await withAbort(readVisibleText(textSurface), controlSignal);
           const pointerLocked = await withAbort(gameHasPointerLock(page, profile.surface), controlSignal);
           const elapsedMs = Math.round(performance.now() - recordingStarted);
           const remainingMs = Math.max(0, profile.maxDurationMs - elapsedMs);

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { Inference } from '../providers/inference.js';
 import { canonicalGameUrl } from './discovery.js';
 import { gameBounds, gameHasPointerLock, InputExecutor, withAbort } from './input.js';
+import { readVisibleText } from './visible-text.js';
 import { gameProfileSchema, inputActionSchema, plannedInputActionSchema, type GameCandidate, type GameProfile, type InputAction, type SurfaceLocator, type UiStep } from './schema.js';
 
 const gameFrames = ['iframe[title="Astrocade Game"]'];
@@ -80,7 +81,7 @@ export async function inspectGamePage(page: Page, gameUrl: string, directory: st
     const label = (button.innerText || element.getAttribute('aria-label') || '').trim().slice(0, 150);
     return label ? [{ selector: element.id ? `#${CSS.escape(element.id)}` : `:nth-match(button, ${index + 1})`, label }] : [];
   }).slice(0, 50));
-  const observeText = async () => (await frame.locator('body').innerText()).slice(0, 6000);
+  const observeText = () => readVisibleText(frame.locator('body'));
   const screenshot = async () => page.screenshot({ clip: await gameBounds(page, surface) });
   let startTargets = await observeStartTargets();
   const beforeText = await observeText();
@@ -95,7 +96,7 @@ export async function inspectGamePage(page: Page, gameUrl: string, directory: st
     inspectedHelp = true;
     await executor.step({ type: 'click', target: { selector: opened.selector, frames: gameFrames } });
     await withAbort(frame.getByRole('button', { name: helpReturnLabel }).first().waitFor({ state: 'visible', timeout: 5000 }), signal).catch(error => { signal?.throwIfAborted(); return error; });
-    const text = (await frame.locator('body').innerText()).slice(0, 6000);
+    const text = await observeText();
     const imagePath = join(directory, 'inspection-help.png');
     await writeFile(imagePath, await page.screenshot({ clip: await gameBounds(page, { selector: gameFrames[0]!, frames: [] }) }), { flag: 'wx' });
     const returned = (await observeStartTargets()).find(target => helpReturnLabel.test(target.label));
