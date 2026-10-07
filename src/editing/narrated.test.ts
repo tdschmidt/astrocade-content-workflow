@@ -7,7 +7,8 @@ import { test } from 'node:test';
 import { z } from 'zod';
 import type { Capture } from '../shared/domain.js';
 import type { Inference } from '../server/providers/inference.js';
-import { narrationWindows, assertNarratedSelection, overviewLedger, runNarratedAgentStage, verifySavedNarration } from './narrated.js';
+import { narrationWindows, assertNarratedSelection, overviewLedger, validateOverviewInspection, runNarratedAgentStage, verifySavedNarration } from './narrated.js';
+import { mapOverviewChapters } from '../../experiments/game-overview/prepare-chapters.js';
 import type { EvidenceWindow } from './windows.js';
 
 const capture: Capture = { id: 'sample', runId: 'run', profileId: 'profile', game: { id: 'g', title: 'Example', titleSource: 'visible_text', url: 'https://example.com/game', metrics: [], observations: [] }, path: '/tmp/source.mp4', durationSeconds: 100, width: 720, height: 1280, createdAt: '2026-10-07',
@@ -16,7 +17,8 @@ const windows: EvidenceWindow[] = [{ id: 'one', start: 0, end: 20, basis: 'sourc
 const inspection = () => ({ usable: true, reason: 'Two useful mechanics', gameSummary: 'Choose different powers to move and build.', facts: [
   { id: 'flight', fact: 'The actor can fly.', windowId: 'one', start: 2, end: 4, observation: 'Actor rises from street to rooftop.' },
   { id: 'wall', fact: 'A wall can be created.', windowId: 'two', start: 32, end: 35, observation: 'Selected power produces a new wall.' },
-], chapters: [{ id: 'opening', start: 0, end: 16, factIds: ['flight'], rationale: 'Introduce movement and choices.' }, { id: 'building', start: 30, end: 46, factIds: ['wall'], rationale: 'Show a genuinely different capability.' }], captionPosition: 'upper-middle' as const, exclusions: ['No completed mission demonstrated.'] });
+], chapters: [{ id: 'opening', shots:[{start:0,end:16}], factIds: ['flight'], rationale: 'Introduce movement and choices.' }, { id: 'building', shots:[{start:30,end:46}], factIds: ['wall'], rationale: 'Show a genuinely different capability.' }], captionPosition: 'upper-middle' as const, exclusions: ['No completed mission demonstrated.'] });
+const derived = { path: '/tmp/selected.mp4', sourceSha256: 'b'.repeat(64), provenancePath: '/tmp/provenance.json' };
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 
 test('narration candidate context stays inside capture and invalid analysis cannot become evidence', () => {
@@ -33,14 +35,16 @@ test('selected narration cannot bridge unobserved gaps, reuse footage, or pad we
 });
 
 test('whole-game overview facts retain original hash/time evidence and opening evidence is local', () => {
-  const ledger = overviewLedger(capture, 'a'.repeat(64), inspection(), windows);
+  const ledger = overviewLedger(capture, 'a'.repeat(64), inspection(), windows, derived);
+  assert.equal(ledger.sourcePath, derived.path);
+  assert.equal(ledger.sourceSha256, derived.sourceSha256);
   assert.equal(ledger.gameFacts[1]!.evidence.kind, 'gameplay');
   assert.equal(ledger.gameFacts[1]!.evidence.kind === 'gameplay' && ledger.gameFacts[1]!.evidence.sourceSha256, 'a'.repeat(64));
   const bad = inspection(); bad.chapters[0]!.factIds = ['wall'];
-  assert.throws(() => overviewLedger(capture, 'a'.repeat(64), bad, windows), /actually appear/);
+  assert.throws(() => validateOverviewInspection(capture, bad, windows), /actually appear/);
   const unseen = inspection(); unseen.facts[0]!.end = 25;
-  assert.throws(() => overviewLedger(capture, 'a'.repeat(64), unseen, windows), /unseen source/);
-  assert.throws(() => overviewLedger(capture, 'a'.repeat(64), { ...inspection(), usable: false }, windows), /Inadequate overview/);
+  assert.throws(() => validateOverviewInspection(capture, unseen, windows), /unseen source/);
+  assert.throws(() => validateOverviewInspection(capture, { ...inspection(), usable: false }, windows), /Inadequate overview/);
 });
 
 test('a semantic rejection stops after one call and cannot turn into approval on resume', async () => {
@@ -71,4 +75,23 @@ test('speech resume rejects changed waveform even when the spoken script still m
     await writeFile(audio, 'changed waveform');
     await assert.rejects(() => verifySavedNarration(record, checkpoint, script), /waveform or script changed/);
   } finally { await rm(out, { recursive: true, force: true }); }
+});
+
+test('agent-selected multiple shots retain original chronology and exact derived chapter map',()=>{
+ const mapping=mapOverviewChapters([{id:'first',shots:[{start:1,end:5},{start:10,end:16}]},{id:'second',shots:[{start:30,end:38}]}],50);
+ assert.deepEqual(mapping.map(s=>[s.originalStart,s.originalEnd,s.derivedStart,s.derivedEnd]),[[1,5,0,4],[10,16,4,10],[30,38,10,18]]);
+ assert.throws(()=>mapOverviewChapters([{id:'first',shots:[{start:1,end:5}]},{id:'second',shots:[{start:3,end:8}]}],50),/forward, unique/);
+ assert.throws(()=>mapOverviewChapters([{id:'first',shots:[{start:1,end:5}]},{id:'second',shots:[{start:45,end:55}]}],50),/bounds/);
+});
+
+test('fractional-frame quantization preserves nominal evidence containment without allowing omitted facts', () => {
+  const selected = inspection();
+  selected.chapters[0]!.shots = [{ start: 0.05, end: 16 }];
+  selected.facts[0]!.start = 0.05;
+  selected.facts[0]!.end = 16;
+  const chapters = validateOverviewInspection(capture, selected, windows);
+  assert.ok(chapters[0]!.sourceShots[0]!.originalEnd < 16);
+  assert.ok(16 - chapters[0]!.sourceShots[0]!.originalEnd < 1 / 30);
+  selected.facts[0]!.end = 16.01;
+  assert.throws(() => validateOverviewInspection(capture, selected, windows), /must actually appear/);
 });

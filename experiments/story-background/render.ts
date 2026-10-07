@@ -36,7 +36,7 @@ function width(text: string, fontSize = 48): number {
 /** Keep the same line breaks for every active-word event to avoid caption jumps. */
 function captionLineLayout(words: readonly Word[]): number[][] {
   const lines: number[][] = [];
-  for (const [index, word] of words.entries()) {
+  for (const [index, _word] of words.entries()) {
     const current = lines.at(-1);
     const candidate = [...(current ?? []), index].map(i => literal(words[i]!.text).toUpperCase()).join(' ');
     if (current && width(candidate) <= 610) current.push(index);

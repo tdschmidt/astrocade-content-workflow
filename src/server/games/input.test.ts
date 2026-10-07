@@ -438,7 +438,7 @@ test('repeated native look preserves exact deltas beyond every viewport edge acr
 });
 
 test('a locked look rejects an unknown native origin without guessing or moving', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
-  const { page, frame, events, surface, waitForLock } = await lookFixture(t);
+  const { page, events, surface, waitForLock } = await lookFixture(t);
   // The fixture deliberately acquires lock outside the executor's ownership.
   await page.mouse.click(240, 260);
   await waitForLock();

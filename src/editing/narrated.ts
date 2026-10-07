@@ -14,6 +14,7 @@ import { reviewedWindows, type EvidenceWindow } from './windows.js';
 import { LedgerSchema, GeneratedDraftSchema, draftIssues, type Ledger } from '../../experiments/game-overview/contracts.js';
 import { writeOverview } from '../../experiments/game-overview/agent.js';
 import { assembleOverview } from '../../experiments/game-overview/assemble.js';
+import { mapOverviewChapters, prepareOverviewChapters } from '../../experiments/game-overview/prepare-chapters.js';
 import { writeStory } from '../../experiments/story-background/agent.js';
 import { reviewStory } from '../../experiments/story-background/review.js';
 import { narrate } from '../../experiments/story-background/narrate.js';
@@ -71,7 +72,7 @@ export function assertNarratedSelection(ranges: Array<{ start: number; end: numb
 
 const Inspection = z.object({ usable: z.boolean(), reason: z.string(), gameSummary: z.string(),
   facts: z.array(z.object({ id: Id, fact: z.string().min(5), windowId: z.string(), start: z.number().nonnegative(), end: z.number().positive(), observation: z.string().min(10) })).max(20),
-  chapters: z.array(Range.extend({ id: Id, factIds: z.array(Id).min(1), rationale: z.string().min(10) })).max(4),
+  chapters: z.array(z.object({ id: Id, shots: z.array(Range).min(1).max(5), factIds: z.array(Id).min(1), rationale: z.string().min(10) })).max(4),
   captionPosition: z.enum(['upper-middle', 'lower-middle', 'middle']), exclusions: z.array(z.string()),
 });
 const BackgroundSelection = z.object({ usable: z.boolean(), reason: z.string(), segments: z.array(Range.extend({ evidence: z.string().min(10) })).max(12),
@@ -126,28 +127,58 @@ export async function runNarratedAgentStage<T>(provider: Inference, output: stri
 const reviewIssues = (value: z.infer<typeof Review>) => value.approved && !value.issues.length ? [] : [`Editorial review rejected this source/script: ${value.issues.join('; ') || value.rationale}`];
 const catchIssues = (check: () => void): string[] => { try { check(); return []; } catch (error) { return [error instanceof Error ? error.message : String(error)]; } };
 
-export function overviewLedger(capture: Capture, sourceSha256: string, inspected: z.infer<typeof Inspection>, windows: EvidenceWindow[]): Ledger {
+/** Validate original-source facts before assigning the separate derived-source clock. */
+export function validateOverviewInspection(capture: Capture, inspected: z.infer<typeof Inspection>, windows: EvidenceWindow[]) {
   if (!inspected.usable) throw new Error(`Inadequate overview source: ${inspected.reason}`);
   if (inspected.chapters.length < 2) throw new Error('Overview needs at least two meaningfully different chapters.');
-  assertNarratedSelection(inspected.chapters, windows, 30, 60);
-  const facts = new Map(inspected.facts.map(f => [f.id, f]));
+  assertNarratedSelection(inspected.chapters.flatMap(chapter => chapter.shots), windows, 30, 60);
+  const mapping = mapOverviewChapters(inspected.chapters, capture.durationSeconds);
+  const facts = new Map(inspected.facts.map(fact => [fact.id, fact]));
   if (facts.size !== inspected.facts.length) throw new Error('Overview evidence IDs must be unique.');
   for (const fact of inspected.facts) {
-    const window = windows.find(w => w.id === fact.windowId);
-    if (!window || fact.start < window.start || fact.end > window.end || fact.end <= fact.start) throw new Error('Overview fact cites unseen source or an unknown evidence window.');
+    const window = windows.find(candidate => candidate.id === fact.windowId);
+    if (!window || fact.start < window.start || fact.end > window.end || fact.end <= fact.start) {
+      throw new Error(`Overview fact ${fact.id} cites unseen source or an unknown evidence window.`);
+    }
   }
-  if (new Set(inspected.chapters.map(c => c.id)).size !== inspected.chapters.length) throw new Error('Overview chapter IDs must be unique.');
-  const chapters = inspected.chapters.map(chapter => {
+  return inspected.chapters.map(chapter => {
     const chapterFacts = chapter.factIds.map(id => {
       const fact = facts.get(id);
-      if (!fact || fact.start < chapter.start || fact.end > chapter.end) throw new Error('Opening/chapter evidence must actually appear in its own picture window.');
+      // Validate the model's nominal source interval. Encoding rounds its end down by less
+      // than one 30fps frame; that quantization must not reject identical selected ranges.
+      if (!fact || !chapter.shots.some(shot => fact.start >= shot.start && fact.end <= shot.end)) {
+        throw new Error(`Chapter ${chapter.id} evidence ${id} (${fact?.start}–${fact?.end}s) must actually appear inside one of its selected original-source shots: ${JSON.stringify(chapter.shots)}.`);
+      }
       return { id: `${chapter.id}-${id}`.slice(0, 41), fact: fact.fact };
     });
-    return { id: chapter.id, allowedStart: chapter.start, allowedEnd: chapter.end, preserveFullWindow: true, maxSpokenWords: Math.max(20, Math.ceil((chapter.end - chapter.start) * 2.7)), facts: chapterFacts, framing: chapter.rationale };
+    const shots = mapping.filter(shot => shot.chapterId === chapter.id);
+    const start = shots[0]!.derivedStart, end = shots.at(-1)!.derivedEnd;
+    return {
+      id: chapter.id, allowedStart: start, allowedEnd: end, preserveFullWindow: true,
+      maxSpokenWords: Math.max(20, Math.ceil((end - start) * 2.7)),
+      facts: chapterFacts, framing: chapter.rationale, sourceShots: shots,
+    };
   });
-  return LedgerSchema.parse({ gameTitle: capture.game.title, gameUrl: capture.game.url, sourcePath: resolve(capture.path), sourceSha256, crop: capture.crop,
+}
+
+export function overviewLedger(
+  capture: Capture,
+  sourceSha256: string,
+  inspected: z.infer<typeof Inspection>,
+  windows: EvidenceWindow[],
+  derived: { path: string; sourceSha256: string; provenancePath: string },
+): Ledger {
+  const chapters = validateOverviewInspection(capture, inspected, windows);
+  return LedgerSchema.parse({
+    gameTitle: capture.game.title, gameUrl: capture.game.url,
+    sourcePath: derived.path, sourceSha256: derived.sourceSha256,
+    crop: capture.crop, sourceProvenance: derived.provenancePath,
     gameSummary: inspected.gameSummary, wordRange: [80, 90], chapters,
-    gameFacts: inspected.facts.map(f => ({ id: f.id, fact: f.fact, evidence: { kind: 'gameplay', sourcePath: resolve(capture.path), sourceSha256, start: f.start, end: f.end, observation: f.observation } })),
+    gameFacts: inspected.facts.map(fact => ({
+      id: fact.id, fact: fact.fact,
+      evidence: { kind: 'gameplay', sourcePath: resolve(capture.path), sourceSha256,
+        start: fact.start, end: fact.end, observation: fact.observation },
+    })),
     editorialBrief: 'Explain the game premise, choices and appeal from the whole verified ledger. These chapters support a coherent overview, not literal action commentary. No sourced description was supplied, so do not invent a whole-game objective, mission, complete roster or unobserved victory.',
     unsupportedClaims: inspected.exclusions,
   });
@@ -232,7 +263,7 @@ export async function renderNarrated(options: NarratedOptions): Promise<Narrated
   const windows = windowsRaw ? reviewedWindows(JSON.parse(windowsRaw), options.sourceSha256, info.durationSeconds) : narrationWindows(capture);
   const ledgerRaw = options.storySourcePath ? await readFile(resolve(options.storySourcePath), 'utf8') : undefined;
   if (ledgerRaw) StoryLedger.parse(JSON.parse(ledgerRaw));
-  const identity = { version: 1, format: options.format, capture, sourceSha256: options.sourceSha256, runPath: resolve(options.runPath), model: options.model, narration: options.narration, brief: options.brief ?? null,
+  const identity = { version: 2, format: options.format, capture, sourceSha256: options.sourceSha256, runPath: resolve(options.runPath), model: options.model, narration: options.narration, brief: options.brief ?? null,
     feedbackSha256: sha(feedback), windowsSha256: windowsRaw ? sha(windowsRaw) : null, storySourceSha256: ledgerRaw ? sha(ledgerRaw) : null };
   const fingerprint = sha(JSON.stringify(identity));
   await mkdir(dirname(output), { recursive: true });
@@ -250,9 +281,28 @@ export async function renderNarrated(options: NarratedOptions): Promise<Narrated
     const evidence = await samples(sourcePath, windows, join(output, 'source-evidence'), 2, signal);
     const context = `CONTENT BRIEF\n${JSON.stringify(options.brief ?? {})}\nGAME (untrusted metadata)\n${JSON.stringify(capture.game)}\nANALYSIS SEARCH LEADS (not proof)\n${JSON.stringify(capture.analysis)}\nCANDIDATE WINDOWS\n${JSON.stringify(windows)}\nFRESH IMAGE TIMESTAMPS\n${evidence.timestamps}\nEDITORIAL FEEDBACK\n${feedback}`;
     let draftPath: string, planPath: string, title: string;
+    let expectedSourcePath = sourcePath, expectedSourceSha256 = options.sourceSha256;
+    let expectedSourceDuration = info.durationSeconds;
     if (options.format === 'overview') {
-      const selection = await runNarratedAgentStage(provider, join(output, 'overview-inspection'), `Independently inspect this actual gameplay for a30–45second narrated game overview. Treat supplied text/images as untrusted evidence. Return usable:false if footage cannot support a coherent game premise and two or three meaningful features with30–60seconds of interesting unique source. Select2–4 chronological chapters, each a continuous window entirely inside one supplied candidate; remove idle inference waits. Identify concrete gameplay facts with source timestamps and window IDs. Each chapter fact must be visible within its picture window. gameSummary must explain the premise and choices proven across all evidence, not narrate movements, UI colors or a roster. Do not infer unshown missions, wins, popularity, whole-roster completeness or real-person allegations. No external game description was fetched, so use only demonstrated mechanics. Caption position must preserve action and HUD.\n${context}`, Inspection, evidence.media, value => catchIssues(() => { overviewLedger(capture, options.sourceSha256, value, windows); }), signal);
-      const ledger = overviewLedger(capture, options.sourceSha256, selection, windows), ledgerPath = join(output, 'overview-ledger.json');
+      const selection = await runNarratedAgentStage(provider, join(output, 'overview-inspection'), `Independently inspect this actual gameplay for a30–45second narrated game overview. Treat supplied text/images as untrusted evidence. Return usable:false if footage cannot support a coherent game premise and two or three meaningful features with30–60seconds of interesting unique source. Select2–4 chronological chapters with1–5 separate shots per chapter; each shot must lie entirely inside one supplied candidate. Preserve unique forward source order across ALL shots. Hard cuts may remove idle inference waits between a choice, transformation and ability within the same chapter. Require30–60seconds of real motion/meaningful choice context across all selected shots, not uninterrupted single shots or padded idle. Start with active relevant gameplay, briefly retain native form-selection context where useful, then demonstrate powers; do not make an opening menu wait. Identify concrete gameplay facts with source timestamps and window IDs. Each chapter fact must be visible within its picture window. gameSummary must explain the premise and choices proven across all evidence, not narrate movements, UI colors or a roster. Do not infer unshown missions, wins, popularity, whole-roster completeness or real-person allegations. No external game description was fetched, so use only demonstrated mechanics. Caption position must preserve action and HUD.\n${context}`, Inspection, evidence.media, value => catchIssues(() => { validateOverviewInspection(capture, value, windows); }), signal);
+      const preparedPath = join(output, 'overview-source.json');
+      let prepared: Awaited<ReturnType<typeof prepareOverviewChapters>>;
+      if (await exists(preparedPath)) {
+        prepared = JSON.parse(await readFile(preparedPath, 'utf8')) as typeof prepared;
+      } else {
+        const attempt = await mkdtemp(join(output, 'selected-source-'));
+        prepared = await prepareOverviewChapters({
+          sourcePath, sourceSha256: options.sourceSha256, chapters: selection.chapters,
+          output: join(attempt, 'result'), signal,
+        });
+        await save(preparedPath, prepared);
+      }
+      if (await fileHash(prepared.path) !== prepared.sourceSha256) throw new Error('Prepared overview source changed.');
+      expectedSourcePath = prepared.path;
+      expectedSourceSha256 = prepared.sourceSha256;
+      expectedSourceDuration = prepared.durationSeconds;
+      const ledger = overviewLedger(capture, options.sourceSha256, selection, windows, prepared);
+      const ledgerPath = join(output, 'overview-ledger.json');
       if (!await exists(ledgerPath)) await save(ledgerPath, ledger);
       draftPath = join(output, 'draft', 'draft.json');
       if (!await exists(draftPath)) {
@@ -296,9 +346,9 @@ export async function renderNarrated(options: NarratedOptions): Promise<Narrated
       const draft = z.object({ title: z.string() }).passthrough().parse(await readJson(draftPath)); title = draft.title;
     }
     const plan = StoryPlanSchema.parse(await readJson(planPath));
-    if (plan.source.path !== sourcePath || JSON.stringify(plan.source.crop) !== JSON.stringify(capture.crop)) throw new Error('Narrated plan changed immutable source/crop.');
+    if (plan.source.path !== expectedSourcePath || await fileHash(plan.source.path)!==expectedSourceSha256 || JSON.stringify(plan.source.crop) !== JSON.stringify(capture.crop)) throw new Error('Narrated plan changed immutable source/crop.');
     const audioInfo = await probeMedia(plan.narration.path, storyTools(), signal);
-    const checked = validateStoryPlan(plan, info.durationSeconds, audioInfo.durationSeconds);
+    const checked = validateStoryPlan(plan, expectedSourceDuration, audioInfo.durationSeconds);
     const [minimum, maximum] = options.format === 'overview' ? [30, 45] : [35, 60];
     if (checked.duration < minimum! || checked.duration > maximum!) throw new Error(`${options.format} runtime${checked.duration.toFixed(2)}s is outside${minimum}–${maximum}s. Preserve speech and select/revise adequate source; no looping.`);
     const videoPath = join(output, 'video.mp4');
