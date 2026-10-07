@@ -17,7 +17,7 @@ export interface GameInspection {
   viewport: { width: number; height: number }; setup: UiStep[];
 }
 export interface LearnedGame { profile?: GameProfile; evidence: string[]; limitations: string[] }
-export const isObservedStartLabel = (label: string) => /^(?:start(?:\s+(?:game|shift|run|playing))?|play(?:\s+now)?|begin|enter arena)$/i.test(label.trim());
+export const isObservedStartLabel = (label: string) => /^(?:start(?:\s+(?:game|shift|run|playing))?|play(?:\s+now)?|begin|enter arena|deploy(?:\s*↗)?)$/i.test(label.trim());
 
 /** Observe ordinary DOM/UI only. A single clearly labeled Start/Play reveals actual controls. */
 export async function inspectGame(candidate: GameCandidate, outputDir: string, signal?: AbortSignal): Promise<GameInspection> {

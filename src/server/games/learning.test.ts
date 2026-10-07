@@ -82,9 +82,12 @@ test('inspection provenance mismatch fails before any provider call', async t =>
   await assert.rejects(learnGameProfile(inspection, candidate, google), /does not belong/);
 });
 
-test('the inspector recognizes the observed ENTER ARENA label without broadening to unrelated buttons', () => {
+test('the inspector recognizes observed game-start labels without broadening to unrelated buttons', () => {
   assert.equal(isObservedStartLabel('ENTER ARENA'), true);
   assert.equal(isObservedStartLabel('Start Shift'), true);
+  assert.equal(isObservedStartLabel('DEPLOY ↗'), true);
+  assert.equal(isObservedStartLabel('Deploy'), true);
+  assert.equal(isObservedStartLabel('Deploy update'), false);
   assert.equal(isObservedStartLabel('ENTER SHOP'), false);
   assert.equal(isObservedStartLabel('Play ad for reward'), false);
 });
@@ -114,16 +117,16 @@ test('the learning request supplies exact native-input wire examples', async t =
   assert.ok((await learnGameProfile(inspection, candidate, google)).profile);
 });
 
-test('inspection clicks an observed menu before waiting for its hidden game canvas', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
+for (const label of ['START RUN', 'DEPLOY ↗']) test(`inspection clicks ${label} before waiting for its hidden game canvas`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
   const { outputDir, candidate } = await fixture(t);
   const browser = await chromium.launch({ channel: 'chromium', headless: true });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 720, height: 1280 } });
   await page.setContent('<style>body{margin:0}iframe{width:600px;height:1100px;border:0}button{position:absolute;z-index:2;top:0;left:0}</style><button aria-label="Start playing" onclick="this.remove()">Open game</button><iframe title="Astrocade Game"></iframe>');
   const frame = page.frames()[1]!;
-  await frame.setContent('<style>body{margin:0;background:#123}canvas{display:none;background:#24b}button{margin:100px;width:200px;height:80px}</style><button id="start">START RUN</button><canvas width="600" height="1100"></canvas><script>document.querySelector("button").onclick=event=>{document.body.dataset.trusted=String(event.isTrusted);document.querySelector("button").remove();document.querySelector("canvas").style.display="block"}</script>');
+  await frame.setContent(`<style>body{margin:0;background:#123}canvas{display:none;background:#24b}button{margin:100px;width:200px;height:80px}</style><button id="start">${label}</button><canvas width="600" height="1100"></canvas><script>document.querySelector("button").onclick=event=>{document.body.dataset.trusted=String(event.isTrusted);document.querySelector("button").remove();document.querySelector("canvas").style.display="block"}</script>`);
   const inspection = await inspectGamePage(page, candidate.url, outputDir);
-  assert.deepEqual(inspection.performedStart, { selector: '#start', label: 'START RUN' });
+  assert.deepEqual(inspection.performedStart, { selector: '#start', label });
   assert.equal(inspection.ready.selector, '#start');
   assert.equal(inspection.surface.selector, ':nth-match(canvas, 1)');
   assert.equal(await frame.locator('body').getAttribute('data-trusted'), 'true');
