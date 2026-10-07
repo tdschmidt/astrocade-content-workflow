@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "node --import tsx --watch src/server/index.ts",
     "start": "node --import tsx src/server/index.ts",
+    "pipeline": "node --import tsx src/core/cli.ts",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",

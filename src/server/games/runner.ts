@@ -3,7 +3,7 @@ import type { Page } from 'playwright';
 import { createGameCapture, type CaptureArtifact, type CaptureOptions, type GameCapture } from '../media/recorder.js';
 import { isAllowedGameUrl } from './discovery.js';
 import { gameBounds, InputExecutor, locate, withAbort, type GameBounds } from './input.js';
-import { controlDecisionSchema, gameProfileSchema, type GameProfile, type InputAction } from './schema.js';
+import { controlDecisionSchema, gameProfileSchema, type GameProfile, type InputAction, type UiStep } from './schema.js';
 
 export type CaptureFailure = 'unreachable' | 'offline' | 'authentication_required' | 'unverified_profile' | 'missing_controls' | 'controller_unavailable' | 'canceled' | 'capture_failed';
 export class GameCaptureError extends Error {
@@ -22,6 +22,7 @@ export type GameplayObservation = {
   signal: AbortSignal;
 };
 export type CaptureProgress = { stage: 'loading' | 'ready' | 'recording' | 'deciding' | 'finalizing'; message: string };
+export type ActionProgress = { phase: 'setup' | 'start' | 'control'; status: 'started' | 'completed'; action: UiStep; recordingElapsedMs: number | null };
 export type CaptureAttemptResult = {
   attemptId: string;
   gameUrl: string;
@@ -50,6 +51,7 @@ export async function runCaptureAttempt(options: {
   outputPath: string;
   signal?: AbortSignal;
   onProgress?: (progress: CaptureProgress) => void;
+  onAction?: (action: ActionProgress) => void;
   decide?: (observation: GameplayObservation) => Promise<unknown>;
   allowUnverified?: boolean;
   allowLocalGame?: boolean;
@@ -75,6 +77,10 @@ export async function runCaptureAttempt(options: {
   const controlSignal = options.signal ? AbortSignal.any([options.signal, budget.signal]) : budget.signal;
   let timer: NodeJS.Timeout | undefined;
   let recordingStarted = 0;
+  const perform = async (phase: ActionProgress['phase'], action: UiStep, execute: () => Promise<void>) => {
+    const emit = (status: ActionProgress['status']) => options.onAction?.({ phase, status, action, recordingElapsedMs: recordingStarted ? Math.round(performance.now() - recordingStarted) : null });
+    emit('started'); await execute(); emit('completed');
+  };
   let stopReason: CaptureAttemptResult['stopReason'] = 'actions_complete';
   const decisions: CaptureAttemptResult['decisions'] = [];
   let lastBounds: GameBounds | undefined;
@@ -88,7 +94,7 @@ export async function runCaptureAttempt(options: {
     if (/you(?:'|’)re offline|you are offline|check your internet connection/i.test(body)) throw new GameCaptureError('offline', 'Astrocade displayed its offline page. No gameplay was captured.');
     if (/\/login(?:\/|\?|$)/.test(page.url())) throw new GameCaptureError('authentication_required', 'The game requires sign-in; this profile does not supply an Astrocade session.');
     try {
-      for (const step of profile.setup) await executor.step(step);
+      for (const step of profile.setup) await perform('setup', step, () => executor.step(step));
       await withAbort(locate(page, profile.ready).waitFor({ state: 'visible', timeout: 10000 }), options.signal);
       await withAbort(locate(page, profile.surface).waitFor({ state: 'visible', timeout: 10000 }), options.signal);
     } catch (error) {
@@ -103,13 +109,13 @@ export async function runCaptureAttempt(options: {
     executor = new InputExecutor(page, profile.surface, controlSignal);
     options.onProgress?.({ stage: 'recording', message: 'Recording real gameplay.' });
     try {
-      for (const step of profile.start) await executor.step(step);
+      for (const step of profile.start) await perform('start', step, () => executor.step(step));
       lastBounds = await gameBounds(page, profile.surface).catch(() => lastBounds!);
       if (profile.focus === 'click') await executor.step({ type: 'click', target: profile.surface });
       else await withAbort(locate(page, profile.surface).focus(), controlSignal);
       if (profile.controller.type === 'timed') {
         for (let iteration = 0; iteration < profile.controller.repetitions; iteration++) {
-          for (const action of profile.controller.actions) await executor.execute(action);
+          for (const action of profile.controller.actions) await perform('control', action, () => executor.execute(action));
         }
       } else {
         stopReason = 'decision_limit';
@@ -127,7 +133,7 @@ export async function runCaptureAttempt(options: {
           if (decision.stop) { stopReason = 'model_stop'; break; }
           if (!decision.actions.length) throw new GameCaptureError('missing_controls', 'The controller supplied neither an action nor a stop decision.');
           previousActions = decision.actions;
-          for (const action of decision.actions) await executor.execute(action);
+          for (const action of decision.actions) await perform('control', action, () => executor.execute(action));
         }
       }
     } catch (error) {
