@@ -49,11 +49,12 @@ supported and high confidence require visible evidence. Record limitations hones
   } else if (proposal.start.some(step => step.type === 'button' && !inspection.startTargets[step.index])) {
     result.limitations.push('The proposed start button was not observed; feedback mode skipped this game.');
   } else {
+    const startTargetFrames = inspection.startTargetFrames ?? inspection.surface.frames;
     const start: UiStep[] = knownStart
       ? [...inspection.performedVisualStart ?? [], ...(inspection.performedStart ? [
-        { type: 'click' as const, target: { selector: inspection.performedStart.selector, frames: inspection.surface.frames } }, { type: 'wait' as const, durationMs: 250 },
+        { type: 'click' as const, target: { selector: inspection.performedStart.selector, frames: startTargetFrames } }, { type: 'wait' as const, durationMs: 250 },
       ] : [])]
-      : proposal.start.map(step => step.type === 'button' ? { type: 'click', target: { selector: inspection.startTargets[step.index]!.selector, frames: inspection.surface.frames } } : step);
+      : proposal.start.map(step => step.type === 'button' ? { type: 'click', target: { selector: inspection.startTargets[step.index]!.selector, frames: startTargetFrames } } : step);
     result.profile = gameProfileSchema.parse({
       id: `feedback-${candidate.id.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60)}`, name: candidate.title, gameUrl: inspection.gameUrl,
       verification: 'unverified', verificationNotes: 'Learned visible mechanics; outcome still requires current-session feedback and independent footage review.',

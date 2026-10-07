@@ -140,7 +140,10 @@ export async function runCaptureAttempt(options: {
           const observationId = `${attemptId}:${index}`;
           const clip = await withAbort(gameBounds(page, profile.surface), controlSignal);
           const image = await withAbort(page.screenshot({ clip, type: 'jpeg', quality: 70, timeout: 5000 }), controlSignal);
-          const text = await withAbort(locate(page, profile.surface).evaluate(element => element.ownerDocument.body.innerText.slice(0, 6000)), controlSignal);
+          const surface = locate(page, profile.surface);
+          const textSurface = await withAbort(surface.evaluate(element => element.tagName === 'IFRAME'), controlSignal)
+            ? surface.contentFrame().locator('body') : surface;
+          const text = await withAbort(textSurface.evaluate(element => element.ownerDocument.body.innerText.slice(0, 6000)), controlSignal);
           const elapsedMs = Math.round(performance.now() - recordingStarted);
           const remainingMs = Math.max(0, profile.maxDurationMs - elapsedMs);
           if (remainingMs < 2000) { stopReason = 'duration_limit'; break; }

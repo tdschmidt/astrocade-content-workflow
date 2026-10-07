@@ -254,7 +254,7 @@ test('literal action types use singleton enums on the wire and invalid aliases s
     requests++;
     const body = JSON.parse(input instanceof Request ? await input.clone().text() : String(init?.body));
     const alternatives = body.response_format.schema.properties.actions.items.oneOf;
-    assert.deepEqual(alternatives.map((branch: any) => branch.properties.type.enum), [['key'], ['tap'], ['drag'], ['wait']]);
+    assert.deepEqual(alternatives.map((branch: any) => branch.properties.type.enum), [['key'], ['tap'], ['drag'], ['path'], ['wait']]);
     assert.ok(alternatives.every((branch: any) => branch.properties.type.const === undefined));
     assert.equal(alternatives[0].properties.durationMs.maximum, 2000);
     return Response.json({ id: 'fixture', status: 'completed', steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify(output) }] }] });

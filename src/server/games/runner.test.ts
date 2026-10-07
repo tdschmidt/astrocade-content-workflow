@@ -77,6 +77,18 @@ test('sparse feedback observes actual input effects and reserves its last call f
   assert.equal(lifecycle.close, 1);
 });
 
+test('a pointer-only plan reaches visible HTML controls over its canvas without an extra center click', browserTest, async t => {
+  const html = `<!doctype html><style>body{margin:0}canvas{display:block}#interface{position:absolute;inset:0 auto auto 0;width:320px;height:320px}button{position:absolute;left:120px;top:240px;width:80px;height:40px}</style>
+<canvas width="320" height="320"></canvas><div id="interface"><button>SPIN</button></div><p id="hud">spins: 0; center: 0; trusted: false</p>
+<script>let spins=0,center=0;document.querySelector('#interface').onclick=e=>{if(e.target.tagName==='BUTTON')spins++;else center++;document.querySelector('#hud').textContent='spins: '+spins+'; center: '+center+'; trusted: '+e.isTrusted}</script>`;
+  const { options, lifecycle } = await fixture(t, 10000, html);
+  options.profile.controller = { type: 'timed', repetitions: 1, actions: [{ type: 'tap', point: { x: 0.5, y: 0.8125 } }] };
+  const result = await runCaptureAttempt(options);
+  assert.equal(result.actionsExecuted, 1);
+  assert.equal(lifecycle.finalText, 'spins: 1; center: 0; trusted: true');
+  assert.equal(lifecycle.cancel, 0);
+});
+
 test('a later controller failure preserves recorded gameplay with an explicit error', browserTest, async t => {
   const { options, lifecycle } = await fixture(t);
   let calls = 0;

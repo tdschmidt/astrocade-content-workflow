@@ -60,6 +60,7 @@ test('observed fixed controls allow an unverified probe without implying a likel
   const learned = await learnGameProfile(inspection, candidate, google);
   assert.equal(learned.profile?.verification, 'unverified');
   assert.deepEqual(learned.limitations, ['Coworker timing varies; avoiding detection and winning are unproven.']);
+  assert.equal(learned.profile?.focus, 'focus', 'pointer plans must not add an unobserved center click before their first action');
 });
 
 test('a model cannot select an unobserved start button', async t => {
@@ -386,13 +387,13 @@ for (const { label, gameSetup, allowed } of [
   assert.match(saved.reason, /free sandwich.*setup/);
 });
 
-for (const scenario of ['DOM instructions', 'canvas instructions', 'missing return', 'broken return'] as const) test(`help inspection handles ${scenario} with one native round trip before New World`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
+for (const scenario of ['DOM instructions', 'canvas instructions', 'symbol close', 'missing return', 'broken return'] as const) test(`help inspection handles ${scenario} with one native round trip before New World`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
   const { outputDir, candidate, proposal } = await fixture(t);
   const browser = await chromium.launch({ channel: 'chromium', headless: true });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 720, height: 1280 } });
   const helpName = scenario === 'canvas instructions' ? 'Controls' : 'How to Play';
-  const returnName = scenario === 'canvas instructions' ? 'Close' : 'Back';
+  const returnName = scenario === 'symbol close' ? '×' : scenario === 'canvas instructions' ? 'Close' : 'Back';
   const loadFixture = async () => {
     await page.setContent('<style>body{margin:0}iframe{width:600px;height:1100px;border:0}button{position:absolute;z-index:2;top:0;left:0}</style><button aria-label="Start playing" onclick="this.remove()">Open game</button><iframe title="Astrocade Game"></iframe>');
     await page.frames()[1]!.setContent(`<style>body{margin:0;background:#123;color:white}button{width:240px;height:80px}#board,#help{display:none}</style>
@@ -427,7 +428,7 @@ for (const scenario of ['DOM instructions', 'canvas instructions', 'missing retu
   assert.equal(await page.frames()[1]!.locator('body').getAttribute('data-clicks'), 'help:true,return:true,start:true,');
   assert.equal(JSON.parse(await readFile(join(outputDir, 'inspection-help.json'), 'utf8')).returnCompleted, true);
   assert.equal(JSON.parse(await readFile(join(outputDir, 'inspection.json'), 'utf8')).help.imagePath, inspection.help!.imagePath);
-  if (scenario === 'DOM instructions') assert.match(inspection.text, /Observed help panel:\nHold ArrowRight to walk/);
+  if (scenario !== 'canvas instructions') assert.match(inspection.text, /Observed help panel:\nHold ArrowRight to walk/);
   else assert.doesNotMatch(inspection.help!.text, /ArrowRight/, 'canvas instructions must be carried by the saved raster');
   const helpImage = (await readFile(inspection.help!.imagePath)).toString('base64');
   const { start: _start, ...withoutStart } = proposal;

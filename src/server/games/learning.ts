@@ -13,6 +13,8 @@ export interface GameInspection {
   gameUrl: string; observedAt: string; outputDir: string; imagePath: string; beforeImagePath: string;
   text: string; surface: SurfaceLocator; ready: SurfaceLocator;
   startTargets: { selector: string; label: string }[];
+  /** DOM buttons stay inside the game frame even when its viewport is the surface. */
+  startTargetFrames?: string[];
   performedStart?: { selector: string; label: string };
   performedVisualStart?: InputAction[];
   help?: { text: string; imagePath: string; opened: { selector: string; label: string }; returned: { selector: string; label: string } };
@@ -23,7 +25,7 @@ export interface CaptureIntent { captureGoal?: string; rejectIf?: string; maxDur
 export const isObservedStartLabel = (label: string) => /^(?:start(?:\s+(?:game|shift|run|playing))?|play(?:\s+now)?|new (?:game|world)|begin|enter arena|deploy(?:\s*↗)?)$/i.test(label.trim());
 const isObservedSetupLabel = (label: string) => /^(?:choose|continue)$/i.test(label.trim());
 const helpLabel = /^(?:how to play|controls)$/i;
-const helpReturnLabel = /^(?:back(?: to (?:main )?menu)?|close)$/i;
+const helpReturnLabel = /^(?:back(?: to (?:main )?menu)?|close|done|×)$/i;
 
 /** Observe ordinary UI; bounded menu clicks reveal the game without guessing gameplay. */
 export async function inspectGame(candidate: GameCandidate, outputDir: string, signal?: AbortSignal, provider?: Pick<Inference, 'json'>): Promise<GameInspection> {
@@ -188,10 +190,10 @@ If a qualifying start/skip or game-setup confirmation is visible, set loading=fa
       if (!setupChoice && !/^tap to skip$/i.test(decision.label.trim())) break;
     }
   }
-  await withAbort(frame.locator('canvas:visible').first().waitFor({ state: 'visible', timeout: 10000 }), signal);
   const canvas = await observedCanvas();
-  if (!canvas) throw new Error('No visible game canvas was observed after the menu inspection.');
-  const surface = { selector: canvas.selector, frames: gameFrames };
+  // HTML games have no canvas. Keep the fixed game-frame viewport as their
+  // coordinate space; the surrounding page is never part of gameplay.
+  const surface = canvas ? { selector: canvas.selector, frames: gameFrames } : { selector: gameFrames[0]!, frames: [] };
   const imagePath = join(directory, 'inspection.png');
   await writeFile(imagePath, await page.screenshot({ clip: await gameBounds(page, surface) }), { flag: 'wx' });
   const afterText = (await frame.locator('body').innerText()).slice(0, 6000);
@@ -199,7 +201,7 @@ If a qualifying start/skip or game-setup confirmation is visible, set loading=fa
     gameUrl, observedAt: new Date().toISOString(), outputDir: directory, imagePath, beforeImagePath,
     text: [performedStart || performedVisualStart.length || afterText !== beforeText ? `Before Start:\n${beforeText}\nAfter Start:\n${afterText}` : beforeText, ...(help ? [`Observed help panel:\n${help.text}`] : [])].join('\n'),
     surface, ready: visualStartSurface ?? (performedStart ? { selector: performedStart.selector, frames: gameFrames } : surface),
-    startTargets, performedStart, ...(performedVisualStart.length ? { performedVisualStart } : {}), ...(help ? { help } : {}), viewport, setup,
+    startTargets, startTargetFrames: gameFrames, performedStart, ...(performedVisualStart.length ? { performedVisualStart } : {}), ...(help ? { help } : {}), viewport, setup,
   };
   const sameStartSurface = !performedVisualStart.length || (
     visualStartSurface?.selector === surface.selector && JSON.stringify(visualStartSurface.frames) === JSON.stringify(surface.frames) && visualStartCanvas !== null &&
@@ -278,7 +280,8 @@ ${intent.maxDurationMs === undefined ? 'Prefer 10–25 seconds' : `The recording
     else result.profile = gameProfileSchema.parse({
       id: `learned-${candidate.id.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60)}`, name: candidate.title, gameUrl: inspection.gameUrl,
       verification: 'unverified', verificationNotes: 'Learned from a saved live inspection. Requires two fresh successful capture probes; model confidence is not verification.',
-      viewport: inspection.viewport, surface: inspection.surface, ready: inspection.ready, setup: inspection.setup, start, focus: 'click',
+      viewport: inspection.viewport, surface: inspection.surface, ready: inspection.ready, setup: inspection.setup, start,
+      focus: proposal.actions.some(action => action.type === 'key') ? 'click' : 'focus',
       objective: proposal.objective, maxDurationMs: intent.maxDurationMs ?? Math.max(10_000, milliseconds + 2500), controller: { type: 'timed', repetitions: 1, actions: proposal.actions },
     });
   }
