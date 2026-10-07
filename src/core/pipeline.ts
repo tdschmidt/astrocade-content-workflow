@@ -102,10 +102,34 @@ export async function runPipeline(options: {
   try {
     store = await JsonStore.open(join(directory, 'run.json'), coreRunSchema, coreRunSchema.parse({ version: 1, id: basename(directory), createdAt: new Date().toISOString(), model: options.model, status: 'running' }));
     await store.update(run => { run.model = options.model; run.status = 'running'; delete run.error; });
-    const google = new GoogleServices(settings, event => trace.event(`provider.${event.stage}`, event.status, event.message ?? `${event.model ?? 'Files API'} attempt ${event.attempt}`, event));
+    let google: GoogleServices | undefined;
+    const getGoogle = () => google ??= new GoogleServices(settings, event => trace.event(`provider.${event.stage}`, event.status, event.message ?? `${event.model ?? 'Files API'} attempt ${event.attempt}`, event));
     const save = async (change: (run: CoreRun) => void) => { await store!.update(change); await report(directory, store!.read()); };
     const updateAttempt = async (gameId: string, change: (attempt: CoreRun['attempts'][number]) => void) => save(run => change(run.attempts.find(item => item.gameId === gameId)!));
+    const verifySource = async (attempt: CoreRun['attempts'][number]) => {
+      if (attempt.capture && await hashFile(attempt.capture.path) !== attempt.sourceSha256) throw new Error(`Saved source changed for ${attempt.capture.game.title}. Start a new run instead of reusing stale edit decisions.`);
+    };
+    const finish = async () => {
+      // Reconstruct derived posting copy even if the previous process stopped after saving videoPath.
+      await writeFile(join(directory, 'caption.txt'), `${store!.read().script!.caption}\n`, { mode: 0o600 });
+      await save(run => { run.status = 'complete'; });
+      trace.event('run', 'completed', `Video and evidence: ${directory}`);
+      return store!.read();
+    };
     trace.event('run', 'started', `Target stage: ${stage}. Completed artifacts will be reused.`, { model: options.model });
+    const saved = store.read();
+    if (saved.shortlist.length && options.game && !saved.shortlist.some(choice => {
+      const game = saved.candidates.find(candidate => candidate.id === choice.gameId)!;
+      return game.id === options.game || canonicalGameUrl(game.url) === canonicalGameUrl(options.game!) || new URL(game.url).pathname.split('/').at(-2) === options.game;
+    })) throw new Error('A saved shortlist cannot be changed while resuming. Start a new run for a different game.');
+    if (saved.videoPath) {
+      if (!saved.script || !saved.attempts.some(attempt => attempt.gameId === saved.selectedGameId && attempt.capture)) throw new Error('The saved video is missing its source or edit decisions. Start a new run.');
+      for (const attempt of saved.attempts) await verifySource(attempt);
+      if (await hashFile(saved.videoPath) !== saved.videoSha256) throw new Error('The finished video was modified outside the workflow. Start a new run.');
+      await services.validateVideo(saved.videoPath, config.mediaTools, options.signal);
+      trace.event('render', 'reused', 'The completed video passed validation. No candidate work is repeated.');
+      return await finish();
+    }
     if (stage === 'edit' && !store.read().attempts.some(attempt => attempt.capture)) throw new Error('Editing needs a saved recording. Use --resume with a run that completed capture.');
 
     if (!store.read().candidates.length) {
@@ -123,14 +147,11 @@ export async function runPipeline(options: {
         const game = candidates.find(candidate => candidate.id === options.game || canonicalGameUrl(candidate.url) === canonicalGameUrl(options.game!) || new URL(candidate.url).pathname.split('/').at(-2) === options.game);
         if (!game) throw new Error('The requested game is not in this run’s discovered catalog. Use an exact ID, slug, or URL from discovery.json.');
         shortlist = [{ gameId: game.id, hypothesis: 'Operator-selected candidate; suitability still requires actual play.', viewerQuestion: 'What visible decision and consequence does this game offer?', controlRisk: 'Inspect the actual controls before capturing.' }];
-      } else shortlist = await services.nominateGames(candidates, verifiedProfiles, google, limit, options.signal);
+      } else shortlist = await services.nominateGames(candidates, verifiedProfiles, getGoogle(), limit, options.signal);
       await save(run => { run.shortlist = shortlist; run.attempts = shortlist.map(item => attemptSchema.parse({ gameId: item.gameId })); });
       trace.artifact('shortlist.json', shortlist);
       trace.event('shortlist', 'completed', 'Provisional choices saved. Actual recordings will determine the edit.', shortlist);
-    } else if (options.game && !store.read().shortlist.some(choice => {
-      const game = store!.read().candidates.find(candidate => candidate.id === choice.gameId)!;
-      return game.id === options.game || game.url === options.game || new URL(game.url).pathname.split('/').at(-2) === options.game;
-    })) throw new Error('A saved shortlist cannot be changed while resuming. Start a new run for a different game.');
+    }
     if (stage === 'discover') { await save(run => { run.status = 'paused'; }); return store.read(); }
 
     for (const choice of store.read().shortlist) {
@@ -139,10 +160,10 @@ export async function runPipeline(options: {
       let attempt = store.read().attempts.find(item => item.gameId === game.id)!;
       if (attempt.unsupported) continue;
       if (attempt.capture) {
-        if (await hashFile(attempt.capture.path) !== attempt.sourceSha256) throw new Error(`Saved source changed for ${game.title}. Start a new run instead of reusing stale edit decisions.`);
+        await verifySource(attempt);
         trace.event('capture', 'reused', `Reusing ${game.title}'s completed recording.`); continue;
       }
-      if (stage === 'edit') continue;
+      if (stage === 'edit' || store.read().script) continue;
       const gameDir = join(directory, `game-${game.id.replace(/[^a-zA-Z0-9-]/g, '')}`);
       await mkdir(gameDir, { recursive: true });
       try {
@@ -152,7 +173,7 @@ export async function runPipeline(options: {
           const inspection = await services.inspectGame(game, inspectionDir, options.signal);
           await updateAttempt(game.id, item => { item.inspectionPath = join(inspectionDir, 'inspection.json'); });
           const preset = verifiedProfiles.find(profile => canonicalGameUrl(profile.gameUrl) === canonicalGameUrl(game.url));
-          const learned = preset ? { profile: preset, evidence: [preset.verificationNotes ?? 'Previously tested native controls.'], limitations: ['A tested control sequence does not guarantee a win or a useful event in this attempt.'] } : await services.learnGameProfile(inspection, game, google, options.signal);
+          const learned = preset ? { profile: preset, evidence: [preset.verificationNotes ?? 'Previously tested native controls.'], limitations: ['A tested control sequence does not guarantee a win or a useful event in this attempt.'] } : await services.learnGameProfile(inspection, game, getGoogle(), options.signal);
           await updateAttempt(game.id, item => { item.profile = learned.profile; item.evidence = learned.evidence; item.limitations = learned.limitations; item.unsupported = !learned.profile; });
           trace.artifact(`controls-${game.id}.json`, learned);
           trace.event('learn', learned.profile ? 'completed' : 'unsupported', `${game.title}: ${learned.profile ? 'bounded controls prepared' : 'no supported control plan'}.`, learned);
@@ -187,10 +208,10 @@ export async function runPipeline(options: {
     if (!store.read().attempts.some(attempt => attempt.capture)) throw new Error('No candidate produced a recording. Inspect report.md and the saved control evidence; resume to retry failed attempts.');
     if (stage === 'capture') { await save(run => { run.status = 'paused'; }); return store.read(); }
 
-    for (const attempt of store.read().attempts) {
+    for (const attempt of store.read().script ? [] : store.read().attempts) {
       if (!attempt.capture || attempt.capture.analysis) continue;
       trace.event('analyze', 'started', `Finding a visible decision and consequence in ${attempt.capture.game.title}.`);
-      const analysis = await services.analyzeFootage(attempt.capture, google, options.signal);
+      const analysis = await services.analyzeFootage(attempt.capture, getGoogle(), options.signal);
       await updateAttempt(attempt.gameId, item => { item.capture!.analysis = analysis; item.analysisModel = options.model; });
       trace.artifact(`analysis-${attempt.gameId}.json`, analysis);
       trace.event('analyze', analysis.usable ? 'completed' : 'rejected', analysis.reason, analysis);
@@ -201,30 +222,21 @@ export async function runPipeline(options: {
       const selected = usable[0]!;
       await save(run => { run.selectedGameId = selected.gameId; });
       trace.event('select', 'completed', `Selected ${selected.capture!.game.title} from observed footage, using visual score and verified action windows.`, usable.map(item => ({ game: item.capture!.game.title, score: item.capture!.analysis!.visualScore, reason: item.capture!.analysis!.reason })));
-      const script = await services.draftScript({ capture: selected.capture!, format: 'highlight', topic: '' }, google, options.signal);
+      const script = await services.draftScript({ capture: selected.capture!, format: 'highlight', topic: '' }, getGoogle(), options.signal);
       await save(run => { run.script = script; run.scriptModel = options.model; });
       trace.artifact('edit.json', script);
       trace.event('edit', 'completed', script.rationale, { hook: script.hook, cuts: script.cuts });
     }
     const run = store.read();
     const selected = run.attempts.find(item => item.gameId === run.selectedGameId)!.capture!;
-    if (run.videoPath) {
-      if (await hashFile(run.videoPath) !== run.videoSha256) throw new Error('The finished video was modified outside the workflow. Start a new run.');
-      await services.validateVideo(run.videoPath, config.mediaTools, options.signal);
-      trace.event('render', 'reused', 'The completed video passed validation.');
-    } else {
-      // A crash between rendering and saving the manifest cannot block a later render.
-      const outputPath = join(directory, `highlight-${randomUUID().slice(0, 8)}.mp4`);
-      trace.event('render', 'started', 'Rendering a portrait highlight from the verified cuts.');
-      const artifact = await services.renderPortrait({ outputPath, cuts: run.script!.cuts.map(cut => ({ ...cut, path: selected.path, crop: selected.crop })), hook: run.script!.hook, attribution: `${selected.game.title} · ${selected.game.creator ?? 'Astrocade'}`, ffmpeg: config.mediaTools, signal: options.signal });
-      const videoSha256 = await hashFile(artifact.path);
-      await save(state => { state.videoPath = artifact.path; state.videoSha256 = videoSha256; });
-      await writeFile(join(directory, 'caption.txt'), `${run.script!.caption}\n`, { mode: 0o600 });
-      trace.event('render', 'completed', `${artifact.durationSeconds.toFixed(2)}-second video ready. Publishing is manual.`, artifact);
-    }
-    await save(run => { run.status = 'complete'; });
-    trace.event('run', 'completed', `Video and evidence: ${directory}`);
-    return store.read();
+    // A crash between rendering and saving the manifest cannot block a later render.
+    const outputPath = join(directory, `highlight-${randomUUID().slice(0, 8)}.mp4`);
+    trace.event('render', 'started', 'Rendering a portrait highlight from the verified cuts.');
+    const artifact = await services.renderPortrait({ outputPath, cuts: run.script!.cuts.map(cut => ({ ...cut, path: selected.path, crop: selected.crop })), hook: run.script!.hook, attribution: `${selected.game.title} · ${selected.game.creator ?? 'Astrocade'}`, ffmpeg: config.mediaTools, signal: options.signal });
+    const videoSha256 = await hashFile(artifact.path);
+    await save(state => { state.videoPath = artifact.path; state.videoSha256 = videoSha256; });
+    trace.event('render', 'completed', `${artifact.durationSeconds.toFixed(2)}-second video ready. Publishing is manual.`, artifact);
+    return await finish();
   } catch (error) {
     const detail = message(error, settings.geminiApiKey);
     trace.event('run', 'failed', detail);

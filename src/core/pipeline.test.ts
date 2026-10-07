@@ -33,7 +33,7 @@ async function fixture(t: TestContext) {
     renderPortrait: async options => { calls.render++; await writeFile(options.outputPath, 'SYNTHETIC final, not actual video'); return { path: options.outputPath, durationSeconds: 6, width: 1080, height: 1920, hasAudio: false }; },
     validateVideo: async () => { calls.validate++; return { durationSeconds: 6, sizeBytes: 32, video: { width: 1080, height: 1920, codec: 'h264', frameRate: 30 } }; },
   };
-  return { directory: join(directory, 'run'), config, services, calls };
+  return { directory: join(directory, 'run'), config, services, calls, candidate };
 }
 
 test('SYNTHETIC core run resumes after analysis failure without rediscovery or recapture', async t => {
@@ -75,4 +75,63 @@ test('a live run lock rejects a second writer before discovery', async t => {
   await writeFile(join(directory, '.lock'), String(process.pid));
   await assert.rejects(runPipeline({ directory, model: 'fixture-model', quiet: true }, config, services), /already open/);
   assert.equal(calls.discover, 0);
+});
+
+test('completed runs remain complete without retrying failed candidates, even for an earlier stage', async t => {
+  const { directory, config, services, calls, candidate } = await fixture(t);
+  const discover = services.discoverGames!, capture = services.runCaptureAttempt!;
+  services.discoverGames = async (...args) => ({ ...await discover(...args), candidates: [candidate, { ...candidate, id: 'retry' }] });
+  services.nominateGames = async () => ['fixture', 'retry'].map(gameId => ({ gameId, hypothesis: 'Fixture', viewerQuestion: 'Fixture?', controlRisk: 'Fixture' }));
+  services.runCaptureAttempt = async (...args) => {
+    if (args[0].outputPath.includes('game-retry')) { calls.capture++; throw new Error('Candidate failed'); }
+    return capture(...args);
+  };
+  const options = { directory, model: 'fixture-model', quiet: true };
+  const first = await runPipeline(options, config, services);
+  assert.equal(first.status, 'complete');
+  for (const stage of ['all', 'capture', 'discover'] as const) {
+    const resumed = await runPipeline({ ...options, stage }, config, services);
+    assert.equal(resumed.status, 'complete');
+    assert.equal(resumed.videoPath, first.videoPath);
+  }
+  assert.deepEqual(calls, { discover: 1, inspect: 2, capture: 2, analyze: 1, draft: 1, render: 1, validate: 3 });
+});
+
+test('saved video resumes without a provider key and repairs a missing caption after interrupted finalization', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const options = { directory, model: 'fixture-model', quiet: true };
+  const first = await runPipeline(options, config, services);
+  await rm(join(directory, 'caption.txt'));
+  const state = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
+  state.status = 'running';
+  await writeFile(join(directory, 'run.json'), JSON.stringify(state));
+  const noKey: Configuration = Object.assign(Object.create(config), { get: () => ({ ...config.get(), geminiApiKey: '' }) });
+  const resumed = await runPipeline(options, noKey, services);
+  assert.equal(resumed.status, 'complete');
+  assert.equal(resumed.videoPath, first.videoPath);
+  assert.equal(await readFile(join(directory, 'caption.txt'), 'utf8'), 'SYNTHETIC test caption\n');
+  assert.equal(calls.capture, 1);
+  assert.equal(calls.render, 1);
+  assert.equal(calls.validate, 1);
+});
+
+test('a saved script freezes candidate work when resuming a failed render', async t => {
+  const { directory, config, services, calls, candidate } = await fixture(t);
+  const discover = services.discoverGames!, capture = services.runCaptureAttempt!, render = services.renderPortrait!;
+  services.discoverGames = async (...args) => ({ ...await discover(...args), candidates: [candidate, { ...candidate, id: 'retry' }] });
+  services.nominateGames = async () => ['fixture', 'retry'].map(gameId => ({ gameId, hypothesis: 'Fixture', viewerQuestion: 'Fixture?', controlRisk: 'Fixture' }));
+  services.runCaptureAttempt = async (...args) => {
+    if (args[0].outputPath.includes('game-retry')) { calls.capture++; throw new Error('Candidate failed'); }
+    return capture(...args);
+  };
+  services.renderPortrait = async (...args) => {
+    if (!calls.render) { calls.render++; throw new Error('Render interrupted'); }
+    return render(...args);
+  };
+  const options = { directory, model: 'fixture-model', quiet: true };
+  await assert.rejects(runPipeline(options, config, services), /Render interrupted/);
+  const noKey: Configuration = Object.assign(Object.create(config), { get: () => ({ ...config.get(), geminiApiKey: '' }) });
+  const resumed = await runPipeline(options, noKey, services);
+  assert.equal(resumed.status, 'complete');
+  assert.deepEqual(calls, { discover: 1, inspect: 2, capture: 2, analyze: 1, draft: 1, render: 2, validate: 0 });
 });
