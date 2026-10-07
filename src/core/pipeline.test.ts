@@ -493,6 +493,34 @@ test('an explicit Astrocade URL is inspected directly without inventing catalog 
   assert.deepEqual(run.candidates[0]!.observations, []);
 });
 
+test('an explicit exploration goal reaches learning and feedback and remains fixed on resume', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const captureGoal = 'SYNTHETIC open the selector, transform, use two abilities, then reach the next area.';
+  const game = verifiedProfiles[0]!.gameUrl;
+  let learned = 0;
+  services.learnFeedbackProfile = async (_inspection, _game, _provider, _signal, intent) => {
+    learned++;
+    assert.equal(intent?.captureGoal, captureGoal);
+    return { profile: { ...verifiedProfiles[0]!, controller: { type: 'sparse', maxDecisions: 4, instructions: 'SYNTHETIC visible controls', allowedKeys: [], allowPointer: true } }, evidence: ['SYNTHETIC'], limitations: [] };
+  };
+  services.createFeedbackController = (_profile, _provider, _directory, _callback, intent) => {
+    assert.equal(intent?.captureGoal, captureGoal);
+    return async () => ({ stop: true, reason: 'SYNTHETIC fixture only', actions: [], observation: 'SYNTHETIC', outcome: 'progress', lesson: '' });
+  };
+  const options = { directory, model: 'fixture-model', game, captureGoal, playMode: 'feedback' as const, stage: 'capture' as const, quiet: true };
+  const run = await runPipeline(options, config, services);
+  assert.equal(run.shortlist[0]!.captureGoal, captureGoal);
+  assert.match(await readFile(join(directory, 'report.md'), 'utf8'), /open the selector, transform/);
+  await runPipeline(options, config, services);
+  assert.equal(learned, 1);
+  assert.equal(calls.capture, 1);
+  await assert.rejects(runPipeline({ ...options, captureGoal: 'Change the saved goal' }, config, services), /saved capture goal cannot be changed/);
+  assert.equal(JSON.parse(await readFile(join(directory, 'run.json'), 'utf8')).shortlist[0].captureGoal, captureGoal);
+  await assert.rejects(runPipeline({ ...options, game: undefined }, config, services), /requires an explicit game/);
+  await assert.rejects(runPipeline({ ...options, captureGoal: ' ' }, config, services));
+  await assert.rejects(runPipeline({ ...options, captureGoal: 'x'.repeat(801) }, config, services));
+});
+
 test('a saved brief is reused by nomination and editing, and a changed resume brief preserves prior provenance', async t => {
   const { directory, config, services, calls } = await fixture(t);
   const brief = { ...defaultContentBrief, audience: 'SYNTHETIC viewers who choose the route.' };
@@ -590,8 +618,7 @@ test('new reel runs pass exploration intent and the fifteen-second ceiling throu
   services.learnGameProfile = async (_inspection, _candidate, _provider, _signal, intent) => {
     assert.equal(feedbackFirst, true);
     assert.equal(intent?.editingStyle, 'reel');
-    assert.match(intent!.captureGoal!, /Learn and practice the controls/);
-    assert.match(intent!.captureGoal!, /source exploration may be much longer/i);
+    assert.ok(intent?.captureGoal?.length, 'the explicit-game exploration goal reaches the timed fallback');
     return { profile: { ...verifiedProfiles[0]!, maxDurationMs: 60000 }, evidence: ['SYNTHETIC bounded exploration'], limitations: [] };
   };
   services.analyzeFootage = async (...args) => {

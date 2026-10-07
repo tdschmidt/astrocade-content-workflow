@@ -9,7 +9,7 @@ import { contentBriefSchema } from '../shared/content.js';
 const { values } = parseArgs({ options: {
   provider: { type: 'string' }, stage: { type: 'string', default: 'all' }, resume: { type: 'string' }, model: { type: 'string' },
   game: { type: 'string' }, candidates: { type: 'string', default: '3' }, help: { type: 'boolean', short: 'h' },
-  play: { type: 'string' }, 'capture-seconds': { type: 'string' }, brief: { type: 'string' }, 'from-run': { type: 'string' }, presenter: { type: 'string' },
+  play: { type: 'string' }, 'capture-seconds': { type: 'string' }, 'capture-goal': { type: 'string' }, brief: { type: 'string' }, 'from-run': { type: 'string' }, presenter: { type: 'string' },
 } });
 
 if (values.help) {
@@ -24,6 +24,7 @@ Default: inspect up to three provisional choices, learn and explore supported ga
 Feedback mode: learn controls, practice and explore supported gameplay, then trim the longer source into a reel. New reel feedback profiles allow up to ten minutes by default and observe frames during action batches so transient effects can be learned. Saved profiles retain their limits. Slow model calls cannot supply reflex control.
 Auto mode: reuse a tested timed profile when available. For unfamiliar reel games, assess latency-tolerant screenshot feedback first, then timed controls if unsupported. Legacy episode runs try timed controls first. Both assessments share one inspection; provider errors do not trigger a fallback.
 Capture budget: --capture-seconds bounds recording wall time, including inference, and guides a new control plan. It is separate from the at-most-15-second edit; exploration can finish earlier when useful gameplay coverage is complete.
+Capture goal: --game URL --capture-goal "..." records a specific progression or feature-exploration objective. It guides learning and play, never proves an outcome, and cannot be changed on resume. Omit it for the default thorough exploration goal.
 Editorial brief: optional JSON with audience, voice, hookExamples, format sources, dated trend evidence, and editingStyle: reel or episode. The new default is reel; older briefs without editingStyle preserve their episode behavior. Resumes reuse the saved brief; start a new run to change it.
 Re-edit: --from-run creates a new run referencing saved gameplay, with a new edit and no recapture. It inherits the original brief unless --brief is supplied. Changing editingStyle reanalyzes the source for that format; unchanged analyses are reused. --from-run and --resume cannot be combined.
 Presenter: --presenter adds a supplied fictional AI commentator video; generation is separate. It is saved with a file hash and cannot change on resume. New edits are faceless unless --presenter is supplied.
@@ -49,7 +50,7 @@ Codex: install the Codex CLI, run codex login using ChatGPT, then pass --provide
     const contentBrief = values.brief ? contentBriefSchema.parse(JSON.parse(await readFile(resolve(values.brief), 'utf8'))) : undefined;
     const provider = (values.provider ?? saved?.provider ?? 'gemini') as 'gemini' | 'codex';
     const model = values.model ?? (saved?.provider === provider ? saved.model : provider === 'codex' ? 'gpt-5.6-sol' : 'gemini-3.5-flash');
-    const run = await runPipeline({ directory, model, provider, stage: values.stage as CoreStage, game: values.game, playMode: values.play as 'timed' | 'feedback' | 'auto' | undefined, contentBrief, captureSeconds: values['capture-seconds'] === undefined ? undefined : Number(values['capture-seconds']), fromRun: values['from-run'], presenterPath: values.presenter, shortlistSize: Number(values.candidates), signal: abort.signal }, config);
+    const run = await runPipeline({ directory, model, provider, stage: values.stage as CoreStage, game: values.game, captureGoal: values['capture-goal'], playMode: values.play as 'timed' | 'feedback' | 'auto' | undefined, contentBrief, captureSeconds: values['capture-seconds'] === undefined ? undefined : Number(values['capture-seconds']), fromRun: values['from-run'], presenterPath: values.presenter, shortlistSize: Number(values.candidates), signal: abort.signal }, config);
     console.log(`\n${run.status === 'complete' ? 'Ready' : 'Stage complete'}: ${directory}/report.md`);
   } catch (error) {
     // Detailed sanitized stage errors are in the trace; never dump SDK request objects or credentials.

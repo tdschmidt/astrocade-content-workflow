@@ -189,13 +189,15 @@ async function report(directory: string, run: CoreRun) {
 }
 
 export async function runPipeline(options: {
-  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; playMode?: 'timed' | 'feedback' | 'auto'; captureSeconds?: number; contentBrief?: ContentBrief; fromRun?: string; presenterPath?: string; signal?: AbortSignal; quiet?: boolean;
+  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; captureGoal?: string; playMode?: 'timed' | 'feedback' | 'auto'; captureSeconds?: number; contentBrief?: ContentBrief; fromRun?: string; presenterPath?: string; signal?: AbortSignal; quiet?: boolean;
 }, config: Configuration, overrides: Partial<CoreServices> = {}): Promise<CoreRun> {
   const directory = resolve(options.directory);
   if (options.fromRun && resolve(options.fromRun) === directory) throw new Error('--from-run needs a new output directory; use --resume to continue an existing run.');
   const services = { ...defaults, ...overrides };
   if (options.fromRun && options.stage && !['edit', 'all'].includes(options.stage)) throw new Error('--from-run only supports the edit stage.');
   const stage = options.fromRun ? 'edit' : options.stage ?? 'all';
+  const captureGoal = options.captureGoal === undefined ? undefined : z.string().trim().min(1).max(800).parse(options.captureGoal);
+  if (captureGoal && (!options.game || options.fromRun)) throw new Error('A capture goal requires an explicit game and a new capture; source reuse cannot change it.');
   const limit = options.shortlistSize ?? 3;
   const providerName = options.provider ?? 'gemini';
   const requestedBrief = options.contentBrief ? contentBriefSchema.parse(options.contentBrief) : undefined;
@@ -248,6 +250,7 @@ export async function runPipeline(options: {
     };
     trace.event('run', 'started', `Target stage: ${stage}. Completed artifacts will be reused.`, { provider: providerName, model: options.model });
     const saved = store.read();
+    if (captureGoal && saved.shortlist.length && saved.shortlist.some(choice => choice.captureGoal !== captureGoal)) throw new Error('A saved capture goal cannot be changed while resuming. Start a new run.');
     if (saved.shortlist.length && options.game && !saved.shortlist.some(choice => {
       const game = saved.candidates.find(candidate => candidate.id === choice.gameId)!;
       return game.id === options.game || canonicalGameUrl(game.url) === canonicalGameUrl(options.game!) || new URL(game.url).pathname.split('/').at(-2) === options.game;
@@ -285,9 +288,9 @@ export async function runPipeline(options: {
         if (!game) throw new Error('The requested game is not in this run’s discovered catalog. Use an exact ID, slug, or URL from discovery.json.');
         const reel = store.read().contentBrief.editingStyle === 'reel';
         shortlist = [{ gameId: game.id, hypothesis: 'Operator-selected candidate; suitability still requires actual play.', viewerQuestion: 'What makes this game worth showing someone?', controlRisk: 'Inspect the actual controls before capturing.',
-          captureGoal: reel
-            ? 'Learn and practice the controls, then explore. Establish movement and camera control; travel to visible places or targets; use supported traversal, attacks, interactions or tools toward real objectives. Confirm transient effects from action-time observations. After a short probe, sustain useful play and combine confirmed controls. Demonstrate several mechanics through coherent action sequences, beyond transformation flashes or cycling menus. The reel is at most 15 seconds; source exploration may be much longer. Stop on a terminal result, exhausted budget, demonstrated control block, or broad useful coverage with no worthwhile visible next opportunity.'
-            : 'Play competently toward one small complete challenge or distinctive consequence, with a readable setup and decisive action. A first input confirmation alone is not the goal; determine the angle from actual play.',
+          captureGoal: captureGoal ?? (reel
+            ? 'Learn controls, then pursue actual progression: complete challenges, advance stages, earn and use upgrades, or reach new locations as the visible game permits. Practice and combine confirmed controls. Capture the full setup, choice and consequence of meaningful features, including opening a native selector, choosing a form/tool, transformation and actual use. Basic input tests or a fixed count of effects do not complete exploration. Keep pursuing available supported goals until a terminal result, exhausted budget, demonstrated control block, or genuinely exhausted visible opportunities. The source is reusable for different narratives; a final short edit is a separate decision.'
+            : 'Play competently toward one small complete challenge or distinctive consequence, with a readable setup and decisive action. A first input confirmation alone is not the goal; determine the angle from actual play.'),
           rejectIf: reel ? 'Controls remain ineffective after correction, or only menus, cosmetic reveals and idle scenes are available after exploration. Purposeful traversal, aiming and using abilities count as gameplay when their visible effects are clear.' : 'No attainable, readable consequence or interesting viewer decision is observed.' }];
       } else shortlist = await services.nominateGames(candidates, verifiedProfiles, getProvider(), limit, options.signal, store.read().playMode, store.read().contentBrief);
       await save(run => { run.shortlist = shortlist; run.attempts = shortlist.map(item => attemptSchema.parse({ gameId: item.gameId })); });
