@@ -485,7 +485,7 @@ test('an invalid shortening ends after one repair and cannot override visual rej
 
 test('visual review receives the writing brief and alternative premises before choosing final copy', async () => {
   const choice = choiceFor([0]);
-  const brief = { ...defaultContentBrief, voice: 'Dry group-chat reactions to suspiciously small platforms.' };
+  const brief = { ...defaultContentBrief, editingStyle: 'episode' as const, voice: 'Dry group-chat reactions to suspiciously small platforms.' };
   const alternate = choice.alternatives[2]!;
   const provider = googleFixture([choice, { ...review, hook: alternate.hook, caption: alternate.caption, reason: 'The gap is already crossed too soon for a choice; its comic personification is supported.' }]);
   const json = provider.json.bind(provider);
@@ -510,4 +510,143 @@ test('visual review maps caption anchors through the game crop instead of the br
   assert.match(prompts[1]!, /not 12\.5%\/80% of the entire uncropped viewport/);
   const duplicate = choiceFor([0]); duplicate.alternatives[2] = duplicate.alternatives[0]!;
   await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([duplicate])), /three distinct concepts/);
+});
+
+const reelCapture: Capture = { ...capture, analysis: { ...capture.analysis!, events: [
+  { startSeconds: 0, endSeconds: 8, event: 'Explore the rooftop', evidence: 'The character leaps across roofs into a new area.', outcome: 'A rooftop route opens.' },
+  { startSeconds: 20, endSeconds: 28, event: 'Fire attack', evidence: 'A fire burst hits the nearby target, leaving a visible scorched state.', outcome: 'The target changes visibly.' },
+  { startSeconds: 45, endSeconds: 55, event: 'Alien transformation', evidence: 'A small hero changes into a large four-armed form.', outcome: 'The new form moves on screen.' },
+] } };
+const reelChoice = () => ({
+  ...(({ eventIndexes: _indexes, cuts: _cuts, ...choice }) => choice)(choiceFor([0, 1, 2])),
+  shots: [
+    { eventIndex: 2, startSeconds: 45, endSeconds: 48, purpose: 'opening', visibleChange: 'The hero transforms into a recognizable large alien.' },
+    { eventIndex: 0, startSeconds: 2, endSeconds: 5, purpose: 'contrast', visibleChange: 'A rooftop leap shows the traversal mechanic.' },
+    { eventIndex: 1, startSeconds: 23, endSeconds: 27, purpose: 'ending', visibleChange: 'A fire attack visibly changes the target.' },
+  ],
+});
+const reelReview = {
+  ...review, hook: 'why am i sweating', caption: 'this did not need to be playable',
+  distinctMoments: 3, varietyEvidence: 'Transformation, rooftop traversal and fire attack show different gameplay activities.',
+  ending: { readableFromSeconds: 25, essentialText: '', evidence: 'The target remains visibly scorched.' },
+};
+const reelInput = { capture: reelCapture, format: 'highlight' as const, topic: '', brief: { ...defaultContentBrief, editingStyle: 'reel' as const } };
+
+test('a reel keeps deliberate shot order, reviews every exact cut at 4 FPS, and retains shot evidence', async () => {
+  const provider = googleFixture([reelChoice(), reelReview]);
+  const json = provider.json.bind(provider);
+  const sampled: unknown[] = [];
+  provider.json = async (prompt, schema, media, ...args) => {
+    if (media?.length) sampled.push(...media);
+    return json(prompt, schema, media, ...args);
+  };
+  const result = await draftScript(reelInput, provider);
+  assert.deepEqual(result.cuts, [{ startSeconds: 45, endSeconds: 48 }, { startSeconds: 2, endSeconds: 5 }, { startSeconds: 23, endSeconds: 27 }]);
+  assert.equal(result.cuts.reduce((sum, cut) => sum + cut.endSeconds - cut.startSeconds, 0), 10);
+  assert.deepEqual(sampled, result.cuts.map(cut => ({ type: 'video', uri: 'fixture-video', mime_type: 'video/webm', processing: { type: 'static', fps: 4, start_offset: `${cut.startSeconds}s`, end_offset: `${cut.endSeconds}s` } })));
+  assert.equal(result.hook, reelReview.hook, 'a subjective gaming reaction remains intact after review');
+  assert.match(result.rationale, /Reel shots:.*Alien|Reel shots:.*recognizable large alien/);
+  assert.match(result.editorial!.review, /Visual variety \(3 moments\)/);
+  assert.ok(!sampled.some(item => JSON.stringify(item).includes('55s')), 'the reel does not inherit the full final event tail or its old episode ordering');
+});
+
+test('reels enforce the 15-second cap even when the caller allows 40, and respect a tighter limit', async () => {
+  const choice = reelChoice();
+  choice.shots = [
+    { ...choice.shots[0]!, eventIndex: 0, startSeconds: 0, endSeconds: 5 },
+    { ...choice.shots[1]!, eventIndex: 1, startSeconds: 20, endSeconds: 25 },
+    { ...choice.shots[2]!, eventIndex: 2, startSeconds: 45, endSeconds: 50.001 },
+  ];
+  await assert.rejects(draftScript({ ...reelInput, maxDurationSeconds: 40 }, googleFixture([choice])), /reel exceeds the 15-second/);
+  choice.shots[2]!.endSeconds = 50;
+  const result = await draftScript({ ...reelInput, maxDurationSeconds: 40 }, googleFixture([choice, { ...reelReview, ending: { ...reelReview.ending, readableFromSeconds: 49 } }]));
+  assert.equal(result.cuts.reduce((sum, cut) => sum + cut.endSeconds - cut.startSeconds, 0), 15);
+  await assert.rejects(draftScript({ ...reelInput, maxDurationSeconds: 9 }, googleFixture([reelChoice()])), /reel exceeds the 9-second/);
+});
+
+test('a reel rejects fabricated shot counts, adjacent splits, repeated footage and wrong evidence references before visual calls', async () => {
+  const choice = reelChoice();
+  await assert.rejects(draftScript(reelInput, googleFixture([{ ...choice, shots: choice.shots.slice(0, 2) }])), /Too small|>=3/);
+  const oneMoment = { ...choice, shots: [0, 3, 6].map(start => ({ ...choice.shots[0]!, eventIndex: 0, startSeconds: start, endSeconds: start + 2 })) };
+  await assert.rejects(draftScript(reelInput, googleFixture([oneMoment])), /splitting one observed event/);
+  const duplicatedObservations = { ...reelCapture, analysis: { ...reelCapture.analysis!, events: reelCapture.analysis!.events.map(event => ({ ...event, startSeconds: 0, endSeconds: 12 })) } };
+  const adjacent = { ...choice, shots: [0, 1, 2].map(index => ({ ...choice.shots[index]!, eventIndex: index, startSeconds: index * 3, endSeconds: (index + 1) * 3 })) };
+  await assert.rejects(draftScript({ ...reelInput, capture: duplicatedObservations }, googleFixture([adjacent])), /adjacent slices/);
+  await assert.rejects(draftScript(reelInput, googleFixture([{ ...choice, shots: choice.shots.map((shot, index) => index === 0 ? { ...shot, eventIndex: 1 } : shot) }])), /outside its referenced observed moment/);
+  const overlap = { ...choice, shots: [choice.shots[1]!, { ...choice.shots[1]!, startSeconds: 4, endSeconds: 7 }, choice.shots[2]!] };
+  await assert.rejects(draftScript(reelInput, googleFixture([overlap])), /overlap/);
+  const gap = { ...choice, shots: [{ ...choice.shots[0]!, startSeconds: 30, endSeconds: 33 }, ...choice.shots.slice(1)] };
+  await assert.rejects(draftScript(reelInput, googleFixture([gap])), /outside the verified action windows/);
+});
+
+test('numeric reel diversity cannot override actual-frame rejection or an unreadable ending', async () => {
+  await assert.rejects(draftScript(reelInput, googleFixture([reelChoice(), { ...reelReview, approved: true, distinctMoments: 1, varietyEvidence: 'All three cuts show the same strike against identical targets.' }])), /visual reel review rejected.*same strike/);
+  await assert.rejects(draftScript(reelInput, googleFixture([reelChoice(), { ...reelReview, approved: false, reason: 'The opening promises a transformation absent from these cuts.' }])), /visual reel review rejected.*transformation/);
+  for (const ending of [
+    { ...reelReview.ending, readableFromSeconds: null },
+    { ...reelReview.ending, readableFromSeconds: 28 },
+    { ...reelReview.ending, readableFromSeconds: 26.5 },
+    { ...reelReview.ending, essentialText: 'one two three four five six seven eight nine' },
+  ]) await assert.rejects(draftScript(reelInput, googleFixture([reelChoice(), { ...reelReview, ending }])), /readable ending|required ending reading time/);
+});
+
+test('reel analysis verifies all six spread candidates, retaining late activity rather than taking the first three', async () => {
+  const longCapture = { ...capture, durationSeconds: 175 };
+  const event = capture.analysis!.events[0]!;
+  const coarse = { ...capture.analysis!, events: [5, 20, 40, 60, 100, 160].map((start, index) => ({ ...event, startSeconds: start, endSeconds: start + 3, event: `Observed stage ${index}` })) };
+  const responses = coarse.events.map((item, index) => ({ timebase: 'window_relative', analysis: { ...capture.analysis!, events: [{ ...item, startSeconds: 2, endSeconds: 5, evidence: `Independent stage ${index} visual evidence` }] } }));
+  const sampled: number[] = [];
+  const provider = googleFixture([coarse, ...responses], sampled);
+  const json = provider.json.bind(provider);
+  const windows: unknown[] = [];
+  provider.json = async (prompt, schema, media, ...args) => { windows.push(...(media ?? [])); return json(prompt, schema, media, ...args); };
+  const result = await analyzeFootage(longCapture, provider, undefined, reelInput.brief);
+  assert.deepEqual(sampled, [1, 8, 8, 8, 8, 8, 8]);
+  assert.equal(result.events.length, 6);
+  assert.equal(result.events.at(-1)!.startSeconds, 159);
+  assert.match(result.events.at(-1)!.evidence, /Independent stage 5/);
+  assert.equal(result.events.at(-1)!.endSeconds, 162, 'no unreviewed context or full result tail is added');
+  assert.ok(JSON.stringify(windows).includes('157s'));
+  assert.ok(result.events.every(event => event.endSeconds - event.startSeconds === 3));
+});
+
+test('reel analysis excludes unverified moments and rejects one activity without weakening legacy episodes', async () => {
+  const event = { ...capture.analysis!.events[0]!, startSeconds: 5, endSeconds: 8 };
+  const coarse = { ...capture.analysis!, events: [event, { ...event, startSeconds: 30, endSeconds: 33 }] };
+  const dense = { timebase: 'window_relative', analysis: { ...capture.analysis!, events: [{ ...event, startSeconds: 2, endSeconds: 5 }] } };
+  const idle = { ...dense, analysis: { ...dense.analysis, content: { ...content, clarity: 0 }, reason: 'No understandable activity.', events: [] } };
+  const result = await analyzeFootage(capture, googleFixture([coarse, dense, idle]), undefined, reelInput.brief);
+  assert.equal(result.usable, false);
+  assert.equal(result.events.length, 1);
+  assert.match(result.reason, /explore more/);
+  await assert.rejects(analyzeFootage(capture, googleFixture([coarse, { ...dense, analysis: { ...dense.analysis, events: [{ ...event, startSeconds: 8, endSeconds: 10 }] } }]), undefined, reelInput.brief), /outside its video window/);
+  const legacy = { ...defaultContentBrief, editingStyle: undefined };
+  const short = { ...capture, durationSeconds: 12 };
+  const sampled: number[] = [];
+  const one = await analyzeFootage(short, googleFixture([{ ...capture.analysis!, events: [event], playableStartSeconds: 0, playableEndSeconds: 12 }], sampled), undefined, legacy);
+  assert.equal(one.usable, true);
+  assert.deepEqual(sampled, [8], 'saved briefs without a style keep the episode analysis');
+  assert.equal((await draftScript({ capture, format: 'highlight', topic: '', brief: legacy }, googleFixture([choiceFor([0]), review]))).cuts.length, 1);
+});
+
+test('nearby distinct reel activities survive a shared dense window without evicting a later stage', async () => {
+  const event = capture.analysis!.events[0]!;
+  const closeEvents = [
+    { ...event, startSeconds: 0, endSeconds: 3, event: 'Transform', evidence: 'The hero changes body shape.' },
+    { ...event, startSeconds: 3, endSeconds: 6, event: 'Use a new ability', evidence: 'The transformed hero emits a fire burst.' },
+  ];
+  const coarse = { ...capture.analysis!, events: closeEvents };
+  const dense = { timebase: 'window_relative', analysis: coarse };
+  const sampled: number[] = [];
+  const result = await analyzeFootage({ ...capture, durationSeconds: 6 }, googleFixture([coarse, dense], sampled), undefined, reelInput.brief);
+  assert.deepEqual(sampled, [1, 8], 'overlapping proposals share one dense call without losing their different activities');
+  assert.equal(result.usable, true);
+  assert.deepEqual(result.events.map(event => event.event), ['Transform', 'Use a new ability']);
+
+  const spread = { ...coarse, events: [2, 20, 40, 60, 100, 160].map(start => ({ ...event, startSeconds: start, endSeconds: start + 3 })) };
+  const packed = { ...dense, analysis: { ...dense.analysis, events: [0, 3, 6].map(start => ({ ...event, startSeconds: start, endSeconds: start + 2 })) } };
+  const late = { ...dense, analysis: { ...dense.analysis, events: [{ ...event, startSeconds: 2, endSeconds: 5, event: 'New final stage' }] } };
+  const covered = await analyzeFootage({ ...capture, durationSeconds: 175 }, googleFixture([spread, packed, packed, packed, packed, packed, late]), undefined, reelInput.brief);
+  assert.equal(covered.events.length, 6);
+  assert.equal(covered.events.at(-1)!.event, 'New final stage', 'extra early activities cannot consume the six slots before the later window');
 });
