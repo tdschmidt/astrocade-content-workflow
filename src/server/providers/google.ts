@@ -5,20 +5,9 @@ import { z } from 'zod';
 import type { Settings } from '../config.js';
 import { NeedsAttention } from '../jobs.js';
 
-type MediaInput =
-  | { type: 'image'; data: string; mime_type: 'image/png' | 'image/jpeg' }
-  | { type: 'video'; uri: string; mime_type: string; processing: { type: 'static'; fps: number; start_offset?: string; end_offset?: string } };
+import type { Inference, InferenceProgressEvent, MediaInput } from './inference.js';
 export interface WordTiming { text: string; startSeconds: number; endSeconds: number }
-export interface GoogleProgressEvent {
-  stage: 'upload' | 'processing' | 'ready' | 'cleanup' | 'json' | 'speech' | 'transcription';
-  model?: string;
-  attempt: number;
-  status: 'started' | 'completed' | 'retrying' | 'failed';
-  durationMs: number;
-  httpStatus?: number;
-  retryAfterMs?: number;
-  message?: string;
-}
+export type GoogleProgressEvent = InferenceProgressEvent;
 type RequestOptions = { signal: AbortSignal; timeout_ms: number; retries: { strategy: 'none' } };
 
 function httpStatus(error: unknown): number | undefined {
@@ -55,7 +44,7 @@ export function seconds(value?: string): number {
   return parsed;
 }
 
-export class GoogleServices {
+export class GoogleServices implements Inference {
   private client: GoogleGenAI;
   constructor(private settings: Settings, private onEvent?: (event: GoogleProgressEvent) => void) {
     if (!settings.geminiApiKey) throw new NeedsAttention('Add a Gemini API key in Setup to analyze footage and generate videos.');

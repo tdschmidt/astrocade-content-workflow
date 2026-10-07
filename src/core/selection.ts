@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { canonicalGameUrl } from '../server/games/discovery.js';
 import type { GameCandidate, GameProfile } from '../server/games/schema.js';
-import type { GoogleServices } from '../server/providers/google.js';
+import type { Inference } from '../server/providers/inference.js';
 
 export const nominationSchema = z.object({
   gameId: z.string(),
@@ -11,7 +11,7 @@ export const nominationSchema = z.object({
 });
 export type Nomination = z.infer<typeof nominationSchema>;
 
-export async function nominateGames(candidates: GameCandidate[], profiles: GameProfile[], google: GoogleServices, limit: number, signal?: AbortSignal): Promise<Nomination[]> {
+export async function nominateGames(candidates: GameCandidate[], profiles: GameProfile[], google: Inference, limit: number, signal?: AbortSignal): Promise<Nomination[]> {
   if (!candidates.length) throw new Error('No live game candidates were discovered.');
   const result = await google.json(
     `Nominate up to ${limit} Astrocade games to inspect and try for a short gameplay video. Return only IDs from this catalog.

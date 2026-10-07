@@ -4,7 +4,8 @@ import {
   type Capture, type FootageAnalysis, type ResearchSnapshot, type VideoFormat, type VideoScript,
 } from '../../shared/domain.js';
 import { NeedsAttention } from '../jobs.js';
-import type { GoogleServices, WordTiming } from './google.js';
+import type { WordTiming } from './google.js';
+import type { Inference } from './inference.js';
 
 type Cut = z.infer<typeof cutSchema>;
 type Event = z.infer<typeof eventSchema>;
@@ -109,7 +110,7 @@ export function mapWindowEvents(events: Event[], window: Cut, sourceDuration: nu
   return events.map(event => ({ ...event, startSeconds: event.startSeconds + window.startSeconds, endSeconds: event.endSeconds + window.startSeconds }));
 }
 
-export async function analyzeFootage(capture: Capture, google: GoogleServices, signal?: AbortSignal): Promise<FootageAnalysis> {
+export async function analyzeFootage(capture: Capture, google: Inference, signal?: AbortSignal): Promise<FootageAnalysis> {
   if (!Number.isFinite(capture.durationSeconds) || capture.durationSeconds <= 0) throw new NeedsAttention('The recording duration is invalid.');
   return google.withVideo(capture.path, async video => {
     // Bounded gameplay probes fit one review, avoiding extra calls and mixed timebases.
@@ -203,7 +204,7 @@ export function storyMode(topic: string): 'fiction' | 'factual' {
 
 export async function draftScript(input: {
   capture: Capture; format: VideoFormat; topic: string; research?: ResearchSnapshot;
-}, google: GoogleServices, signal?: AbortSignal): Promise<VideoScript> {
+}, google: Inference, signal?: AbortSignal): Promise<VideoScript> {
   const { capture, format, topic, research } = input;
   const analysis = capture.analysis;
   if (!analysis?.usable || !analysis.events.length) throw new NeedsAttention('This recording has no verified usable action. Capture or analyze gameplay first.');
@@ -281,7 +282,7 @@ Rationale must explain the visible hook/payoff, cut choice and any uncertainty. 
   return scriptSchema.parse({ ...response, narration: format === 'highlight' ? '' : response.narration, caption });
 }
 
-export async function shortenScript(script: VideoScript, targetSeconds: number, google: GoogleServices, signal?: AbortSignal): Promise<VideoScript> {
+export async function shortenScript(script: VideoScript, targetSeconds: number, google: Inference, signal?: AbortSignal): Promise<VideoScript> {
   if (!Number.isFinite(targetSeconds) || targetSeconds < 5) throw new NeedsAttention('There is less than five seconds for shortening narration. Use a brief manually edited line, a narration-free highlight, or capture more action; do not pad or repeat footage.');
   const maxWords = Math.max(1, Math.floor(targetSeconds * 2));
   const schema = z.object({ narration: z.string().min(1).max(1600) });

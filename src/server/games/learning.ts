@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, type Page } from 'playwright';
 import { z } from 'zod';
-import type { GoogleServices } from '../providers/google.js';
+import type { Inference } from '../providers/inference.js';
 import { canonicalGameUrl } from './discovery.js';
 import { gameBounds, InputExecutor, withAbort } from './input.js';
 import { gameProfileSchema, inputActionSchema, type GameCandidate, type GameProfile, type SurfaceLocator, type UiStep } from './schema.js';
@@ -104,7 +104,7 @@ const proposalSchema = z.object({
 }).strict();
 
 /** Proposes bounded native inputs; success still requires separate fresh capture probes. */
-export async function learnGameProfile(inspection: GameInspection, candidate: GameCandidate, google: Pick<GoogleServices, 'json'>, signal?: AbortSignal): Promise<LearnedGame> {
+export async function learnGameProfile(inspection: GameInspection, candidate: GameCandidate, google: Pick<Inference, 'json'>, signal?: AbortSignal): Promise<LearnedGame> {
   if (!canonicalGameUrl(candidate.url) || canonicalGameUrl(candidate.url) !== inspection.gameUrl) throw new Error('Inspection does not belong to this game.');
   signal?.throwIfAborted();
   const requestSchema = inspection.performedStart ? proposalSchema.omit({ start: true }) : proposalSchema;
