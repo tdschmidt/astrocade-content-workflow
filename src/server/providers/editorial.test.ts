@@ -72,7 +72,7 @@ test('a short recording gets one 8 FPS review and bounded context around the abs
   await analyzeFootage({ ...shortCapture, durationSeconds: 45 }, googleFixture([response], longerSampled));
   assert.deepEqual(longerSampled, [8], 'bounded capture probes need only one absolute-time review');
   assert.equal(result.events[0]!.startSeconds, 2, 'context never includes the opening banner');
-  assert.equal(result.events[0]!.endSeconds, 6.6, 'the impact retains its visible aftermath');
+  assert.equal(result.events[0]!.endSeconds, 7.6, 'the impact retains up to two seconds of verified aftermath');
   assert.match(result.events[0]!.evidence, /Impact: 3.5–5.6s/);
   const late = await analyzeFootage(shortCapture, googleFixture([{ ...response, events: [{ ...event, startSeconds: 10.5, endSeconds: 11.8 }] }]));
   assert.deepEqual([late.events[0]!.startSeconds, late.events[0]!.endSeconds], [8.5, 12]);
@@ -106,7 +106,7 @@ test('dense reviews retain failure aftermath only inside their observed playable
   const analysis = { ...capture.analysis!, playableStartSeconds: 0.5, playableEndSeconds: 7.5, events: [{ ...event, startSeconds: 4.5, endSeconds: 5.5, outcome: 'Wrong drop; the item returns to the tray.' }] };
   const analyze = (changes = {}) => analyzeFootage(longCapture, googleFixture([coarse, { timebase: 'window_relative', analysis: { ...analysis, ...changes } }]));
   const result = await analyze();
-  assert.deepEqual(result.events.map(({ startSeconds, endSeconds }) => ({ startSeconds, endSeconds })), [{ startSeconds: 89.5, endSeconds: 93.5 }]);
+  assert.deepEqual(result.events.map(({ startSeconds, endSeconds }) => ({ startSeconds, endSeconds })), [{ startSeconds: 89.5, endSeconds: 94.5 }]);
   assert.match(result.events[0]!.evidence, /Impact: 91.5–92.5s/);
   assert.match(result.events[0]!.evidence, /playable span 87.5–94.5s \(source time\)/);
   const clamped = await analyze({ playableStartSeconds: 4, playableEndSeconds: 6 });
@@ -158,11 +158,11 @@ test('granular setup events cannot evict their own failure payoff from the globa
   assert.equal(result.events.length, 2, 'each overlapping sequence is one episode before applying the six-event limit');
   assert.match(result.events[0]!.outcome, /Correct placement 1[\s\S]*Wrong drop; red X and lost combo/);
   assert.match(result.events[0]!.evidence, /Impact: 92–92.5s/);
-  assert.deepEqual([result.events[0]!.startSeconds, result.events[0]!.endSeconds], [85, 93.5]);
+  assert.deepEqual([result.events[0]!.startSeconds, result.events[0]!.endSeconds], [85, 94.5]);
   assert.match(result.events[1]!.outcome, /Board complete/);
   const separated = { ...failure, analysis: { ...failure.analysis, events: [{ ...event, startSeconds: 1, endSeconds: 2 }, { ...event, startSeconds: 7, endSeconds: 8 }] } };
   const gaps = await analyzeFootage(longCapture, googleFixture([{ ...coarse, events: coarse.events.slice(1) }, separated]));
-  assert.deepEqual(gaps.events.map(({ startSeconds, endSeconds }) => ({ startSeconds, endSeconds })), [{ startSeconds: 85, endSeconds: 88 }, { startSeconds: 90, endSeconds: 94 }], 'merging must never fill an unverified gap');
+  assert.deepEqual(gaps.events.map(({ startSeconds, endSeconds }) => ({ startSeconds, endSeconds })), [{ startSeconds: 85, endSeconds: 89 }, { startSeconds: 90, endSeconds: 95 }], 'merging must never fill an unverified gap');
 });
 
 test('long analysis keeps a late high-priority payoff when earlier windows produce many events', async () => {
@@ -174,7 +174,7 @@ test('long analysis keeps a late high-priority payoff when earlier windows produ
   const result = await analyzeFootage(capture, googleFixture([coarse, densePayoff, denseEarly, denseEarly]));
   assert.deepEqual(result.events.map(event => event.startSeconds), [0, 19, 64], 'retain coherent episodes in priority order, then present them chronologically');
   assert.equal(result.events.at(-1)!.outcome, payoff.outcome, 'early actions must not evict the verified completion');
-  assert.equal(result.events.at(-1)!.endSeconds, 70, 'the late payoff keeps its observed reading time');
+  assert.equal(result.events.at(-1)!.endSeconds, 71, 'the late payoff keeps its observed reading time');
 });
 
 const review = { approved: true, reason: 'The visible jump supports the question; sky is unobstructed.', hook: 'would you make that jump?', caption: 'Pick your landing before the jump.', position: 'upper' };
@@ -185,6 +185,38 @@ const choiceFor = (eventIndexes: number[]) => ({ eventIndexes, cuts: null, alter
 ], selectedIndex: 0, position: 'upper', rationale: 'The viewer can choose before the jump.', durationReason: 'A complete decision and readable landing without padding.' });
 
 const script = { hook: 'Watch the landing', narration: 'The tiny explorer found a way home.', caption: 'A short story.', cuts: [{ startSeconds: 0, endSeconds: 25 }], rationale: 'Visible jumps', claims: [] };
+
+test('short analysis retains the observed settled result instead of discarding needed payoff time', async () => {
+  const outfitCapture = { ...capture, durationSeconds: 30 };
+  const response = { ...capture.analysis!, playableStartSeconds: 22.28, playableEndSeconds: 25.53, events: [
+    { startSeconds: 22.514, endSeconds: 22.88, event: 'Leggings appear', evidence: 'Black leggings replace the bare legs.', outcome: 'The outfit gains black leggings.' },
+    { startSeconds: 23.514, endSeconds: 23.88, event: 'A straw hat appears', evidence: 'The selected hat appears over the hair and remains visible.', outcome: 'The hat and leggings are visible together.' },
+  ] };
+  const analysis = await analyzeFootage(outfitCapture, googleFixture([response]));
+  assert.equal(analysis.events.length, 1, 'overlapping phases of the same short transformation stay one coherent episode');
+  assert.deepEqual([analysis.events[0]!.startSeconds, analysis.events[0]!.endSeconds], [22.28, 25.53]);
+  assert.match(analysis.events[0]!.outcome, /leggings[\s\S]*hat and leggings/);
+  const result = await draftScript({ capture: { ...outfitCapture, analysis }, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), review]));
+  assert.deepEqual(result.cuts, [{ startSeconds: 22.28, endSeconds: 25.53 }], 'all 3.25 verified seconds are available to the editor');
+  assert.equal(result.overlays![0]!.endSeconds, 2);
+  const previouslyTruncated = { ...analysis, events: [{ ...analysis.events[0]!, endSeconds: 24.88 }] };
+  await assert.rejects(draftScript({ capture: { ...outfitCapture, analysis: previouslyTruncated }, format: 'highlight', topic: '' }, googleFixture([choiceFor([0])])), /too short to read/, '2.6 seconds fails before any visual-review call, without inventing missing context');
+  const atLimit = await analyzeFootage(outfitCapture, googleFixture([{ ...response, playableEndSeconds: 29, events: [response.events[1]!] }]));
+  assert.equal(atLimit.events[0]!.endSeconds, 25.88, 'a longer playable span never authorizes more than two seconds of post-impact context');
+  const noExtraContext = await analyzeFootage(outfitCapture, googleFixture([{ ...response, playableEndSeconds: 24.88 }]));
+  assert.equal(noExtraContext.events[0]!.endSeconds, 24.88, 'source duration does not authorize frames outside the verified playable span');
+});
+
+test('a selected hook must fit before visual review and rewritten copy is checked again', async () => {
+  const shortCapture = { ...capture, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, endSeconds: 3.2 }] } };
+  const longHook = "i cannot let this be the thing i'm bad at";
+  const choice = choiceFor([0]);
+  choice.alternatives[0]!.hook = longHook;
+  await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([choice])), /too short to read/, 'an impossible chosen hook must not spend another inference call');
+  await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), { ...review, hook: longHook }])), /too short to read/, 'the critic cannot introduce a longer hook that consumes the payoff');
+  const exact = { ...shortCapture, analysis: { ...shortCapture.analysis, events: [{ ...shortCapture.analysis.events[0]!, startSeconds: 10, endSeconds: 12.8 }] } };
+  assert.ok(await draftScript({ capture: exact, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), review])), 'exact reading-time budgets tolerate timestamp subtraction rounding');
+});
 
 test('a highlight preserves the whole context of a single selected event', async () => {
   const shortCapture = { ...capture, durationSeconds: 12.948, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, startSeconds: 2, endSeconds: 6.6 }] } };

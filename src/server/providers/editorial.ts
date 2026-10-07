@@ -69,6 +69,12 @@ function tokens(text: string): string[] {
   return text.toLowerCase().replace(/[’']/g, '').match(/[\p{L}\p{N}]+/gu) ?? [];
 }
 
+function hookReadingTime(hook: string, duration: number): number {
+  const readTime = Math.max(2, tokens(hook).length / 3);
+  if (duration + 1e-9 < readTime + 0.8) throw new NeedsAttention('The selected sequence is too short to read the hook and see an unobscured result.');
+  return readTime;
+}
+
 function wordDistance(a: string[], b: string[]): number {
   let row = b.map((_, index) => index + 1);
   row.unshift(0);
@@ -107,11 +113,13 @@ const playableAnalysisSchema = verifiedAnalysisSchema.extend({
 const denseSchema = z.object({ timebase: z.literal('window_relative'), analysis: playableAnalysisSchema });
 const contentInstructions = `Assess short-form potential from these frames, not the title or your confidence.
 Score each content dimension 0–3 (0 absent/unreadable, 1 weak, 2 clear, 3 unusually strong): clarity of the goal, participation (can viewers predict/choose/diagnose?), visible payoff, portrait readability, and distinctiveness. Record concrete evidence, an editorial angle, and essential HUD/action regions.
+Judge a first-time viewer at phone size who has not read the control trace or learned this game's rules. Tiny printed instructions do not establish clarity, and numbers being technically legible does not make an unexplained puzzle understandable. Participation requires enough time and visible rule/context to make a meaningful prediction. Ordinary theming or a decorative skin is not novelty: distinctiveness needs a specific unusual mechanic, juxtaposition, character situation, or surprising event rather than merely islands instead of dots.
 A zero in clarity, payoff or readability disqualifies footage; spectacle or popularity cannot compensate. Prefer an understandable mistake/recovery, surprising rule, transformation, or risky choice over routine progress or a result panel alone.
+A solved/won panel proves the game reported success; it does not prove a watchable causal episode. When several necessary changes occur too quickly to follow and a modal immediately hides the completed state, do not award strong clarity/readability/payoff merely because you can infer the solution from sampled frames. Set usable=false if no compact sequence shows an understandable setup, legible action/change, and its consequence. A single fast impact can still work when its cause and result are obvious; the problem is missing comprehension, not speed itself. State what needs recapturing, such as paced intermediate changes or a settled board before a manual submission when supported, rather than proposing idle padding.
 Choose textPlacement upper or lower for a short overlay on the FULL game view: upper starts at y=12.5%; lower ends at y=80%; text spans roughly x=11–83%. Identify the less obstructive area and explain placementReason. Protect goals, timers, decisive objects and controls. State any conflict if neither works.
 Find compact self-contained sequences: roughly 6–10s for a small reveal, 10–18s for choice/failure/recovery, 12–25s for transformation; these are creative budgets, NOT required lengths. Keep a readable setup, actual causal action, and 1–2s of payoff. Remove inference waits and repeated sweeps once they stop adding visible information; never omit the action explaining a result or fabricate continuous play across gaps.`;
 const playableContextInstructions = `Report playableStartSeconds/playableEndSeconds for one continuous span containing unobscured gameplay and its visible consequence, including failure feedback, an earned result panel or celebration. When the source supports it, include about one to two seconds AFTER that consequence settles within this playable span so a viewer can read the result. A failed action also needs brief aftermath: retain the red X, lost state or object snapping back and its settled state, not just the instant of rejection. Stop before prolonged idle. Exclude obstructing opening banners, navigation menus, loading and pauses. Use null for both if there is no such span.
-Each event's startSeconds/endSeconds identifies the central action and visible consequence, such as a gate contact through the resulting count change. These are IMPACT bounds, not final edit boundaries. Describe the readable approach, action and result with concrete visual evidence. All event bounds must lie inside the reported playable span. There is no minimum event length. The server will retain up to two seconds before the impact and one second afterward, clipped to the observed playable span.`;
+Each event's startSeconds/endSeconds identifies the central action and visible consequence, such as a gate contact through the resulting count change. These are IMPACT bounds, not final edit boundaries. Describe the readable approach, action and result with concrete visual evidence. All event bounds must lie inside the reported playable span. There is no minimum event length. The server will retain up to two seconds before and after the impact, clipped to the observed playable span.`;
 
 function retainPlayableContext(response: z.infer<typeof playableAnalysisSchema>, duration: number, sourceOffset = 0): FootageAnalysis {
   const { playableStartSeconds, playableEndSeconds, ...analysis } = response;
@@ -122,7 +130,7 @@ function retainPlayableContext(response: z.infer<typeof playableAnalysisSchema>,
   return { ...analysis, events: analysis.events.map(event => ({
     ...event,
     startSeconds: Math.max(playableStartSeconds, event.startSeconds - 2),
-    endSeconds: Math.min(playableEndSeconds, event.endSeconds + 1),
+    endSeconds: Math.min(playableEndSeconds, event.endSeconds + 2),
     evidence: `8 FPS review: ${event.evidence} Impact: ${event.startSeconds + sourceOffset}–${event.endSeconds + sourceOffset}s. Context retained within observed playable span ${playableStartSeconds + sourceOffset}–${playableEndSeconds + sourceOffset}s (source time).`,
   })) };
 }
@@ -165,7 +173,8 @@ Only report exact numbers if the before value, action/gate value and after value
 Set usable=false and events=[] if no understandable action and visible consequence are supported.`,
         playableAnalysisSchema, [{ type: 'video', uri: video.uri, mime_type: video.mimeType, processing: { type: 'static', fps: 8 } }], signal,
       ));
-      return retainPlayableContext(response, capture.durationSeconds);
+      const analysis = retainPlayableContext(response, capture.durationSeconds);
+      return { ...analysis, events: mergeContextualEvents(analysis.events) };
     }
     const coarse = verifiedAnalysisSchema.parse(await google.json(
       `Inspect this recording of ${JSON.stringify(capture.game.title)}. Its measured duration is ${capture.durationSeconds} seconds.
@@ -281,6 +290,7 @@ Select upper/lower text position using the assessment's essential regions. Keep 
   const duration = cuts.reduce((sum, cut) => sum + cut.endSeconds - cut.startSeconds, 0);
   if (duration > maxDurationSeconds) throw new NeedsAttention(`The script exceeds the ${maxDurationSeconds}-second edit target. Choose a shorter sequence of observed action.`);
   const concept = choice.alternatives[choice.selectedIndex]!;
+  hookReadingTime(concept.hook, duration);
   const crop = capture.crop ?? { x: 0, y: 0, width: capture.width, height: capture.height };
   const paneHeight = presenter ? 1440 : 1920;
   const paneTop = presenter ? 480 : 0;
@@ -303,6 +313,7 @@ Other concepts: ${JSON.stringify(choice.alternatives.filter((_, index) => index 
 ${hookWritingInstructions}
 SOURCE/OUTPUT GEOMETRY: the supplied video contains the entire captured browser viewport. The renderer uses only this crop, fits it without clipping and places text in OUTPUT coordinates. Mapped source positions are ${JSON.stringify(sourceLayout)}. Judge text against THESE source pixel positions, not 12.5%/80% of the entire uncropped viewport. Ignore page chrome outside the crop. A one-line hook occupies about one font height, two lines about two, extending down from upperTopSourceY or up from lowerBottomSourceY. Prefer shortening to one or two lines over covering important regions.
 Verify the opening makes sense at phone size, establishes the hook's comic premise or tension, and delivers a visible payoff. The decisive action and result must remain visible and the caption should add a natural supported reaction. Never claim a continuous streak or speedrun when there are gaps.
+Judge the sequence as a stranger to the rules, without using the supplied rationale to fill in missing comprehension. A near-static puzzle followed by an instantaneous batch of changes and a solved modal is not a strong transformation just because the game was solved. Reject if the necessary causal changes cannot be followed before the modal hides them; the cure is better-paced capture, not a cleverer caption or a longer result panel. An automatic completion modal is fine when the preceding visible actions already explain the result.
 Preserve a strong, truthful joke instead of neutralizing it into a factual play-by-play. Subjective reaction, obvious metaphor, and supported hypothetical POV are not unsupported facts. If the selected concept has a real flaw, first consider whether another supplied concept solves it for these same cuts, then make the smallest effective rewrite. A replacement must still give a specific reason to watch; factual but bland narration is not an improvement. Explain the actual flaw and why the final line works, or briefly say why the chosen premise survives review.
 If the hook asks viewers to choose, verify that the choice remains undecided for its reading time (max(2, word count / 3) seconds) AND the choice has a meaningful consequence. If objects move immediately or order doesn't matter, use another supported premise. Remove factual premise/question claims the selected opening cannot establish. Cuts must still explain cause and effect and hold a readable payoff. Repetition is not suspense.
 Check the actual margin before approving urgency: a visible timer or health bar alone does not establish a close call. If success arrives with ample time or health remaining, replace manufactured deadline/failure suspense with an honest reaction or curiosity that the scene supports.
@@ -312,8 +323,7 @@ Return final hook/caption/position, correcting small factual, wording or placeme
   )), signal);
   if (!reviewed.approved) throw new NeedsAttention(`The visual editorial review rejected this concept: ${reviewed.reason}`);
   if (tokens(reviewed.hook).length > 12 || /https?:\/\//i.test(`${reviewed.hook} ${reviewed.caption}`)) throw new NeedsAttention('The hook is too long or the copy introduced an external link.');
-  const readTime = Math.max(2, tokens(reviewed.hook).length / 3);
-  if (duration < readTime + 0.8) throw new NeedsAttention('The selected sequence is too short to read the hook and see an unobscured result.');
+  const readTime = hookReadingTime(reviewed.hook, duration);
   const overlays = [{ startSeconds: 0, endSeconds: readTime, text: reviewed.hook, position: reviewed.position }];
   validateOverlayCues(overlays, duration);
   return {
