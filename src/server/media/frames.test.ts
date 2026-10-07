@@ -61,3 +61,25 @@ test('sampling does not pad low-FPS footage, and rejects over 360 requested fram
   await assert.rejects(extractVideoFrames(source, empty, { fps: 8, start_offset: '0.25', end_offset: '0.5' }), /timestamp map/);
   assert.ok(!(await readdir(directory)).includes('empty'), 'a failed extraction removes only its newly created output directory');
 });
+
+test('midstream resolution changes preserve frame selection and exact source timestamps', integration, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'astrocade-frame-resize-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const { ffmpeg, ffprobe } = mediaExecutables();
+  for (const [index, size] of ['160x90', '96x64', '160x90'].entries()) {
+    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-f', 'lavfi', '-i', `testsrc2=size=${size}:rate=8`, '-t', '0.5', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', join(directory, `${index}.webm`)]);
+  }
+  await writeFile(join(directory, 'segments.txt'), "file '0.webm'\nfile '1.webm'\nfile '2.webm'\n");
+  const source = join(directory, 'resized.webm');
+  await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-f', 'concat', '-i', join(directory, 'segments.txt'), '-c', 'copy', source]);
+  const decoded = JSON.parse((await runProcess(ffprobe, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'frame=pts_time,width,height', '-of', 'json', source])).stdout).frames as Array<{ pts_time: string; width: number; height: number }>;
+  assert.deepEqual([...new Set(decoded.map(frame => `${frame.width}x${frame.height}`))], ['160x90', '96x64'], 'fixture must actually change decoded dimensions');
+  const coarse = await extractVideoFrames(source, join(directory, 'coarse'), { fps: 1 });
+  assert.deepEqual(coarse.frames.map(frame => frame.sourceSeconds), [0, 1], 'filter resets must not select extra frames from the same one-second bucket');
+  const dense = await extractVideoFrames(source, join(directory, 'dense'), { fps: 8, start_offset: '0.25', end_offset: '1.25' });
+  assert.deepEqual(dense.frames.map(frame => frame.sourceSeconds), decoded.map(frame => Number(frame.pts_time)).filter(time => time >= 0.25 && time < 1.25));
+  for (const frame of dense.frames) {
+    assert.equal(frame.windowSeconds, frame.sourceSeconds - 0.25);
+    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-xerror', '-i', frame.path, '-f', 'null', '-']);
+  }
+});

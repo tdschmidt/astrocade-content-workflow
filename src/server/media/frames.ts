@@ -44,7 +44,9 @@ export async function extractVideoFrames(
     const bucket = (time: string) => `floor((${time}-${startSeconds})*${fps}+0.000001)`;
     const filter = `settb=expr=1/1000000,trim=start=${startSeconds}:end=${endSeconds},select='if(isnan(prev_selected_t),1,gt(${bucket('t')},${bucket('prev_selected_t')}))',metadata=mode=add:key=sample:value=1,metadata=mode=print:file=timings.txt`;
     await runProcess(mediaExecutables(tools).ffmpeg, [
-      '-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-i', sourcePath,
+      // Native tab recordings can resize briefly. Reinitializing resets the
+      // bucket selection and truncates timings.txt, breaking the JPEG/PTS map.
+      '-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-reinit_filter', '0', '-i', sourcePath,
       '-map', '0:v:0', '-an', '-vf', filter, '-fps_mode', 'passthrough',
       '-frames:v', String(MAX_FRAMES + 1), '-pix_fmt', 'yuvj420p', '-q:v', '3', '-start_number', '0', 'frame-%04d.jpg',
     ], { cwd: directory, signal, timeoutMs: 120_000 });
