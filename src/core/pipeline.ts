@@ -33,7 +33,7 @@ const attemptSchema = z.object({
 export const coreRunSchema = z.object({
   version: z.literal(1), id: z.string(), createdAt: z.string(), model: z.string(), provider: z.enum(['gemini', 'codex']).default('gemini'),
   status: z.enum(['running', 'paused', 'failed', 'complete']),
-  playMode: z.enum(['timed', 'feedback']).default('timed'),
+  playMode: z.enum(['timed', 'feedback', 'auto']).default('timed'),
   captureSeconds: z.number().int().min(5).max(175).optional(),
   contentBrief: contentBriefSchema.default(defaultContentBrief),
   provenance: z.object({ sourceRunId: z.string(), sourceRunPath: z.string(), discoveryPath: z.string() }).optional(),
@@ -121,6 +121,7 @@ async function report(directory: string, run: CoreRun) {
     if (choice.trendTopic) lines.push(`Relevant dated trend: ${choice.trendTopic}`, '');
     if (choice.captureGoal) lines.push(`Capture goal: ${choice.captureGoal}`, '');
     if (choice.rejectIf) lines.push(`Reject if: ${choice.rejectIf}`, '');
+    if (attempt?.profile) lines.push(`Controller: ${attempt.profile.controller.type === 'sparse' ? 'screenshot feedback' : 'timed native inputs'} (requested mode: ${run.playMode}).`, '');
     if (attempt?.inspectionPath) lines.push(`[Inspection](${link(attempt.inspectionPath)})`, '');
     if (attempt?.feedbackPath) lines.push(`[Gameplay feedback and screenshots](${link(attempt.feedbackPath)})`, '');
     if (attempt?.controllerError) lines.push(`Controller stopped early: ${attempt.controllerError}. Partial footage is preserved.`, '');
@@ -155,7 +156,7 @@ async function report(directory: string, run: CoreRun) {
 }
 
 export async function runPipeline(options: {
-  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; playMode?: 'timed' | 'feedback'; captureSeconds?: number; contentBrief?: ContentBrief; fromRun?: string; presenterPath?: string; signal?: AbortSignal; quiet?: boolean;
+  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; playMode?: 'timed' | 'feedback' | 'auto'; captureSeconds?: number; contentBrief?: ContentBrief; fromRun?: string; presenterPath?: string; signal?: AbortSignal; quiet?: boolean;
 }, config: Configuration, overrides: Partial<CoreServices> = {}): Promise<CoreRun> {
   const directory = resolve(options.directory);
   if (options.fromRun && resolve(options.fromRun) === directory) throw new Error('--from-run needs a new output directory; use --resume to continue an existing run.');
@@ -246,7 +247,7 @@ export async function runPipeline(options: {
       if (options.game) {
         const game = candidates.find(candidate => candidate.id === options.game || canonicalGameUrl(candidate.url) === canonicalGameUrl(options.game!) || new URL(candidate.url).pathname.split('/').at(-2) === options.game);
         if (!game) throw new Error('The requested game is not in this run’s discovered catalog. Use an exact ID, slug, or URL from discovery.json.');
-        shortlist = [{ gameId: game.id, hypothesis: 'Operator-selected candidate; suitability still requires actual play.', viewerQuestion: 'What visible decision and consequence does this game offer?', controlRisk: 'Inspect the actual controls before capturing.', captureGoal: 'Capture an understandable setup, meaningful action, and visible consequence; determine the angle from actual play.', rejectIf: 'No attainable, readable consequence or interesting viewer decision is observed.' }];
+        shortlist = [{ gameId: game.id, hypothesis: 'Operator-selected candidate; suitability still requires actual play.', viewerQuestion: 'What visible decision and consequence does this game offer?', controlRisk: 'Inspect the actual controls before capturing.', captureGoal: 'Play competently toward one small complete challenge or distinctive consequence, with a readable setup and decisive action. A first input confirmation alone is not the goal; determine the angle from actual play.', rejectIf: 'No attainable, readable consequence or interesting viewer decision is observed.' }];
       } else shortlist = await services.nominateGames(candidates, verifiedProfiles, getProvider(), limit, options.signal, store.read().playMode, store.read().contentBrief);
       await save(run => { run.shortlist = shortlist; run.attempts = shortlist.map(item => attemptSchema.parse({ gameId: item.gameId })); });
       trace.artifact('shortlist.json', shortlist);
@@ -276,8 +277,23 @@ export async function runPipeline(options: {
           await updateAttempt(game.id, item => { item.inspectionPath = join(inspectionDir, 'inspection.json'); });
           // A new duration needs a new bounded plan, rather than truncating or looping a tested sequence.
           const preset = !feedback && intent.maxDurationMs === undefined && verifiedProfiles.find(profile => canonicalGameUrl(profile.gameUrl) === canonicalGameUrl(game.url));
-          const learned = feedback ? await services.learnFeedbackProfile(inspection, game, getProvider(), options.signal, intent)
+          let learned = feedback ? await services.learnFeedbackProfile(inspection, game, getProvider(), options.signal, intent)
             : preset ? { profile: preset, evidence: [preset.verificationNotes ?? 'Previously tested native controls.'], limitations: ['A tested control sequence does not guarantee a win or a useful event in this attempt.'] } : await services.learnGameProfile(inspection, game, getProvider(), options.signal, intent);
+          if (store.read().playMode === 'auto' && !learned.profile) {
+            trace.artifact(`controls-timed-${game.id}.json`, learned);
+            trace.event('learn', 'fallback', `${game.title}: no repeatable timed plan; checking whether current screenshots support latency-tolerant feedback.`, learned);
+            // Both learners write learning.json. Preserve their separate outputs
+            // while sharing exactly the same observed screenshots and controls.
+            const feedbackDir = join(inspectionDir, 'feedback');
+            await mkdir(feedbackDir, { recursive: true });
+            const adaptive = await services.learnFeedbackProfile({ ...inspection, outputDir: feedbackDir }, game, getProvider(), options.signal, intent);
+            trace.artifact(`controls-feedback-${game.id}.json`, adaptive);
+            learned = {
+              profile: adaptive.profile,
+              evidence: [...learned.evidence.map(value => `Timed assessment: ${value}`), ...adaptive.evidence.map(value => `Feedback assessment: ${value}`)],
+              limitations: [...learned.limitations.map(value => `Timed mode only: ${value}`), ...adaptive.limitations.map(value => `Feedback mode: ${value}`)],
+            };
+          }
           await updateAttempt(game.id, item => { item.profile = learned.profile; item.evidence = learned.evidence; item.limitations = learned.limitations; item.unsupported = !learned.profile; delete item.error; });
           trace.artifact(`controls-${game.id}.json`, learned);
           trace.event('learn', learned.profile ? 'completed' : 'unsupported', `${game.title}: ${learned.profile ? 'bounded controls prepared' : 'no supported control plan'}.`, learned);

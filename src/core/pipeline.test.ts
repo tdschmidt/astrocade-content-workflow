@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
@@ -266,6 +266,88 @@ test('feedback mode learns instead of using a timed preset and survives a stage 
   assert.equal(resumed.captureSeconds, 60);
   assert.equal(calls.capture, 1);
   await assert.rejects(runPipeline({ directory, model: 'fixture-model', playMode: 'timed', quiet: true }, config, services), /new run/);
+});
+
+test('auto mode reuses one inspection for feedback fallback, preserves both assessments and resumes without replay', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  let timedInspection: Parameters<CoreServices['learnGameProfile']>[0] | undefined;
+  let timedLearns = 0, feedbackLearns = 0;
+  services.learnGameProfile = async inspection => {
+    timedInspection = inspection; timedLearns++;
+    await mkdir(inspection.outputDir, { recursive: true });
+    await writeFile(join(inspection.outputDir, 'learning.json'), 'SYNTHETIC timed assessment', { flag: 'wx' });
+    return { evidence: ['SYNTHETIC changing board observed.'], limitations: ['Current target coordinates cannot be replayed.'] };
+  };
+  services.learnFeedbackProfile = async (inspection, _candidate, _provider, _signal, intent) => {
+    feedbackLearns++;
+    assert.deepEqual({ ...inspection, outputDir: timedInspection!.outputDir }, timedInspection);
+    assert.equal(inspection.outputDir, join(timedInspection!.outputDir, 'feedback'));
+    assert.equal(intent?.maxDurationMs, 80000);
+    await writeFile(join(inspection.outputDir, 'learning.json'), 'SYNTHETIC feedback assessment', { flag: 'wx' });
+    return {
+      profile: { ...verifiedProfiles[0]!, maxDurationMs: intent!.maxDurationMs!, verification: 'unverified', controller: { type: 'sparse', maxDecisions: 4, instructions: 'SYNTHETIC input-paced board', allowedKeys: [], allowPointer: true } },
+      evidence: ['SYNTHETIC visible pointer interaction permits a probe.'], limitations: ['The probe still needs observed confirmation.'],
+    };
+  };
+  services.createFeedbackController = () => async () => ({ observation: 'SYNTHETIC complete', outcome: 'success', lesson: '', stop: true, reason: 'SYNTHETIC result', actions: [] });
+  const capture = services.runCaptureAttempt!;
+  services.runCaptureAttempt = async options => {
+    assert.equal(options.profile.controller.type, 'sparse');
+    assert.equal(options.profile.maxDurationMs, 80000);
+    assert.ok(options.decide);
+    return capture(options);
+  };
+  const options = { directory, model: 'fixture-model', quiet: true };
+  const run = await runPipeline({ ...options, playMode: 'auto', captureSeconds: 80, stage: 'capture' }, config, services);
+  assert.equal(run.playMode, 'auto');
+  assert.equal(run.attempts[0]!.unsupported, false);
+  assert.deepEqual(run.attempts[0]!.limitations, ['Timed mode only: Current target coordinates cannot be replayed.', 'Feedback mode: The probe still needs observed confirmation.']);
+  assert.deepEqual(run.attempts[0]!.evidence, ['Timed assessment: SYNTHETIC changing board observed.', 'Feedback assessment: SYNTHETIC visible pointer interaction permits a probe.']);
+  assert.equal(await readFile(join(timedInspection!.outputDir, 'learning.json'), 'utf8'), 'SYNTHETIC timed assessment');
+  assert.equal(await readFile(join(timedInspection!.outputDir, 'feedback', 'learning.json'), 'utf8'), 'SYNTHETIC feedback assessment');
+  assert.match(await readFile(join(directory, 'report.md'), 'utf8'), /Controller: screenshot feedback \(requested mode: auto\)/);
+  assert.ok(JSON.parse(await readFile(join(directory, 'controls-feedback-fixture.json'), 'utf8')).profile);
+  assert.equal(JSON.parse(await readFile(join(directory, 'controls-timed-fixture.json'), 'utf8')).profile, undefined);
+  const resumed = await runPipeline({ ...options, stage: 'edit' }, config, services);
+  assert.equal(resumed.status, 'complete');
+  assert.equal(resumed.playMode, 'auto');
+  assert.equal(resumed.captureSeconds, 80);
+  assert.equal(calls.inspect, 1); assert.equal(calls.capture, 1);
+  assert.equal(timedLearns, 1); assert.equal(feedbackLearns, 1);
+});
+
+test('auto mode keeps tested timed controls without unnecessary feedback inference', async t => {
+  const { directory, config, services } = await fixture(t);
+  services.learnGameProfile = async () => assert.fail('A tested preset needs no new timed inference.');
+  services.learnFeedbackProfile = async () => assert.fail('A supported timed plan must not trigger feedback.');
+  const run = await runPipeline({ directory, model: 'fixture-model', playMode: 'auto', stage: 'capture', quiet: true }, config, services);
+  assert.equal(run.attempts[0]!.profile?.controller.type, 'timed');
+  assert.equal(run.attempts[0]!.unsupported, false);
+});
+
+test('auto mode does not turn provider errors into feedback fallbacks or unsupported games', async t => {
+  for (const status of [401, 503, undefined]) {
+    const { directory, config, services, calls, candidate } = await fixture(t);
+    candidate.url = 'https://www.astrocade.com/games/fixture-game/fixture';
+    services.learnGameProfile = async () => { throw Object.assign(new Error('SYNTHETIC provider failure'), status ? { status } : {}); };
+    services.learnFeedbackProfile = async () => assert.fail('Provider errors cannot prove that timed controls are unsupported.');
+    await assert.rejects(runPipeline({ directory, model: 'fixture-model', playMode: 'auto', stage: 'capture', quiet: true }, config, services));
+    const run = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
+    assert.equal(run.attempts[0].unsupported, false);
+    assert.equal(calls.capture, 0);
+  }
+});
+
+test('auto mode records both unsupported modes without attempting gameplay', async t => {
+  const { directory, config, services, calls, candidate } = await fixture(t);
+  candidate.url = 'https://www.astrocade.com/games/fixture-game/fixture';
+  services.learnGameProfile = async () => ({ evidence: ['SYNTHETIC timed inspection'], limitations: ['No repeatable timed plan.'] });
+  services.learnFeedbackProfile = async () => ({ evidence: ['SYNTHETIC feedback inspection'], limitations: ['Observed hazards require reflexes.'] });
+  await assert.rejects(runPipeline({ directory, model: 'fixture-model', playMode: 'auto', stage: 'capture', quiet: true }, config, services), /No candidate produced a recording/);
+  const run = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
+  assert.equal(run.attempts[0].unsupported, true);
+  assert.deepEqual(run.attempts[0].limitations, ['Timed mode only: No repeatable timed plan.', 'Feedback mode: Observed hazards require reflexes.']);
+  assert.equal(calls.capture, 0);
 });
 
 test('an explicit timed duration replans instead of truncating a preset and cannot change on resume', async t => {
