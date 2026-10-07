@@ -3,7 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import type { Page } from 'playwright';
 import { createGameCapture, type CaptureArtifact, type CaptureOptions, type GameCapture } from '../media/recorder.js';
 import { isAllowedGameUrl } from './discovery.js';
-import { gameBounds, InputExecutor, locate, withAbort, type GameBounds } from './input.js';
+import { gameBounds, gameHasPointerLock, InputExecutor, locate, withAbort, type GameBounds } from './input.js';
 import { controlDecisionSchema, gameProfileSchema, type GameProfile, type InputAction, type UiStep } from './schema.js';
 
 export type CaptureFailure = 'unreachable' | 'offline' | 'authentication_required' | 'unverified_profile' | 'missing_controls' | 'controller_unavailable' | 'canceled' | 'capture_failed';
@@ -16,6 +16,8 @@ export type GameplayObservation = {
   image: Buffer;
   mimeType: 'image/jpeg';
   text: string;
+  /** Current browser input mode, read independently of game state. */
+  pointerLocked: boolean;
   gameName: string;
   objective: string;
   elapsedMs: number;
@@ -144,6 +146,7 @@ export async function runCaptureAttempt(options: {
           const textSurface = await withAbort(surface.evaluate(element => element.tagName === 'IFRAME'), controlSignal)
             ? surface.contentFrame().locator('body') : surface;
           const text = await withAbort(textSurface.evaluate(element => element.ownerDocument.body.innerText.slice(0, 6000)), controlSignal);
+          const pointerLocked = await withAbort(gameHasPointerLock(page, profile.surface), controlSignal);
           const elapsedMs = Math.round(performance.now() - recordingStarted);
           const remainingMs = Math.max(0, profile.maxDurationMs - elapsedMs);
           if (remainingMs < 2000) { stopReason = 'duration_limit'; break; }
@@ -152,7 +155,7 @@ export async function runCaptureAttempt(options: {
           options.onProgress?.({ stage: 'deciding', message: `Visual decision ${index + 1} of ${profile.controller.maxDecisions}.` });
           let decision;
           try {
-            decision = controlDecisionSchema.parse(await withAbort(options.decide!({ observationId, image, mimeType: 'image/jpeg', text, gameName: profile.name, objective: profile.objective, elapsedMs, remainingMs, previousActions, previousImage, previousReason, isFinal, signal: decisionSignal }), decisionSignal));
+            decision = controlDecisionSchema.parse(await withAbort(options.decide!({ observationId, image, mimeType: 'image/jpeg', text, pointerLocked, gameName: profile.name, objective: profile.objective, elapsedMs, remainingMs, previousActions, previousImage, previousReason, isFinal, signal: decisionSignal }), decisionSignal));
             if (!decision.stop && !isFinal && !decision.actions.length) throw new GameCaptureError('missing_controls', 'The controller supplied neither an action nor a stop decision.');
           } catch (error) {
             if (controlSignal.aborted || !previousActions.length) throw error;

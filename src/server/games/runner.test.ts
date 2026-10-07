@@ -175,3 +175,31 @@ test('feedback observes the settled board after a rejected drag returns its obje
   assert.equal(calls, 2);
   assert.equal(lifecycle.finalText, 'Returned to origin; trusted: true');
 });
+
+for (const wholeFrame of [false, true]) test(`feedback receives current native pointer-lock state for ${wholeFrame ? 'an iframe' : 'a canvas'}`, browserTest, async t => {
+  const html = `<!doctype html><style>body{margin:0}canvas{display:block}</style><canvas width="320" height="320" tabindex="0"></canvas><p id="hud">Click to engage Mouse Look</p><script>
+    const canvas=document.querySelector('canvas'),hud=document.querySelector('#hud');let moved=false;
+    canvas.onclick=()=>canvas.requestPointerLock();
+    document.addEventListener('pointerlockchange',()=>{hud.textContent='Locked: '+Boolean(document.pointerLockElement)+'; moved: '+moved});
+    document.addEventListener('mousemove',event=>{if(document.pointerLockElement){moved ||= event.movementX!==0||event.movementY!==0;hud.textContent='Locked: true; moved: '+moved+'; buttons: '+event.buttons}});
+    document.addEventListener('keydown',event=>{if(event.code==='Escape')document.exitPointerLock()});
+    </script>`;
+  const { options, lifecycle } = await fixture(t, 15000, html);
+  if (wholeFrame) { options.profile.surface = { selector: '#game', frames: [] }; options.profile.ready = options.profile.surface; }
+  options.profile.controller = { type: 'sparse', maxDecisions: 4, instructions: 'Click to engage Mouse Look.', allowedKeys: ['Escape'], allowPointer: true, allowLook: true };
+  const seen: boolean[] = [];
+  const result = await runCaptureAttempt({ ...options, decide: async current => {
+    seen.push(current.pointerLocked);
+    if (seen.length === 1) return { stop: false, reason: 'Use the visible engagement control.', actions: [{ type: 'tap', point: { x: 0.5, y: wholeFrame ? 0.4 : 0.5 } }] };
+    if (seen.length === 2) return { stop: false, reason: 'Probe relative Mouse Look after the browser reports lock.', actions: [{ type: 'look', dx: 30, dy: 15, durationMs: 100 }] };
+    if (seen.length === 3) {
+      assert.match(current.text, /moved: true; buttons: 0/);
+      return { stop: false, reason: 'Exit the observed pointer-lock mode.', actions: [{ type: 'key', key: 'Escape', durationMs: 40 }] };
+    }
+    return { stop: true, reason: 'The browser reports lock released.', actions: [] };
+  } });
+  assert.deepEqual(seen, [false, true, true, false]);
+  assert.equal(result.stopReason, 'model_stop', result.controllerError ?? 'Pointer-lock observations should finish normally.');
+  assert.equal(result.actionsExecuted, 3);
+  assert.match(lifecycle.finalText, /Locked: false; moved: true/);
+});

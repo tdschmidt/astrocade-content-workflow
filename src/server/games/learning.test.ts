@@ -489,3 +489,24 @@ test('start indexes cover the complete observed button list without inventing se
   const learned = await learnGameProfile(inspection, candidate, provider);
   assert.deepEqual(learned.profile?.start, [{ type: 'click', target: { selector: '#observed-25', frames: ['iframe[title="Astrocade Game"]'] } }]);
 });
+
+for (const allowLook of [false, true]) test(`timed relative look requires a visible-control assessment (${allowLook})`, async t => {
+  const { candidate, inspection, proposal } = await fixture(t);
+  inspection.text = 'Mouse Look controls the camera after the visible Start button.';
+  inspection.pointerLocked = true;
+  const look = { type: 'look' as const, dx: 30, dy: 10, durationMs: 200 };
+  const provider = { json: async (prompt: string) => {
+    assert.match(prompt, /Browser pointer lock at inspection: true/);
+    assert.match(prompt, /signed CSS-pixel dx\/dy offsets/);
+    return { ...proposal, allowLook, actions: [look], evidence: ['The visible instructions show Mouse Look.'] };
+  } } as unknown as Pick<GoogleServices, 'json'>;
+  const learned = await learnGameProfile(inspection, candidate, provider);
+  if (allowLook) {
+    assert.equal(learned.profile?.verification, 'unverified');
+    if (learned.profile?.controller.type === 'timed') assert.deepEqual(learned.profile.controller.actions, [look]);
+    else assert.fail('Expected a bounded timed look probe.');
+  } else {
+    assert.equal(learned.profile, undefined);
+    assert.match(learned.limitations.join(' '), /Relative mouse look was not established/);
+  }
+});

@@ -16,7 +16,7 @@ const profile = gameProfileSchema.parse({ id: 'fixture', name: 'Fixture puzzle',
 const move = { type: 'drag' as const, from: { x: 0.2, y: 0.8 }, to: { x: 0.6, y: 0.3 }, durationMs: 600 };
 const answer = { observation: 'One shape remains.', outcome: 'progress' as const, lesson: 'Previous placement worked.', stop: false, reason: 'Place the remaining shape.', actions: [move] };
 const observation: GameplayObservation = { observationId: 'fixture:0', gameName: 'Fixture puzzle', objective: profile.objective,
-  image: Buffer.from('CURRENT_SYNTHETIC_IMAGE'), mimeType: 'image/jpeg', text: 'one remaining', elapsedMs: 2000, remainingMs: 100000,
+  image: Buffer.from('CURRENT_SYNTHETIC_IMAGE'), mimeType: 'image/jpeg', text: 'one remaining', pointerLocked: false, elapsedMs: 2000, remainingMs: 100000,
   previousActions: [], isFinal: false, signal: new AbortController().signal,
 };
 
@@ -179,4 +179,55 @@ test('an initial reading wait does not bypass the single gameplay-control probe'
   await decide(observation);
   const result = await decide({ ...observation, observationId: 'fixture:1', previousActions: [{ type: 'wait', durationMs: 5000 }], previousImage: observation.image });
   assert.deepEqual(result.actions, [move]);
+});
+
+test('relative look requires observed pointer/look permissions and current browser lock', () => {
+  const look = { type: 'look' as const, dx: 30, dy: -20, durationMs: 200 };
+  const configured = (allowPointer: boolean, allowLook?: boolean) => gameProfileSchema.parse({ ...profile,
+    controller: { type: 'sparse', allowPointer, ...(allowLook === undefined ? {} : { allowLook }), instructions: 'Mouse Look controls the camera.' } });
+  for (const [pointer, lookAllowed, locked] of [[true, undefined, true], [true, false, true], [false, true, true], [true, true, false]] as const) {
+    assert.throws(() => validateFeedbackDecision({ ...answer, actions: [look] }, configured(pointer, lookAllowed), locked), /observed Mouse Look.*active browser pointer lock/);
+  }
+  assert.deepEqual(validateFeedbackDecision({ ...answer, actions: [look] }, configured(true, true), true).actions, [look]);
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: Array.from({ length: 6 }, () => ({ ...look, durationMs: 2000 })) }, configured(true, true), true), /exceeds 10 seconds/);
+});
+
+for (const pointerLocked of [false, true]) test(`feedback observes browser lock=${pointerLocked} before permitting relative look`, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-look-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const lookProfile = gameProfileSchema.parse({ ...profile, controller: { type: 'sparse', allowPointer: true, allowLook: true,
+    instructions: 'Mouse Look controls the camera; click the labeled panel to engage.' } });
+  const look = { type: 'look' as const, dx: 0, dy: 30, durationMs: 300 };
+  const provider = { json: async (prompt: string) => {
+    assert.match(prompt, new RegExp('Browser pointer lock NOW: ' + pointerLocked));
+    assert.match(prompt, /"type":"look","dx":0,"dy":30,"durationMs":300/);
+    assert.match(prompt, /relative mouse offsets, not normalized coordinates or known camera angles/);
+    return { ...answer, actions: [look] };
+  } } as unknown as Pick<Inference, 'json'>;
+  const decide = createFeedbackController(lookProfile, provider, directory);
+  if (pointerLocked) assert.deepEqual((await decide({ ...observation, pointerLocked })).actions, [look]);
+  else await assert.rejects(decide({ ...observation, pointerLocked }), /active browser pointer lock/);
+  const saved = JSON.parse(await readFile(join(directory, 'decision-01-proposal.json'), 'utf8'));
+  assert.equal(saved.pointerLocked, pointerLocked);
+});
+
+test('feedback can establish visible Mouse Look before a fresh browser engages pointer lock', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-look-learning-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const imagePath = join(directory, 'fixture.png');
+  await writeFile(imagePath, 'SYNTHETIC instructions image');
+  const inspection: GameInspection = { gameUrl: profile.gameUrl, observedAt: 'fixture', outputDir: directory, imagePath, beforeImagePath: imagePath,
+    text: 'Mouse Look. Click the labeled panel to engage. Left click removes a block; right click places one.', pointerLocked: false,
+    readyToPlay: true, surface: profile.surface, ready: profile.ready, startTargets: [], viewport: profile.viewport, setup: [] };
+  const provider = { json: async (prompt: string) => {
+    assert.match(prompt, /Browser pointer lock at inspection: false/);
+    assert.match(prompt, /Set allowLook=true only when visible instructions establish relative Mouse Look/);
+    return { supported: true, confidence: 'medium', latencyTolerant: true, objective: 'Place a short row of blocks.',
+      instructions: inspection.text, allowedKeys: [], allowPointer: true, allowLook: true,
+      evidence: ['The visible controls explicitly say Mouse Look and describe the engagement click.'], limitations: ['Camera sensitivity needs a small live probe.'] };
+  } } as unknown as Pick<Inference, 'json'>;
+  const learned = await learnFeedbackProfile(inspection, { id: 'fixture', url: profile.gameUrl, title: profile.name, titleSource: 'visible_text', metrics: [], observations: [] }, provider);
+  assert.equal(learned.profile?.verification, 'unverified');
+  if (learned.profile?.controller.type === 'sparse') assert.equal(learned.profile.controller.allowLook, true);
+  else assert.fail('Expected a sparse profile with a visible Mouse Look hypothesis.');
 });
