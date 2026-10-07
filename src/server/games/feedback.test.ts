@@ -122,6 +122,38 @@ test('reel exploration remembers earlier mechanics beyond the recent four decisi
   assert.equal((await legacy(observation)).stop, true, 'saved episode runs keep their existing completion policy');
 });
 
+test('reel camera correction uses current lock and remembered failed engagement before allowing look', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-engagement-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const cameraProfile = gameProfileSchema.parse({ ...profile, controller: { type: 'sparse', instructions: 'Click the visible aim prompt to engage Mouse Look. Escape cancels the visible dial.', allowedKeys: ['Escape'], allowPointer: true, allowLook: true } });
+  const miss = { type: 'tap' as const, point: { x: 0.5, y: 0.51 }, button: 'left' as const };
+  const correction = { type: 'tap' as const, point: { x: 0.5, y: 0.44 }, button: 'left' as const };
+  let calls = 0;
+  const provider = { json: async (prompt: string) => {
+    calls++;
+    assert.match(prompt, /permit ONE corrected engagement attempt/);
+    assert.match(prompt, /Do not substitute a generic center-screen click/);
+    assert.match(prompt, /After the correction, a still-unlocked browser is an explicit limitation/);
+    if (calls === 1) return { ...answer, reason: 'SYNTHETIC first engagement attempt.', actions: [miss], lesson: 'SYNTHETIC engagement unverified.' };
+    if (calls === 2) {
+      assert.match(prompt, /Browser pointer lock NOW: false/);
+      assert.match(prompt, /Previous actions:.*"y":0.51/);
+      return { ...answer, observation: 'SYNTHETIC aim prompt remains and the dial opened.', reason: 'Return using the observed cancel, then correct the visible target once.', lesson: 'SYNTHETIC first engagement failed; one corrected attempt is now used.', actions: [{ type: 'key', key: 'Escape', durationMs: 100 }, { type: 'wait', durationMs: 400 }, correction] };
+    }
+    assert.match(prompt, /Browser pointer lock NOW: false/);
+    assert.match(prompt, /one corrected attempt is now used/);
+    return { ...answer, observation: 'SYNTHETIC engagement remains blocked.', outcome: 'uncertain', stop: true, actions: [], lesson: 'SYNTHETIC camera remains unavailable after one correction.' };
+  } } as unknown as Pick<Inference, 'json'>;
+  const decide = createFeedbackController(cameraProfile, provider, directory, undefined, { editingStyle: 'reel' });
+  const first = await decide(observation);
+  const second = await decide({ ...observation, observationId: 'fixture:1', previousActions: first.actions, previousImage: observation.image });
+  assert.deepEqual(second.actions.at(-1), correction, 'policy can correct a missed target without assuming lock');
+  const last = await decide({ ...observation, observationId: 'fixture:2', previousActions: second.actions, previousImage: observation.image });
+  assert.equal(last.stop, true);
+  assert.deepEqual(last.actions, []);
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [{ type: 'look', dx: 20, dy: 0, durationMs: 100 }] }, cameraProfile, false), /active browser pointer lock/, 'prompt-level retry guidance cannot bypass the native-mode guard');
+});
+
 test('selection goals reach current-state feedback but are not treated as observed success', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'feedback-intent-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
