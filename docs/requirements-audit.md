@@ -1,6 +1,6 @@
 # Requirements and implementation readiness audit
 
-Audited 2026-10-06 against the assignment and the user's later choices. Read this with the [implementation plan](../PLAN.md) and [decision record](design-decisions.md).
+Planning audit, 2026-10-06, against the assignment and the user's choices at that time. **This is the pre-build audit.** The application has since been implemented, the user identified the router block, and Mail.tm/IMAP replaced the pending inbox selection. Read [current acceptance evidence](acceptance.md) for implementation and live-test status, alongside the [implementation plan](../PLAN.md) and [decision record](design-decisions.md).
 
 The plan now assigns an implementation and a concrete proof to every hard requirement. No live integration is considered complete merely because its documentation exists. Research establishes a plausible design and exposes the remaining risks; the production application, fresh account, and two posts have not been built or created during this research.
 

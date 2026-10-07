@@ -2,7 +2,7 @@
 
 Build a local TypeScript application that discovers promising Astrocade games, plays and records them, creates short videos, creates a fresh Instagram account through browser automation, and publishes at least two specifically approved videos to that account. Hand over the complete runnable code and an honest record of supported games, human checkpoints, and published results.
 
-This is an implementation plan backed by research and limited feasibility experiments, not a claim of a working application. The highest remaining risks are live Astrocade access and completing Instagram registration and publication. See the [requirements audit](docs/requirements-audit.md), [decision record](docs/design-decisions.md), and research on [Instagram](docs/research-instagram.md), [capture](docs/research-capture.md), [gameplay](docs/research-gameplay.md), and [editing](docs/research-editorial.md).
+The local implementation now exists; this document remains the design and acceptance plan. It is not a claim that the live assignment is complete. The router currently blocks Astrocade, provider keys remain unconfigured, and fresh Instagram registration/publication are unverified. See [current acceptance evidence](docs/acceptance.md), the [requirements audit](docs/requirements-audit.md), [decision record](docs/design-decisions.md), and research on [Instagram](docs/research-instagram.md), [capture](docs/research-capture.md), [gameplay](docs/research-gameplay.md), and [editing](docs/research-editorial.md).
 
 ## Required outcome and boundaries
 
@@ -20,7 +20,7 @@ The server is the sole owner of workflow state. One mutation operation runs at a
 
 A human checkpoint parks the operation as `needs_attention` after automatic work stops, then releases the active-operation slot so unrelated generation can continue. Retain the Instagram session/profile for the handoff. Resume reacquires the slot and inspects the current page. Parked signup prevents another signup for that identity; an unresolved publication prevents further Share attempts for that publication until reconciliation. A parked checkpoint is not an active background worker.
 
-Store local JSON manifests with atomic replacement and immutable, revision-specific media files. Keep credentials in a local ignored environment file and the Instagram session in its own ignored browser profile. Neither enters the code handoff, model prompts, or general traces. Provide one shared password for the ngrok workbench; ngrok is only the review interface, not the video delivery path to Instagram.
+Store local JSON manifests with atomic replacement and immutable, revision-specific media files. Keep credentials in ignored local settings (mode 0600), with optional environment overrides, and the Instagram session in its own ignored browser profile. Neither enters the code handoff, model prompts, or general traces. Provide one shared password for the ngrok workbench; ngrok is only the review interface, not the video delivery path to Instagram.
 
 Use these narrow data boundaries, validated at external/model inputs:
 
@@ -43,7 +43,7 @@ Use direct Playwright with a dedicated persistent profile. The setup input suppl
 
 Inspect the current page on every entry or resume. Fill recognized signup screens, handle validation, submit once, retrieve a fresh matching verification email through one selected inbox adapter, and advance automatically through ordinary onboarding. Unknown screens, identity checks, or unavailable SMS verification become resumable human checkpoints in that same session. Do not restart account creation blindly after a timeout or crash.
 
-Choose the inbox adapter from the user's existing access: TLS IMAP when working credentials already exist, or an already configured provider API. The provider/access method is still a required input. Do not build multiple mailbox adapters or quietly introduce another account-registration project. Filter from a watermark established before requesting the code, parse locally, and bound polling and resend attempts.
+The user subsequently requested programmatic mailbox creation, with configurable existing email as a fallback. Implement Mail.tm's documented account/message API and one TLS IMAP adapter. Persist the chosen mailbox credentials before creation; reconcile the same identity after a lost response rather than creating replacements. The first live attempt remains unverified (same-address authentication returned HTTP 401); IMAP setup is available. Filter from a watermark established before requesting the code, parse locally, and bound polling.
 
 Verify the intended username and profile, close/reopen the persistent session, confirm public visibility, and inspect the desktop video composer. Keep account-created and upload-ready milestones separate. Skip optional contact syncing, follows, and profile-picture publication. Professional conversion is optional.
 

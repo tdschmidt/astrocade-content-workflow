@@ -1,6 +1,6 @@
 # Design decisions and rationale
 
-Updated 2026-10-06. This record distinguishes user decisions from engineering choices and superseded proposals. It does not claim the application or its external integrations have been implemented. The current architecture is an Instagram browser workflow; earlier Meta API prerequisites are no longer part of v1.
+Updated 2026-10-06. This record distinguishes user decisions from engineering choices and superseded proposals. The local application is implemented; [acceptance evidence](acceptance.md) separates tested local behavior from unverified live integrations. The current architecture is an Instagram browser workflow; earlier Meta API prerequisites are no longer part of v1.
 
 ## Requirements and user choices
 
@@ -26,7 +26,7 @@ Updated 2026-10-06. This record distinguishes user decisions from engineering ch
 | D27 | Plan for one or two focused implementation days. | Prove the difficult external dependencies first. This does not waive any hard requirement. |
 | D28 | Fresh Instagram creation must be a capability of the delivered automation. | A pre-created account or setup instructions alone do not satisfy the user's clarified requirement. This corrects the earlier external-prerequisite assumption. |
 | D29 | Investigate unattended creation first; allow human checkpoints if it is too difficult for v1. | The workflow still starts account creation, retains progress, resumes, and verifies the new identity. An exceptional handoff is reported explicitly. |
-| D30 | Use an existing owner-controlled inbox for verification. | The user authorized this direction. The provider and API/IMAP access method are still unspecified; no credentials belong in chat or the repository. |
+| D30 | Superseded by D41: an existing inbox was the initial verification direction. | The user later requested trying programmatic mailbox creation first, with configurable email as a fallback. |
 | D31 | Use Instagram browser signup and browser publishing. Do not require Facebook or Meta developer signup. | The user starts without those identities and explicitly ruled out developer enrollment. Native upload of a local video removes that dependency chain. |
 
 ## Engineering decisions supported by research
@@ -51,6 +51,13 @@ These are selected implementation defaults, subject to the explicit feasibility 
 | D38 | Record the composed game tab through native tab capture and explicit VP9 MediaRecorder in a separate local recorder tab. | Local comparative measurements favored its detail and data volume over the built-in recorder and JPEG transport. Matching Playwright 1.63.0/Chromium 153 confirmed 180 distinct frames in six seconds and final-chunk flush. Real-game compatibility remains a gate; JPEG to FFmpeg is a replacement decision if that gate fails, not a second shipped backend. See [capture research](research-capture.md). |
 | D39 | Launch a dedicated browser per capture attempt, with its unique capture-title token allocated before launch. | Tab auto-selection is a browser launch argument and cannot be changed by opening a new context. Each attempt owns both game and recorder tabs, releases inputs, flushes recording, and closes its browser. One capture runs at a time. |
 | D40 | Park human checkpoints and release the global operation slot after automated work stops. | An identity check should not prevent unrelated video generation. Preserve the Instagram session, reacquire the slot on Resume, and re-observe the page. Keep identity-specific signup and unresolved publication safeguards in force while parked. |
+| D41 | Try Mail.tm programmatic provisioning; provide TLS IMAP as the configured alternative. | User requested this change. Persist credentials before creating one identity. Pending creation can authenticate that same identity, but never silently creates replacement addresses. The live attempt could not be verified; IMAP remains available. |
+| D42 | Wait for the user's router repair instead of adding VPN Gate. | The user identified the local block and is fixing it. A VPN adds a separate operational dependency without proving better gameplay or Instagram acceptance; unaffected implementation continues. |
+| D43 | Expose credential setup in the local workbench, with optional nonempty environment overrides. | The user has no external services configured. Private settings keep setup usable without putting credentials in chat or source; public status only exposes configured flags. |
+| D44 | Reuse existing libraries for browser control, media, mail parsing, validation and UI. | User explicitly allows libraries; custom code is limited to the workflow's decisions and integration boundaries. Exact versions and the lockfile support reproducibility. |
+| D45 | Preserve publication uncertainty across draft revisions. | Review found that approving a later revision could otherwise bypass an earlier uncertain Share. Block edits/new revision publication until the original intent is reconciled; expose the original recovery action in the UI. |
+| D46 | Keep narrated duration content-led and preserve edited words on resume. | A hard twenty-second minimum was unnecessary. Measured speech must fit verified action. Only original generated copy receives one automatic shortening attempt; user-edited revisions require explicit edits. |
+| D47 | Check real SDK request serialization with offline fixtures, then require separate live acceptance. | Typed inputs alone do not prove correct media delivery. Tests caught the need to request inline WAV explicitly and use the current nested word-timestamp configuration. They do not establish key access or quota. |
 
 ## Superseded proposals
 
