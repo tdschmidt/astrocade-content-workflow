@@ -34,6 +34,7 @@ export const inputActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('key'), key: keySchema, durationMs: z.number().int().min(20).max(2000) }),
   z.object({ type: z.literal('tap'), point: pointSchema }),
   z.object({ type: z.literal('drag'), from: pointSchema, to: pointSchema, durationMs: z.number().int().min(50).max(2000) }),
+  z.object({ type: z.literal('path'), points: z.array(pointSchema).min(2).max(32), durationMs: z.number().int().min(50).max(2000) }),
   z.object({ type: z.literal('wait'), durationMs: z.number().int().min(20).max(5000) }),
 ]);
 export type InputAction = z.infer<typeof inputActionSchema>;

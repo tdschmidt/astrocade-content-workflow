@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
-import type { Page } from 'playwright';
+import test, { type TestContext } from 'node:test';
+import { chromium, type Page } from 'playwright';
 import { InputExecutor, withinGame, withAbort } from './input.js';
-import { gameProfileSchema } from './schema.js';
+import { gameProfileSchema, inputActionSchema } from './schema.js';
 import { GameCaptureError, runCaptureAttempt } from './runner.js';
 
 test('canceling a held native key releases it before the action rejects', async () => {
@@ -36,4 +36,77 @@ test('unverified profiles are blocked before creating a browser or capture file'
   let created = false;
   await assert.rejects(runCaptureAttempt({ profile, outputPath: '/tmp/should-not-exist.webm', createCapture: async () => { created = true; throw new Error('unexpected'); } }), (error: unknown) => error instanceof GameCaptureError && error.code === 'unverified_profile');
   assert.equal(created, false);
+});
+
+test('pointer paths have bounded normalized points and duration', () => {
+  const valid = { type: 'path', points: [{ x: 0, y: 0 }, { x: 1, y: 1 }], durationMs: 50 };
+  assert.deepEqual(inputActionSchema.parse(valid), valid);
+  assert.ok(inputActionSchema.safeParse({ ...valid, points: Array.from({ length: 32 }, (_, index) => ({ x: index / 31, y: 0.5 })), durationMs: 2000 }).success);
+  for (const invalid of [
+    { ...valid, points: [] }, { ...valid, points: [{ x: 0, y: 0 }] },
+    { ...valid, points: Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5 })) },
+    { ...valid, points: [{ x: -0.1, y: 0 }, { x: 1, y: 1 }] },
+    { ...valid, points: [{ x: 0, y: 0 }, { x: 1, y: 1.1 }] },
+    { ...valid, points: [{ x: Number.NaN, y: 0 }, { x: 1, y: 1 }] },
+    { ...valid, durationMs: 49 }, { ...valid, durationMs: 2001 }, { ...valid, durationMs: 100.5 },
+  ]) assert.equal(inputActionSchema.safeParse(invalid).success, false);
+});
+
+type PointerEventRecord = { type: string; x: number; y: number; buttons: number; trusted: boolean };
+async function pathFixture(t: TestContext) {
+  const browser = await chromium.launch({ channel: 'chromium', headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 800, height: 800 } });
+  await page.setContent('<style>body{margin:0}iframe{position:absolute;left:40px;top:60px;width:400px;height:400px;border:4px solid black;transform:scale(.75);transform-origin:top left}</style><iframe id="game"></iframe>');
+  const frame = page.frames()[1]!;
+  await frame.setContent(`<style>body{margin:0}canvas{display:block;background:#234}</style><canvas width="400" height="400"></canvas><script>
+    const canvas=document.querySelector('canvas'),events=[];
+    for(const type of ['pointerdown','pointermove','pointerup']) canvas.addEventListener(type,event=>{
+      events.push({type:event.type,x:event.offsetX,y:event.offsetY,buttons:event.buttons,trusted:event.isTrusted});
+      document.body.dataset.events=JSON.stringify(events);
+      if(event.type==='pointermove'&&event.buttons&&window.abortPath) void window.abortPath();
+    });
+  </script>`);
+  const events = async (): Promise<PointerEventRecord[]> => JSON.parse(await frame.locator('body').getAttribute('data-events') ?? '[]');
+  return { page, frame, events, surface: { selector: 'canvas', frames: ['#game'] } };
+}
+
+test('a native pointer path visits every corner through a scaled iframe with one press and release', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
+  const { page, events, surface } = await pathFixture(t);
+  const points = [{ x: 0.2, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.8, y: 0.5 }, { x: 0.2, y: 0.5 }, { x: 0.2, y: 0.2 }];
+  const executor = new InputExecutor(page, surface);
+  await executor.execute({ type: 'path', points, durationMs: 600 });
+  const observed = await events();
+  assert.equal(observed.filter(event => event.type === 'pointerdown').length, 1);
+  assert.equal(observed.filter(event => event.type === 'pointerup').length, 1);
+  assert.ok(observed.every(event => event.trusted));
+  const held = observed.slice(observed.findIndex(event => event.type === 'pointerdown') + 1, -1);
+  assert.ok(held.length >= points.length - 1);
+  assert.ok(held.every(event => event.type === 'pointermove' && event.buttons === 1), 'the pointer must remain down between corners');
+  let last = -1;
+  for (const point of points.slice(1)) {
+    const next = held.findIndex((event, index) => index > last && Math.abs(event.x - point.x * 400) < 1 && Math.abs(event.y - point.y * 400) < 1);
+    assert.ok(next > last, `missing ordered waypoint ${JSON.stringify(point)}`);
+    last = next;
+  }
+  assert.equal(observed.at(-1)!.buttons, 0);
+  assert.equal(executor.executed, 1);
+  await executor.releaseAll();
+  assert.deepEqual(await events(), observed, 'cleanup must not release a second time');
+});
+
+test('canceling a native pointer path releases it mid-gesture and prevents later segments', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
+  const { page, events, surface } = await pathFixture(t);
+  const abort = new AbortController();
+  await page.exposeFunction('abortPath', () => abort.abort(new Error('Stop the path')));
+  const executor = new InputExecutor(page, surface, abort.signal);
+  await assert.rejects(executor.execute({ type: 'path', points: [{ x: 0.2, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.8, y: 0.8 }], durationMs: 1500 }), /Stop the path|aborted/i);
+  const observed = await events();
+  assert.equal(observed.filter(event => event.type === 'pointerdown').length, 1);
+  assert.equal(observed.filter(event => event.type === 'pointerup').length, 1);
+  assert.ok(observed.every(event => event.trusted));
+  assert.equal(observed.at(-1)!.type, 'pointerup');
+  assert.equal(observed.at(-1)!.buttons, 0);
+  assert.ok(observed.every(event => event.y < 100), 'cancellation must stop before the second segment');
+  assert.equal(executor.executed, 0);
 });

@@ -31,6 +31,15 @@ test('feedback rejects unknown controls, invalid batches and contradictory termi
   assert.deepEqual(validateFeedbackDecision(answer, profile), answer);
 });
 
+test('continuous paths require observed pointer controls and share the action-batch time budget', () => {
+  const path = { type: 'path' as const, points: [{ x: 0.4, y: 0.5 }, { x: 0.5, y: 0.6 }, { x: 0.6, y: 0.5 }, { x: 0.4, y: 0.5 }], durationMs: 2000 };
+  assert.deepEqual(validateFeedbackDecision({ ...answer, actions: [path] }, profile).actions, [path]);
+  const keyboardOnly = gameProfileSchema.parse({ ...profile, controller: { type: 'sparse', allowedKeys: ['Space'], allowPointer: false } });
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [path] }, keyboardOnly), /control not established/);
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: Array.from({ length: 6 }, () => path) }, profile), /exceeds 10 seconds/);
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [{ ...path, keepHeld: true }] }, profile), /unrecognized_keys/);
+});
+
 test('feedback compares fresh images, retains lessons and saves its actual evidence', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'feedback-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

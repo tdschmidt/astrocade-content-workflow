@@ -115,20 +115,29 @@ export class InputExecutor {
         this.pointerDown = true;
         await this.page.mouse.down();
       }
-      if (action.type === 'drag') {
+      if (action.type === 'drag' || action.type === 'path') {
         const bounds = await gameBounds(this.page, this.surface);
-        const from = withinGame(bounds, action.from);
-        const to = withinGame(bounds, action.to);
-        await this.page.mouse.move(from.x, from.y);
+        const points = (action.type === 'drag' ? [action.from, action.to] : action.points).map(point => withinGame(bounds, point));
+        const lengths = points.slice(1).map((point, index) => Math.hypot(point.x - points[index]!.x, point.y - points[index]!.y));
+        const totalLength = lengths.reduce((sum, length) => sum + length, 0);
+        await this.page.mouse.move(points[0]!.x, points[0]!.y);
         this.pointerDown = true;
         await this.page.mouse.down();
-        const steps = Math.max(2, Math.ceil(action.durationMs / 40));
         const started = performance.now();
-        for (let index = 1; index <= steps; index++) {
-          this.signal?.throwIfAborted();
-          const wait = started + action.durationMs * index / steps - performance.now();
-          if (wait > 0) await delay(wait, undefined, { signal: this.signal });
-          await this.page.mouse.move(from.x + (to.x - from.x) * index / steps, from.y + (to.y - from.y) * index / steps);
+        let elapsed = 0;
+        for (let segment = 0; segment < lengths.length; segment++) {
+          const from = points[segment]!, to = points[segment + 1]!;
+          // Proportional timing keeps speed steady and visits every waypoint.
+          // A stationary path retains its bounded hold without dividing by zero.
+          const duration = action.durationMs * (totalLength ? lengths[segment]! / totalLength : 1 / lengths.length);
+          const steps = Math.max(1, Math.ceil(duration / 40));
+          for (let index = 1; index <= steps; index++) {
+            this.signal?.throwIfAborted();
+            const wait = started + elapsed + duration * index / steps - performance.now();
+            if (wait > 0) await delay(wait, undefined, { signal: this.signal });
+            await this.page.mouse.move(from.x + (to.x - from.x) * index / steps, from.y + (to.y - from.y) * index / steps);
+          }
+          elapsed += duration;
         }
       }
       this.executed++;
