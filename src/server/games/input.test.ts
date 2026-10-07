@@ -163,3 +163,54 @@ test('native right taps, drags and paths send trusted secondary-button input and
   assert.equal(last.at(-1)!.buttons, 0);
   assert.equal(executor.executed, 4);
 });
+
+for (const wholeFrame of [false, true]) test(`a locked ${wholeFrame ? 'iframe' : 'canvas'} click preserves current aim and unlocked clicks still target coordinates`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
+  const browser = await chromium.launch({ channel: 'chromium', headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 800, height: 800 } });
+  const gameHtml = `<style>body{margin:0}canvas{display:block;background:#234}</style><canvas width="400" height="400"></canvas><script>
+    const canvas=document.querySelector('canvas');
+    document.body.dataset.moves='0';
+    canvas.addEventListener('click',()=>{if(!document.pointerLockElement) void canvas.requestPointerLock().catch(error=>{document.body.dataset.lockError=error.message})});
+    document.addEventListener('keydown',event=>{if(event.key==='Escape') document.exitPointerLock()});
+    canvas.addEventListener('mousemove',event=>{
+      document.body.dataset.moves=String(Number(document.body.dataset.moves)+Math.abs(event.movementX)+Math.abs(event.movementY));
+    });
+    canvas.addEventListener('mousedown',event=>{
+      document.body.dataset.down=JSON.stringify({button:event.button,x:event.offsetX,y:event.offsetY,trusted:event.isTrusted,locked:!!document.pointerLockElement});
+    });
+    canvas.addEventListener('contextmenu',event=>event.preventDefault());
+  </script>`;
+  // Pointer Lock requires an active navigated document, not an about:blank
+  // frame replaced by document.write/setContent.
+  await page.route('https://pointer-lock.test/**', route => route.fulfill({ contentType: 'text/html', body:
+    new URL(route.request().url()).pathname === '/game' ? gameHtml :
+      '<style>body{margin:0}iframe{width:400px;height:400px;border:0}</style><iframe id="game" src="/game"></iframe>',
+  }));
+  await page.goto('https://pointer-lock.test/');
+  const frame = page.frames()[1]!;
+  const surface = wholeFrame ? { selector: '#game', frames: [] } : { selector: 'canvas', frames: ['#game'] };
+  const executor = new InputExecutor(page, surface);
+  await executor.execute({ type: 'tap', point: { x: 0.2, y: 0.2 } });
+  await frame.waitForFunction(() => document.pointerLockElement !== null, undefined, { timeout: 3000 }).catch(async error => {
+    assert.fail(`Lock was not acquired: ${error.message}; ${JSON.stringify(await frame.locator('body').evaluate(element => ({ ...((element as HTMLElement).dataset) })))}`);
+  });
+  // Move the native mouse to model a changed aim. A subsequent target move
+  // used to undo that camera adjustment before dispatching the right button.
+  await page.mouse.move(250, 300);
+  const before = Number(await frame.locator('body').getAttribute('data-moves'));
+  await executor.execute({ type: 'tap', point: { x: 0.5, y: 0.5 }, button: 'right' });
+  assert.equal(Number(await frame.locator('body').getAttribute('data-moves')), before, 'button input must not move the locked camera');
+  const locked = JSON.parse(await frame.locator('body').getAttribute('data-down') ?? '{}');
+  assert.equal(locked.button, 2);
+  assert.equal(locked.trusted, true);
+  assert.equal(locked.locked, true);
+  await page.keyboard.press('Escape');
+  await frame.waitForFunction(() => document.pointerLockElement === null, undefined, { timeout: 3000 });
+  await executor.execute({ type: 'tap', point: { x: 0.8, y: 0.7 }, button: 'right' });
+  const unlocked = JSON.parse(await frame.locator('body').getAttribute('data-down') ?? '{}');
+  assert.equal(unlocked.locked, false);
+  assert.equal(unlocked.button, 2);
+  assert.equal(unlocked.trusted, true);
+  assert.ok(Math.abs(unlocked.x - 320) < 1 && Math.abs(unlocked.y - 280) < 1, 'normal clicks still use their observed target');
+});

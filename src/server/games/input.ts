@@ -75,6 +75,15 @@ export async function gameBounds(page: Page, target: SurfaceLocator): Promise<Ga
   return composedBounds(page, target);
 }
 
+async function gameHasPointerLock(page: Page, surface: SurfaceLocator): Promise<boolean> {
+  const target = locate(page, surface);
+  // Read the browser's input mode, never game state. New profiles use the whole
+  // iframe; older profiles locate a canvas inside its document.
+  const documentRoot = await target.evaluate(element => element.tagName === 'IFRAME')
+    ? target.contentFrame().locator(':root') : target;
+  return documentRoot.evaluate(element => element.ownerDocument.pointerLockElement !== null);
+}
+
 export function withinGame(bounds: GameBounds, point: { x: number; y: number }): { x: number; y: number } {
   // Composed bounds include every iframe's displayed scale and border offset.
   return { x: bounds.x + Math.min(bounds.width - 1, point.x * bounds.width), y: bounds.y + Math.min(bounds.height - 1, point.y * bounds.height) };
@@ -111,7 +120,9 @@ export class InputExecutor {
       }
       if (action.type === 'tap') {
         const point = withinGame(await gameBounds(this.page, this.surface), action.point);
-        await this.page.mouse.move(point.x, point.y);
+        // In mouse-look mode, repositioning before a click changes the aim.
+        // The native button must act on the current crosshair instead.
+        if (!await gameHasPointerLock(this.page, this.surface)) await this.page.mouse.move(point.x, point.y);
         this.heldPointerButton = action.button ?? 'left';
         await this.page.mouse.down({ button: this.heldPointerButton });
       }
