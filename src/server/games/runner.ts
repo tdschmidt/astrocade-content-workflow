@@ -22,7 +22,7 @@ export type GameplayObservation = {
   signal: AbortSignal;
 };
 export type CaptureProgress = { stage: 'loading' | 'ready' | 'recording' | 'deciding' | 'finalizing'; message: string };
-export type ActionProgress = { phase: 'setup' | 'start' | 'control'; status: 'started' | 'completed'; action: UiStep; recordingElapsedMs: number | null };
+export type ActionProgress = { phase: 'setup' | 'start' | 'focus' | 'control'; status: 'started' | 'completed'; action: UiStep; recordingElapsedMs: number | null };
 export type CaptureAttemptResult = {
   attemptId: string;
   gameUrl: string;
@@ -96,13 +96,12 @@ export async function runCaptureAttempt(options: {
     try {
       for (const step of profile.setup) await perform('setup', step, () => executor.step(step));
       await withAbort(locate(page, profile.ready).waitFor({ state: 'visible', timeout: 10000 }), options.signal);
-      await withAbort(locate(page, profile.surface).waitFor({ state: 'visible', timeout: 10000 }), options.signal);
+      await withAbort(locate(page, profile.surface).waitFor({ state: 'attached', timeout: 10000 }), options.signal);
     } catch (error) {
       const detail = error instanceof Error ? error.message.split('\n')[0]!.slice(0, 500) : 'Unknown control error.';
       throw new GameCaptureError('missing_controls', `Game setup could not reach its ready controls: ${detail}`, { cause: error });
     }
     options.onProgress?.({ stage: 'ready', message: 'Game surface is visible; starting recording before gameplay.' });
-    lastBounds = await gameBounds(page, profile.surface);
     await session.start();
     recordingStarted = performance.now();
     timer = setTimeout(() => budget.abort(new Error('Capture duration budget reached.')), profile.maxDurationMs);
@@ -110,8 +109,13 @@ export async function runCaptureAttempt(options: {
     options.onProgress?.({ stage: 'recording', message: 'Recording real gameplay.' });
     try {
       for (const step of profile.start) await perform('start', step, () => executor.step(step));
-      lastBounds = await gameBounds(page, profile.surface).catch(() => lastBounds!);
-      if (profile.focus === 'click') await executor.step({ type: 'click', target: profile.surface });
+      // Some games reveal the canvas only after their DOM Start button is clicked.
+      await withAbort(locate(page, profile.surface).waitFor({ state: 'visible', timeout: 10000 }), controlSignal);
+      lastBounds = await gameBounds(page, profile.surface);
+      if (profile.focus === 'click') {
+        const click = { type: 'click' as const, target: profile.surface };
+        await perform('focus', click, () => executor.step(click));
+      }
       else await withAbort(locate(page, profile.surface).focus(), controlSignal);
       if (profile.controller.type === 'timed') {
         for (let iteration = 0; iteration < profile.controller.repetitions; iteration++) {
@@ -141,7 +145,8 @@ export async function runCaptureAttempt(options: {
       else throw error;
     } finally { clearTimeout(timer); await executor.releaseAll(); }
     options.signal?.throwIfAborted();
-    const surfaceBounds = await gameBounds(page, profile.surface).catch(() => lastBounds!);
+    const surfaceBounds = await gameBounds(page, profile.surface).catch(() => lastBounds);
+    if (!surfaceBounds) throw new GameCaptureError('missing_controls', 'The game never exposed a visible capture surface.');
     options.onProgress?.({ stage: 'finalizing', message: 'Flushing and validating the source recording.' });
     const artifact = await session.finish();
     return { attemptId, gameUrl: profile.gameUrl, profileId: profile.id, profileVerification: profile.verification, artifact, surfaceBounds, actionsExecuted: executor.executed, decisions, stopReason, startedAt, finishedAt: new Date().toISOString() };

@@ -8,7 +8,7 @@ import { chromium } from 'playwright';
 import { discoverGames } from './discovery.js';
 import { gameBounds, InputExecutor, locate } from './input.js';
 import { gameProfileSchema } from './schema.js';
-import { resetGame, runCaptureAttempt } from './runner.js';
+import { resetGame, runCaptureAttempt, type ActionProgress } from './runner.js';
 
 const frame = `<!doctype html><style>body{margin:0;background:#161b31}canvas{display:block}</style><button id="reset">Reset</button><canvas width="500" height="500" tabindex="0"></canvas><script>
 const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');let moves=0,x=60;document.body.dataset.moves='0';document.body.dataset.held='false';
@@ -23,6 +23,8 @@ test('local browser fixture: discovery, frame controls, reset and two native cap
   const server = createServer((request, response) => {
     response.setHeader('Content-Type', 'text/html');
     if (request.url === '/frame') response.end(frame);
+    else if (request.url === '/hidden-frame') response.end(frame + '<style>canvas{display:none}</style><button id="start" onclick="document.querySelector(\'canvas\').style.display=\'block\';this.remove()">Play</button>');
+    else if (request.url === '/hidden') response.end('<iframe id="game" src="/hidden-frame" width="500" height="560"></iframe>');
     else if (request.url === '/offline') response.end("<h1>You're Offline</h1>");
     else if (request.url === '/games') response.end(`<article><a href="https://www.astrocade.com/games/runner/id1"><h3>Runner</h3></a><p>1.2K plays</p><p>by Creator</p></article><article><a href="https://www.astrocade.com/games/sorter/id2"><h3>Sorter</h3></a><p>4 likes</p></article><a href="https://evil.example/games/fake/id3">Fake</a>`);
     else response.end('<!doctype html><style>body{margin:20px}iframe{border:0;margin-top:40px}</style><iframe id="game" src="/frame" width="500" height="560"></iframe>');
@@ -86,5 +88,18 @@ test('local browser fixture: discovery, frame controls, reset and two native cap
       assert.equal(result.stopReason, 'actions_complete');
       assert.equal(result.gameUrl, base);
     }
+  });
+
+  await t.test('a DOM Start can reveal a hidden canvas after recording starts', async () => {
+    const actions: ActionProgress[] = [];
+    const hidden = gameProfileSchema.parse({ ...profile, gameUrl: `${base}/hidden`, focus: 'click',
+      ready: { selector: '#start', frames: ['#game'] }, start: [{ type: 'click', target: { selector: '#start', frames: ['#game'] } }],
+    });
+    const result = await runCaptureAttempt({ profile: hidden, outputPath: join(directory, 'hidden.webm'), allowLocalGame: true, onAction: action => actions.push(action) });
+    assert.equal(result.artifact.codec, 'vp9');
+    assert.equal(result.surfaceBounds.width, 500);
+    assert.ok(result.artifact.durationSeconds >= 2);
+    assert.deepEqual(actions.filter(action => action.status === 'completed').map(action => action.phase), ['start', 'focus', 'control', 'control', 'control', 'control']);
+    assert.ok(actions[0]!.recordingElapsedMs !== null, 'the Start click must be recorded');
   });
 });
