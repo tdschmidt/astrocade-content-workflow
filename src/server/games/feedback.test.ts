@@ -107,7 +107,7 @@ test('reel exploration remembers earlier mechanics beyond the recent four decisi
       assert.deepEqual(JSON.parse(prompt.match(/Mechanic checklist from the last decision.*?: (\[.*\])\. Return/)![1]!), learnedMechanics);
       assert.doesNotMatch(prompt, /Recent observations\/lessons[^\n]*SYNTHETIC initial ice form/);
     }
-    return { ...answer, mechanics: learnedMechanics, observation: calls === 1 ? 'SYNTHETIC initial ice form is visible.' : `SYNTHETIC distinct later state ${calls}.`, lesson: calls === 1 ? 'SYNTHETIC ice control established.' : 'Compare the next observed effect.' };
+    return { ...answer, pivotTo: null, mechanics: learnedMechanics, observation: calls === 1 ? 'SYNTHETIC initial ice form is visible.' : `SYNTHETIC distinct later state ${calls}.`, lesson: calls === 1 ? 'SYNTHETIC ice control established.' : 'Compare the next observed effect.' };
   } } as unknown as Pick<Inference, 'json'>;
   const decide = createFeedbackController(profile, provider, directory, undefined, { editingStyle: 'reel' });
   for (let i = 0; i < 6; i++) {
@@ -132,7 +132,7 @@ test('reel camera correction uses current lock and remembered failed engagement 
   const miss = { type: 'tap' as const, point: { x: 0.5, y: 0.51 }, button: 'left' as const };
   const correction = { type: 'tap' as const, point: { x: 0.5, y: 0.44 }, button: 'left' as const };
   let calls = 0;
-  const reelAnswer = { ...answer, mechanics: [] };
+  const reelAnswer = { ...answer, pivotTo: null, mechanics: [] };
   const provider = { json: async (prompt: string) => {
     calls++;
     assert.match(prompt, /permit ONE corrected engagement attempt/);
@@ -214,7 +214,7 @@ test('reel setup scopes latency tolerance to observed safe exploration without e
     assert.match(prompt, /Judge the CURRENT scene and proposed exploration/);
     assert.match(prompt, /quiet free-roam area or input-paced transformation menu can qualify/);
     assert.match(prompt, /when danger demands fast reactions, stop and report the limit/);
-    assert.match(prompt, /3–6 useful moments/);
+    assert.match(prompt, /meaningful progression objective/);
     return { supported: true, confidence: 'medium', latencyTolerant: true, objective: 'Compare visible forms and their effects in the safe plaza.', instructions: inspection.text,
       allowedKeys: ['KeyF', 'KeyW', 'KeyA', 'KeyS', 'KeyD'], allowPointer: true, allowLook: false,
       evidence: ['SYNTHETIC visible controls and empty plaza permit a bounded probe.'], limitations: ['Combat is not established as latency-tolerant.'] };
@@ -340,7 +340,7 @@ test('during-action frames survive a landed NOW image and carry working mechanic
   let calls = 0;
   const provider = { json: async (prompt: string, schema: z.ZodType, media: Array<{ data: string }>) => {
     calls++;
-    const proposal = { ...answer, mechanics: checklist, actions: [probe] };
+    const proposal = { ...answer, pivotTo: null, mechanics: checklist, actions: [probe] };
     const wire = z.toJSONSchema(schema);
     const assertStrict = (value: unknown) => {
       if (!value || typeof value !== 'object') return;
@@ -389,8 +389,8 @@ test('frame ordering and checklist size are bounded before actions can be dispat
   }
   assert.equal(calls, 0);
   const mechanic = { name: 'Flight', status: 'testing', evidence: 'Observed control, result uncertain.', nextGoal: 'Inspect the next action frames.' };
-  assert.throws(() => validateFeedbackDecision({ ...answer, mechanics: Array.from({ length: 9 }, (_, index) => ({ ...mechanic, name: `Mechanic ${index}` })) }, profile));
-  assert.throws(() => validateFeedbackDecision({ ...answer, mechanics: [mechanic, { ...mechanic, name: 'flight' }] }, profile), /unique/);
+  assert.throws(() => validateFeedbackDecision({ ...answer, pivotTo: null, mechanics: Array.from({ length: 9 }, (_, index) => ({ ...mechanic, name: `Mechanic ${index}` })) }, profile));
+  assert.throws(() => validateFeedbackDecision({ ...answer, pivotTo: null, mechanics: [mechanic, { ...mechanic, name: 'flight' }] }, profile), /unique/);
 });
 
 test('new reel feedback profiles scale their call ceiling within the requested capture budget', async t => {
@@ -415,7 +415,7 @@ test('new reel feedback profiles scale their call ceiling within the requested c
 test('reel response limits are enforced on the strict request and returned data without narrowing legacy decisions', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'feedback-concise-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const atLimit = { ...answer, observation: 'o'.repeat(500), lesson: 'l'.repeat(300), reason: 'r'.repeat(400), actions: [{ ...move, button: 'left' }],
+  const atLimit = { ...answer, pivotTo: null, observation: 'o'.repeat(500), lesson: 'l'.repeat(300), reason: 'r'.repeat(400), actions: [{ ...move, button: 'left' }],
     mechanics: [{ name: 'Movement', status: 'working', evidence: 'e'.repeat(180), nextGoal: 'g'.repeat(120) }] };
   const invalid = [
     { ...atLimit, observation: 'o'.repeat(501) },
@@ -443,7 +443,145 @@ test('reel response limits are enforced on the strict request and returned data 
   const legacy = createFeedbackController(profile, { json: async (_prompt: string, schema: z.ZodType) => {
     assert.equal(schema.safeParse({ ...legacyResponse, actions: [{ ...move, button: 'left' }] }).success, true);
     assert.equal('mechanics' in z.toJSONSchema(schema).properties!, false);
+    assert.equal('pivotTo' in z.toJSONSchema(schema).properties!, false);
     return legacyResponse;
   } } as unknown as Pick<Inference, 'json'>, join(directory, 'legacy'));
   assert.deepEqual((await legacy(observation)).actions, [move]);
+});
+
+test('reel history retains scoped demonstrations when the current checklist forgets or blocks them', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-history-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const heat = { name: 'Heatblast: flight', status: 'working', evidence: 'SYNTHETIC Heatblast lifted over a roof at 7s.', nextGoal: 'Reach the visible tower.' };
+  const ice = { name: 'Ice form: flight', status: 'working', evidence: 'SYNTHETIC ice form glided over water at 12s.', nextGoal: 'Reach the far bank.' };
+  let calls = 0;
+  const provider = { json: async (prompt: string) => {
+    calls++;
+    assert.match(prompt, /complete native setup→choice→change→use sequence/);
+    assert.match(prompt, /A count of button demonstrations or short moments is not completion/);
+    const historical = JSON.parse(prompt.match(/Earlier demonstrated mechanics[^\n]*?: (\[.*\])\. This server-owned/)![1]!);
+    if (calls === 2) assert.deepEqual(historical, [], 'an initial hypothesis is not an observed action result');
+    if (calls === 8) {
+      assert.deepEqual(historical, [
+        { name: heat.name, evidence: heat.evidence, atSeconds: 7 },
+        { name: ice.name, evidence: ice.evidence, atSeconds: 12 },
+      ]);
+      assert.match(prompt, /NOT independently verified or necessarily available in the CURRENT form/);
+      assert.doesNotMatch(prompt.match(/Recent observations\/lessons[^\n]*/)![0], /lifted over a roof/);
+      assert.match(prompt, /Mechanic checklist from the last decision[^\n]*: \[\]\. Return/);
+    }
+    const mechanics = calls === 1 ? [{ ...heat, status: 'testing' }]
+      : calls === 2 ? [heat] : calls === 3 ? [ice]
+        : calls === 4 ? [{ ...heat, name: 'HEATBLAST: FLIGHT', status: 'blocked', evidence: 'Current form is Ice; the old Heatblast input is unavailable.' }] : [];
+    return { ...answer, observation: calls === 2 ? heat.evidence : `SYNTHETIC current state ${calls}.`, pivotTo: null, mechanics };
+  } } as unknown as Pick<Inference, 'json'>;
+  const decide = createFeedbackController(profile, provider, directory, undefined, { editingStyle: 'reel' });
+  for (let i = 0; i < 8; i++) await decide({ ...observation, elapsedMs: 2000 + i * 5000, previousActions: i ? [move] : [] });
+  const saved = JSON.parse(await readFile(join(directory, 'decision-08.json'), 'utf8'));
+  assert.equal(saved.demonstratedMechanics.length, 2, 'scoped effects survive omission and a current-form block');
+  assert.deepEqual(saved.mechanics, [], 'historical effects never masquerade as the current checklist');
+  assert.match(await readFile(join(directory, 'report.md'), 'utf8'), /Heatblast: flight at 7\.00s/);
+});
+
+test('reel demonstration memory deduplicates stable names and stays bounded', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-history-bound-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const provider = { json: async () => {
+    const start = calls++ < 2 ? 0 : (calls - 2) * 8;
+    return { ...answer, pivotTo: null, mechanics: Array.from({ length: 8 }, (_, index) => ({
+      name: calls === 2 ? ` FORM: ${start + index} ` : `Form: ${start + index}`,
+      status: 'working', evidence: 'SYNTHETIC visible effect.', nextGoal: 'Use this toward a visible target.',
+    })) };
+  } } as unknown as Pick<Inference, 'json'>;
+  const decide = createFeedbackController(profile, provider, directory, undefined, { editingStyle: 'reel' });
+  for (let i = 0; i < 4; i++) await decide({ ...observation, previousActions: [move], elapsedMs: 2000 + i * 5000 });
+  const deduped = JSON.parse(await readFile(join(directory, 'decision-02.json'), 'utf8'));
+  assert.equal(deduped.demonstratedMechanics.length, 8);
+  const bounded = JSON.parse(await readFile(join(directory, 'decision-04.json'), 'utf8'));
+  assert.equal(bounded.demonstratedMechanics.length, 16);
+  assert.equal(bounded.demonstratedMechanics[0].name, 'Form: 8');
+});
+
+test('a reel can pivot once from a stalled route to another known feature then must show progress', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-pivot-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const route = { name: 'Route: tower', status: 'blocked', evidence: 'SYNTHETIC the tower route is lost.', nextGoal: 'Leave this blocked route.' };
+  const tool = { name: 'Builder: tool selector', status: 'untried', evidence: 'SYNTHETIC the current instructions show a tool selector.', nextGoal: 'Open the observed selector and choose the bridge tool.' };
+  let calls = 0;
+  const provider = { json: async (prompt: string) => {
+    calls++;
+    if (calls === 4) assert.match(prompt, /Consecutive stalled observations before this decision: 2/);
+    if (calls === 5) assert.match(prompt, /One recovery pivot for this session: already used/);
+    return { ...answer, outcome: calls === 1 ? 'progress' : 'no_progress', mechanics: [route, tool], pivotTo: calls >= 4 ? tool.name : null };
+  } } as unknown as Pick<Inference, 'json'>;
+  const decide = createFeedbackController(profile, provider, directory, undefined, { editingStyle: 'reel' });
+  for (let i = 0; i < 3; i++) assert.equal((await decide({ ...observation, previousActions: i ? [move] : [] })).stop, false);
+  const pivot = await decide({ ...observation, previousActions: [move] });
+  assert.equal(pivot.stop, false);
+  assert.deepEqual(pivot.actions, [move]);
+  assert.match(pivot.reason, /One bounded recovery toward Builder: tool selector/);
+  const stopped = await decide({ ...observation, previousActions: [move] });
+  assert.equal(stopped.stop, true);
+  assert.deepEqual(stopped.actions, []);
+  assert.match(stopped.reason, /4 consecutive observations without progress/);
+  assert.equal(JSON.parse(await readFile(join(directory, 'decision-04.json'), 'utf8')).pivotUsed, true);
+});
+
+test('pivot cannot invent a feature, revive a blocked feature or overrule a terminal stop', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-pivot-guards-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const route = { name: 'Route: tower', status: 'blocked', evidence: 'SYNTHETIC lost route.', nextGoal: 'Stop this route.' };
+  const tool = { name: 'Builder: tool selector', status: 'untried', evidence: 'SYNTHETIC observed selector.', nextGoal: 'Choose another observed tool.' };
+  for (const [index, scenario] of ['invented', 'blocked', 'terminal', 'wait_only', 'final'].entries()) {
+    let calls = 0;
+    const provider = { json: async () => {
+      calls++;
+      const terminal = calls === 4 && ['terminal', 'final'].includes(scenario);
+      return { ...answer, outcome: terminal ? 'failure' : 'no_progress', stop: terminal,
+        actions: terminal ? [] : scenario === 'wait_only' && calls === 4 ? [{ type: 'wait', durationMs: 500 }] : [move],
+        pivotTo: calls === 4 ? scenario === 'invented' ? 'Unseen teleport' : tool.name : null,
+        mechanics: calls === 4 && scenario === 'blocked' ? [route, { ...tool, status: 'blocked' }] : [route, tool] };
+    } } as unknown as Pick<Inference, 'json'>;
+    const decide = createFeedbackController(profile, provider, join(directory, String(index)), undefined, { editingStyle: 'reel' });
+    for (let i = 0; i < 3; i++) await decide({ ...observation, previousActions: i ? [move] : [] });
+    const stopped = await decide({ ...observation, previousActions: [move], isFinal: scenario === 'final' });
+    assert.equal(stopped.stop, true, scenario);
+    assert.deepEqual(stopped.actions, [], scenario);
+    const saved = JSON.parse(await readFile(join(directory, String(index), 'decision-04.json'), 'utf8'));
+    assert.equal(saved.pivotUsed, false, scenario);
+  }
+});
+
+test('successful pivot resets stalls but does not grant a second recovery in the same reel', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-pivot-once-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const provider = { json: async () => ({ ...answer, outcome: ++calls === 5 ? 'progress' : 'no_progress', pivotTo: 'Builder: selector', mechanics: [
+    { name: 'Route: tower', status: 'blocked', evidence: 'SYNTHETIC lost route.', nextGoal: 'Leave the failed route.' },
+    { name: 'Builder: selector', status: 'working', evidence: 'SYNTHETIC observed selector.', nextGoal: 'Choose the visible tool.' },
+  ] }) } as unknown as Pick<Inference, 'json'>;
+  const decide = createFeedbackController(profile, provider, directory, undefined, { editingStyle: 'reel' });
+  for (let i = 0; i < 7; i++) assert.equal((await decide({ ...observation, previousActions: i ? [move] : [] })).stop, false);
+  const stopped = await decide({ ...observation, previousActions: [move] });
+  assert.equal(stopped.stop, true);
+  assert.match(stopped.reason, /3 consecutive observations without progress; the one recovery pivot was already used/);
+});
+
+
+test('an uncertain recovery cannot silently reset the stall guard', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-pivot-uncertain-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const provider = { json: async () => ({ ...answer, outcome: ++calls === 5 ? 'uncertain' : 'no_progress', pivotTo: 'Builder: selector', mechanics: [
+    { name: 'Route: tower', status: 'blocked', evidence: 'SYNTHETIC lost route.', nextGoal: 'Leave the failed route.' },
+    { name: 'Builder: selector', status: 'working', evidence: 'SYNTHETIC observed selector.', nextGoal: 'Choose the visible tool.' },
+  ] }) } as unknown as Pick<Inference, 'json'>;
+  const decide = createFeedbackController(profile, provider, directory, undefined, { editingStyle: 'reel' });
+  for (let i = 0; i < 4; i++) assert.equal((await decide({ ...observation, previousActions: i ? [move] : [] })).stop, false);
+  const stopped = await decide({ ...observation, previousActions: [move] });
+  assert.equal(stopped.outcome, 'uncertain');
+  assert.equal(stopped.stop, true);
+  assert.deepEqual(stopped.actions, []);
+  assert.match(stopped.reason, /one recovery pivot did not establish progress/);
 });
