@@ -77,7 +77,7 @@ Open `report.md`, watch the final MP4, and read `caption.txt`. A run directory c
 
 | Artifact | Purpose |
 | --- | --- |
-| `report.md`, `run.json`, `trace.jsonl` | Human-readable report, resumable state, and dated observations/actions/results/decision summaries; no private internal reasoning |
+| `report.md`, `run.json`, `trace.jsonl` | Human-readable report, resumable state, dated observations/actions/results, and bounded returned structured responses retained before workflow validation; no private internal reasoning |
 | `discovery.json`, `shortlist.json`, `content-brief.json` | Live catalog evidence, attainable event/rejection hypotheses, saved voice and dated research context |
 | `game-*/inspection-*/` | Before/after screenshots, observed instructions and controls, inspection JSON and learned proposal when needed |
 | `controls-*.json`, `capture-*.json`, `game-*/*.webm` | Bounded action profile, capture manifest and finalized original gameplay |
