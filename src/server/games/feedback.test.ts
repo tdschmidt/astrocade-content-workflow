@@ -411,3 +411,39 @@ test('new reel feedback profiles scale their call ceiling within the requested c
     if (result.profile?.controller.type === 'sparse') assert.equal(result.profile.controller.maxDecisions, decisions);
   }
 });
+
+test('reel response limits are enforced on the strict request and returned data without narrowing legacy decisions', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-concise-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const atLimit = { ...answer, observation: 'o'.repeat(500), lesson: 'l'.repeat(300), reason: 'r'.repeat(400), actions: [{ ...move, button: 'left' }],
+    mechanics: [{ name: 'Movement', status: 'working', evidence: 'e'.repeat(180), nextGoal: 'g'.repeat(120) }] };
+  const invalid = [
+    { ...atLimit, observation: 'o'.repeat(501) },
+    { ...atLimit, lesson: 'l'.repeat(301) },
+    { ...atLimit, reason: 'r'.repeat(401) },
+    { ...atLimit, mechanics: [{ ...atLimit.mechanics[0], evidence: 'e'.repeat(181) }] },
+    { ...atLimit, mechanics: [{ ...atLimit.mechanics[0], nextGoal: 'g'.repeat(121) }] },
+  ];
+  let accepted = 0;
+  for (const [index, proposal] of [atLimit, ...invalid].entries()) {
+    const provider = { json: async (_prompt: string, schema: z.ZodType) => {
+      assert.equal(schema.safeParse(atLimit).success, true);
+      for (const value of invalid) assert.equal(schema.safeParse(value).success, false);
+      const wire = z.toJSONSchema(schema) as { properties: Record<string, unknown>; required: string[] };
+      assert.deepEqual([...wire.required].sort(), Object.keys(wire.properties).sort(), 'the concise checklist is required on the strict wire');
+      return proposal;
+    } } as unknown as Pick<Inference, 'json'>;
+    const decide = createFeedbackController(profile, provider, join(directory, String(index)), () => { accepted++; }, { editingStyle: 'reel' });
+    if (!index) assert.equal((await decide(observation)).observation.length, 500);
+    else await assert.rejects(decide(observation), /too_big/, 'an overlong provider response cannot reach the action consumer');
+  }
+  assert.equal(accepted, 1);
+  const legacyResponse = { ...answer, observation: 'o'.repeat(501), lesson: 'l'.repeat(301), reason: 'r'.repeat(401) };
+  assert.deepEqual(validateFeedbackDecision(legacyResponse, profile), legacyResponse);
+  const legacy = createFeedbackController(profile, { json: async (_prompt: string, schema: z.ZodType) => {
+    assert.equal(schema.safeParse({ ...legacyResponse, actions: [{ ...move, button: 'left' }] }).success, true);
+    assert.equal('mechanics' in z.toJSONSchema(schema).properties!, false);
+    return legacyResponse;
+  } } as unknown as Pick<Inference, 'json'>, join(directory, 'legacy'));
+  assert.deepEqual((await legacy(observation)).actions, [move]);
+});
