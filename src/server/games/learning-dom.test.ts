@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
@@ -22,6 +22,10 @@ const gameHtml = `<!doctype html><style>
   <section id="help" hidden>Tap Choose to finish this untimed round.<button id="back">Back</button></section>
   <section id="game" hidden><h1>Choose the blue door</h1><p id="result">Result: waiting</p><button id="choice">Choose</button></section>
   <span hidden>HIDDEN GAME VALUE</span><script>
+  window.fixtureEvents=[];
+  for(const type of ['pointerdown','pointerup','mousedown','mouseup','click'])document.addEventListener(type,event=>{
+    window.fixtureEvents.push({type,target:event.target.id||event.target.tagName,x:event.clientX,y:event.clientY,button:event.button,trusted:event.isTrusted,time:event.timeStamp});
+  },true);
   const menu=document.querySelector('#menu'),help=document.querySelector('#help'),game=document.querySelector('#game');
   document.querySelector('#helpButton').onclick=()=>{menu.hidden=true;help.hidden=false};
   document.querySelector('#back').onclick=()=>{help.hidden=true;menu.hidden=false};
@@ -53,7 +57,7 @@ async function fixture(t: TestContext, body = gameHtml) {
 for (const mode of ['timed', 'feedback'] as const) test(`HTML-only inspection learns and replays native ${mode} controls inside the game frame`, browserTest, async t => {
   const { outputDir, page, viewport, newPage } = await fixture(t);
   const inspection = await inspectGamePage(page, candidate.url, outputDir, undefined, {
-    json: async () => assert.fail('the observed HTML Start requires no menu inference'),
+    json: async () => ({ phase: 'playing', buttonIndex: null, point: null, label: '', reason: 'The observed Start revealed an active choice.' }),
   } as unknown as Pick<Inference, 'json'>);
   assert.deepEqual(inspection.surface, { selector: frameSelector, frames: [] });
   assert.deepEqual(inspection.ready, { selector: '#start', frames: [frameSelector] });
@@ -76,6 +80,7 @@ for (const mode of ['timed', 'feedback'] as const) test(`HTML-only inspection le
 
   let finalText = '', outsideClicked = false, startedNatively = false, decisions = 0;
   let capturePage: Page | undefined;
+  let browserEvidence: unknown;
   // The capture runner, fresh browser page, screenshots and pointer events are
   // real. Only media encoding is stubbed; recorder integration has its own tests.
   const createCapture = async (options: CaptureOptions) => {
@@ -86,6 +91,15 @@ for (const mode of ['timed', 'feedback'] as const) test(`HTML-only inspection le
       finish: async () => {
         const game = capturedPage.frameLocator(frameSelector);
         finalText = await game.locator('#result').innerText();
+        browserEvidence = await game.locator('body').evaluate(body => {
+          const choice = body.querySelector('#choice')!;
+          const rect = choice.getBoundingClientRect();
+          const hit = document.elementFromPoint(innerWidth * 0.5, innerHeight * 0.7);
+          return { events: (window as unknown as { fixtureEvents: unknown[] }).fixtureEvents,
+            choice: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+            hit: hit?.id || hit?.tagName, active: document.activeElement?.id || document.activeElement?.tagName,
+            viewport: { width: innerWidth, height: innerHeight }, scroll: { x: scrollX, y: scrollY } };
+        });
         startedNatively = await game.locator('#game').getAttribute('data-started') === 'true';
         outsideClicked = await capturedPage.locator('body').getAttribute('data-outside-clicked') === 'true';
         await capturedPage.screenshot({ path: join(outputDir, `${mode}-result.png`) });
@@ -107,6 +121,12 @@ for (const mode of ['timed', 'feedback'] as const) test(`HTML-only inspection le
       return { stop: false, reason: 'Tap the visible Choose button.', actions: [{ type: 'tap', point: { x: 0.5, y: 0.7 } }] };
     } } : {}),
   });
+  if (finalText !== 'Result: blue door opened; trusted: true' || result.controllerError) {
+    const failureImage = join(tmpdir(), `astrocade-dom-${mode}-failure-${Date.now()}.png`);
+    await copyFile(join(outputDir, `${mode}-result.png`), failureImage);
+    t.diagnostic(JSON.stringify({ mode, failureImage, result, browserEvidence, profile: learned.profile }));
+  }
+  assert.equal(result.controllerError, undefined, 'the native fixture must complete both observations without a swallowed assertion');
   assert.equal(result.actionsExecuted, 2, 'one replayed Start settling wait and one gameplay tap');
   assert.deepEqual(result.surfaceBounds, { x: 50, y: 100, width: 400, height: 600 });
   assert.equal(finalText, 'Result: blue door opened; trusted: true');
