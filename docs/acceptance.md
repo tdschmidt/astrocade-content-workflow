@@ -41,6 +41,22 @@ Final typecheck and the default suite plus real FFmpeg frame tests passed: **81 
 
 Original recordings, generated decisions, provider timings/token counts and QA images remain under ignored `data/`. No Gemini inference was used for this fresh run. Account creation and publishing remain manual.
 
+## Unseen-game learning test: Astro Runner (2026-10-06)
+
+This test used no existing Astro Runner control profile and no manually written gameplay sequence. The game was operator-selected to test the learner, rather than automatically nominated.
+
+- Pickaxe Swing Escape was attempted first (`data/runs/2026-10-07T05-37-38-020Z-f3b303`). The inspector remained at an intro showing “TAP TO SKIP”; Codex correctly declined to invent gameplay controls. Intro/menu exploration remains a limitation.
+- The first Astro Runner inspection (`data/runs/2026-10-07T05-38-24-516Z-c6f5f4`) exposed the visible “DEPLOY ↗” button but did not recognize it as Start. Both screenshots remained at the menu and Codex returned insufficient confidence. The narrow fix recognizes observed `Deploy`/`DEPLOY ↗` labels within the game iframe; it adds no Astro Runner controls.
+- Fresh run `data/runs/2026-10-07T05-40-01-270Z-68e048` then clicked the actual start button and captured gameplay context. Codex inferred a bounded 19-action sequence from visible W/A/D, Space, S, 1/2, R and pointer instructions. The original screenshots, proposal, limitations and executed actions are saved.
+- The first fresh native capture lasted **11.367 seconds**; an unchanged-profile replay in a second fresh browser lasted **11.390 seconds**. Both completed the sequence. The replay uses no model calls or manual control changes.
+- First-run frames aligned with the input trace show a left lane change after A, an airborne pose after Space, a switch from pistol to automatic weapon after Digit2, ammunition use and replenishment after R. The score rises from 6 at 1s to 207 at 11s, while health falls from five to three hearts. The score increase is not attributed entirely to the learned actions: the game also runs forward automatically. No win or optimal play is claimed.
+- The independent first-run audit found an extra shot from the automatic focus click and only one additional visible pistol-ammo decrease after three tightly bunched firing taps. Control mapping works, but shot timing/aim are not optimized. Replay QA confirms the same kinds of response in the second run, score 6→197 and health five→three hearts.
+- `qa/gameplay-preview.mp4` is a full-recording H.264 preview, not an automatically selected highlight. The original VP9 sources remain under the game directory and `replay/`.
+
+**Assessment:** basic instruction-to-control inference produces visible gameplay and can be replayed. The learner currently proposes a fixed timed sequence; it does not observe mistakes and adapt to current hazards. This test establishes useful control coverage for one additional game, not general autonomous game mastery. The intro-screen failure is retained alongside the successful case.
+
+Validation: typecheck and default suite **79 passed, zero failures, 12 opt-in tests skipped**; the focused learning suite including both real-browser start-label cases **13 passed, zero skips**. [CI for fix `005bed4`](https://github.com/tdschmidt/astrocade-content-workflow/actions/runs/37577618546) passed.
+
 ## Changes driven by measured failures
 
 - Loading overlays intercepted Start; bounded actionability checks and displayed frame geometry fixed repeated capture and HUD cropping.
