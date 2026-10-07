@@ -130,7 +130,7 @@ Set usable=false and events=[] if no understandable action and visible consequen
       const { playableStartSeconds, playableEndSeconds, ...analysis } = response;
       if (analysis.events.some(event => !validRange(event, capture.durationSeconds))) throw new NeedsAttention('Video analysis returned timestamps outside the recording.');
       if (!analysis.usable || !analysis.events.length) return { ...analysis, usable: false, events: [] };
-      if (playableStartSeconds === null || playableEndSeconds === null || !validRange({ startSeconds: playableStartSeconds, endSeconds: playableEndSeconds }, capture.durationSeconds)) throw new NeedsAttention('Video analysis needs a valid unobscured playable span.');
+      if (playableStartSeconds === null || playableEndSeconds === null || !validRange({ startSeconds: playableStartSeconds, endSeconds: playableEndSeconds }, capture.durationSeconds)) throw new NeedsAttention(`Video analysis needs a valid unobscured playable span; received ${playableStartSeconds}–${playableEndSeconds}s for a ${capture.durationSeconds}s recording.`);
       if (analysis.events.some(event => event.startSeconds < playableStartSeconds || event.endSeconds > playableEndSeconds)) throw new NeedsAttention('An observed action lies outside the unobscured playable span.');
       return { ...analysis, events: analysis.events.map(event => ({
         ...event,

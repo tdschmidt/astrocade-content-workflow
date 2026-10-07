@@ -3,7 +3,9 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
+import { z } from 'zod';
 import { Configuration } from '../server/config.js';
+import { NeedsAttention } from '../server/jobs.js';
 import { verifiedProfiles } from '../server/games/profiles.js';
 import type { GameCandidate } from '../server/games/schema.js';
 import { runPipeline, type CoreServices } from './pipeline.js';
@@ -134,4 +136,56 @@ test('a saved script freezes candidate work when resuming a failed render', asyn
   const resumed = await runPipeline(options, noKey, services);
   assert.equal(resumed.status, 'complete');
   assert.deepEqual(calls, { discover: 1, inspect: 2, capture: 2, analyze: 1, draft: 1, render: 2, validate: 0 });
+});
+
+test('candidate analysis validation failure preserves a good candidate and completed resume does no extra work', async t => {
+  for (const invalid of [new NeedsAttention('Invalid playable span: 4–3 seconds'), z.boolean().safeParse('invalid').error!]) {
+    const { directory, config, services, calls, candidate } = await fixture(t);
+    const discover = services.discoverGames!, analyze = services.analyzeFootage!;
+    services.discoverGames = async (...args) => ({ ...await discover(...args), candidates: [candidate, { ...candidate, id: 'invalid' }] });
+    services.nominateGames = async () => ['fixture', 'invalid'].map(gameId => ({ gameId, hypothesis: 'Fixture', viewerQuestion: 'Fixture?', controlRisk: 'Fixture' }));
+    services.analyzeFootage = async (...args) => {
+      if (args[0].game.id === 'invalid') { calls.analyze++; throw invalid; }
+      return analyze(...args);
+    };
+    const options = { directory, model: 'fixture-model', quiet: true };
+    const run = await runPipeline(options, config, services);
+    assert.equal(run.status, 'complete');
+    assert.equal(run.selectedGameId, 'fixture');
+    assert.equal(run.attempts[1]!.error, invalid.message);
+    assert.ok(!(run.attempts[1]!.capture!.analysis));
+    assert.ok((await readFile(join(directory, 'report.md'), 'utf8')).includes(invalid.message));
+    const trace = (await readFile(join(directory, 'trace.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+    assert.ok(trace.some(event => event.stage === 'analyze' && event.status === 'failed' && event.data.gameId === 'invalid'));
+    await runPipeline(options, config, services);
+    assert.deepEqual(calls, { discover: 1, inspect: 2, capture: 2, analyze: 2, draft: 1, render: 1, validate: 1 });
+  }
+});
+
+test('analysis provider outages and authentication failures stop without rejecting the game', async t => {
+  for (const status of [401, 503]) {
+    const { directory, config, services, calls } = await fixture(t);
+    services.analyzeFootage = async () => { calls.analyze++; throw Object.assign(new Error(`Provider HTTP ${status}`), { status }); };
+    await assert.rejects(runPipeline({ directory, model: 'fixture-model', quiet: true }, config, services), new RegExp(`Provider HTTP ${status}`));
+    const run = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
+    assert.equal(run.status, 'failed');
+    assert.equal(run.attempts[0].error, undefined);
+    assert.equal(run.attempts[0].unsupported, false);
+    assert.equal(calls.render, 0);
+  }
+});
+
+test('all invalid analyses fail honestly, and an explicit successful retry clears stale candidate errors', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const analyze = services.analyzeFootage!;
+  services.analyzeFootage = async () => { calls.analyze++; throw new NeedsAttention('Invalid playable span'); };
+  const options = { directory, model: 'fixture-model', quiet: true };
+  await assert.rejects(runPipeline(options, config, services), /No recording contains a supported short-form moment/);
+  services.analyzeFootage = analyze;
+  const run = await runPipeline({ ...options, stage: 'edit' }, config, services);
+  assert.equal(run.status, 'complete');
+  assert.equal(run.attempts[0]!.error, undefined);
+  assert.equal(calls.capture, 1);
+  assert.equal(calls.analyze, 2);
+  assert.ok(!(await readFile(join(directory, 'report.md'), 'utf8')).includes('Attempt stopped:'));
 });

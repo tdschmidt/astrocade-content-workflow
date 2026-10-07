@@ -2,8 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
-import { captureSchema, scriptSchema, type Capture } from '../shared/domain.js';
+import { captureSchema, scriptSchema, type Capture, type FootageAnalysis } from '../shared/domain.js';
 import type { Configuration } from '../server/config.js';
+import { NeedsAttention } from '../server/jobs.js';
 import { canonicalGameUrl, discoverGames } from '../server/games/discovery.js';
 import { inspectGame, learnGameProfile } from '../server/games/learning.js';
 import { verifiedProfiles } from '../server/games/profiles.js';
@@ -174,7 +175,7 @@ export async function runPipeline(options: {
           await updateAttempt(game.id, item => { item.inspectionPath = join(inspectionDir, 'inspection.json'); });
           const preset = verifiedProfiles.find(profile => canonicalGameUrl(profile.gameUrl) === canonicalGameUrl(game.url));
           const learned = preset ? { profile: preset, evidence: [preset.verificationNotes ?? 'Previously tested native controls.'], limitations: ['A tested control sequence does not guarantee a win or a useful event in this attempt.'] } : await services.learnGameProfile(inspection, game, getGoogle(), options.signal);
-          await updateAttempt(game.id, item => { item.profile = learned.profile; item.evidence = learned.evidence; item.limitations = learned.limitations; item.unsupported = !learned.profile; });
+          await updateAttempt(game.id, item => { item.profile = learned.profile; item.evidence = learned.evidence; item.limitations = learned.limitations; item.unsupported = !learned.profile; delete item.error; });
           trace.artifact(`controls-${game.id}.json`, learned);
           trace.event('learn', learned.profile ? 'completed' : 'unsupported', `${game.title}: ${learned.profile ? 'bounded controls prepared' : 'no supported control plan'}.`, learned);
           if (!learned.profile) continue;
@@ -211,8 +212,19 @@ export async function runPipeline(options: {
     for (const attempt of store.read().script ? [] : store.read().attempts) {
       if (!attempt.capture || attempt.capture.analysis) continue;
       trace.event('analyze', 'started', `Finding a visible decision and consequence in ${attempt.capture.game.title}.`);
-      const analysis = await services.analyzeFootage(attempt.capture, getGoogle(), options.signal);
-      await updateAttempt(attempt.gameId, item => { item.capture!.analysis = analysis; item.analysisModel = options.model; });
+      const provider = getGoogle(); // Missing credentials are a run-level setup failure, not bad footage.
+      let analysis: FootageAnalysis;
+      try {
+        analysis = await services.analyzeFootage(attempt.capture, provider, options.signal);
+      } catch (error) {
+        options.signal?.throwIfAborted();
+        if (!(error instanceof z.ZodError || error instanceof NeedsAttention)) throw error;
+        const detail = message(error, settings.geminiApiKey);
+        await updateAttempt(attempt.gameId, item => { item.error = detail; });
+        trace.event('analyze', 'failed', `${attempt.capture.game.title}: ${detail}`, { gameId: attempt.gameId });
+        continue;
+      }
+      await updateAttempt(attempt.gameId, item => { item.capture!.analysis = analysis; item.analysisModel = options.model; delete item.error; });
       trace.artifact(`analysis-${attempt.gameId}.json`, analysis);
       trace.event('analyze', analysis.usable ? 'completed' : 'rejected', analysis.reason, analysis);
     }
