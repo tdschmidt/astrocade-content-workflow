@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { Page } from 'playwright';
 import { createGameCapture, type CaptureArtifact, type CaptureOptions, type GameCapture } from '../media/recorder.js';
 import { isAllowedGameUrl } from './discovery.js';
@@ -14,11 +15,16 @@ export type GameplayObservation = {
   observationId: string;
   image: Buffer;
   mimeType: 'image/jpeg';
+  text: string;
   gameName: string;
   objective: string;
   elapsedMs: number;
   remainingMs: number;
   previousActions: InputAction[];
+  previousImage?: Buffer;
+  previousReason?: string;
+  /** The last model call evaluates the preceding inputs without starting another batch. */
+  isFinal: boolean;
   signal: AbortSignal;
 };
 export type CaptureProgress = { stage: 'loading' | 'ready' | 'recording' | 'deciding' | 'finalizing'; message: string };
@@ -32,7 +38,8 @@ export type CaptureAttemptResult = {
   surfaceBounds: GameBounds;
   actionsExecuted: number;
   decisions: { observationId: string; elapsedMs: number; reason: string }[];
-  stopReason: 'actions_complete' | 'model_stop' | 'decision_limit' | 'duration_limit';
+  stopReason: 'actions_complete' | 'model_stop' | 'decision_limit' | 'duration_limit' | 'controller_error';
+  controllerError?: string;
   startedAt: string;
   finishedAt: string;
 };
@@ -82,6 +89,7 @@ export async function runCaptureAttempt(options: {
     emit('started'); await execute(); emit('completed');
   };
   let stopReason: CaptureAttemptResult['stopReason'] = 'actions_complete';
+  let controllerError: string | undefined;
   const decisions: CaptureAttemptResult['decisions'] = [];
   let lastBounds: GameBounds | undefined;
   try {
@@ -124,20 +132,41 @@ export async function runCaptureAttempt(options: {
       } else {
         stopReason = 'decision_limit';
         let previousActions: InputAction[] = [];
+        let previousImage: Buffer | undefined;
+        let previousReason: string | undefined;
         for (let index = 0; index < profile.controller.maxDecisions; index++) {
           controlSignal.throwIfAborted();
+          if (profile.maxDurationMs - (performance.now() - recordingStarted) < 2000) { stopReason = 'duration_limit'; break; }
           const observationId = `${attemptId}:${index}`;
-          const elapsedMs = Math.round(performance.now() - recordingStarted);
           const clip = await withAbort(gameBounds(page, profile.surface), controlSignal);
           const image = await withAbort(page.screenshot({ clip, type: 'jpeg', quality: 70, timeout: 5000 }), controlSignal);
+          const text = await withAbort(locate(page, profile.surface).evaluate(element => element.ownerDocument.body.innerText.slice(0, 6000)), controlSignal);
+          const elapsedMs = Math.round(performance.now() - recordingStarted);
+          const remainingMs = Math.max(0, profile.maxDurationMs - elapsedMs);
+          if (remainingMs < 2000) { stopReason = 'duration_limit'; break; }
+          const isFinal = index === profile.controller.maxDecisions - 1;
+          const decisionSignal = AbortSignal.any([controlSignal, AbortSignal.timeout(Math.min(30000, remainingMs))]);
           options.onProgress?.({ stage: 'deciding', message: `Visual decision ${index + 1} of ${profile.controller.maxDecisions}.` });
-          const decision = controlDecisionSchema.parse(await withAbort(options.decide!({ observationId, image, mimeType: 'image/jpeg', gameName: profile.name, objective: profile.objective, elapsedMs, remainingMs: Math.max(0, profile.maxDurationMs - elapsedMs), previousActions, signal: controlSignal }), controlSignal));
+          let decision;
+          try {
+            decision = controlDecisionSchema.parse(await withAbort(options.decide!({ observationId, image, mimeType: 'image/jpeg', text, gameName: profile.name, objective: profile.objective, elapsedMs, remainingMs, previousActions, previousImage, previousReason, isFinal, signal: decisionSignal }), decisionSignal));
+            if (!decision.stop && !isFinal && !decision.actions.length) throw new GameCaptureError('missing_controls', 'The controller supplied neither an action nor a stop decision.');
+          } catch (error) {
+            if (controlSignal.aborted || !previousActions.length) throw error;
+            // Preserve footage already played when a later inference fails.
+            controllerError = error instanceof Error ? error.message.slice(0, 1000) : 'The gameplay controller failed.';
+            stopReason = 'controller_error';
+            break;
+          }
           controlSignal.throwIfAborted();
           decisions.push({ observationId, elapsedMs, reason: decision.reason });
           if (decision.stop) { stopReason = 'model_stop'; break; }
-          if (!decision.actions.length) throw new GameCaptureError('missing_controls', 'The controller supplied neither an action nor a stop decision.');
+          if (isFinal) break;
           previousActions = decision.actions;
+          previousImage = image;
+          previousReason = decision.reason;
           for (const action of decision.actions) await perform('control', action, () => executor.execute(action));
+          await delay(250, undefined, { signal: controlSignal });
         }
       }
     } catch (error) {
@@ -149,7 +178,7 @@ export async function runCaptureAttempt(options: {
     if (!surfaceBounds) throw new GameCaptureError('missing_controls', 'The game never exposed a visible capture surface.');
     options.onProgress?.({ stage: 'finalizing', message: 'Flushing and validating the source recording.' });
     const artifact = await session.finish();
-    return { attemptId, gameUrl: profile.gameUrl, profileId: profile.id, profileVerification: profile.verification, artifact, surfaceBounds, actionsExecuted: executor.executed, decisions, stopReason, startedAt, finishedAt: new Date().toISOString() };
+    return { attemptId, gameUrl: profile.gameUrl, profileId: profile.id, profileVerification: profile.verification, artifact, surfaceBounds, actionsExecuted: executor.executed, decisions, stopReason, ...(controllerError ? { controllerError } : {}), startedAt, finishedAt: new Date().toISOString() };
   } catch (error) {
     await session.cancel().catch(() => {});
     if (options.signal?.aborted) throw new GameCaptureError('canceled', 'Gameplay capture was canceled.');
