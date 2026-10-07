@@ -6,7 +6,7 @@ import test, { type TestContext } from 'node:test';
 import type { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import { settingsSchema } from '../config.js';
-import { GoogleServices, seconds } from './google.js';
+import { GoogleServices, retryDelayMs, seconds, type GoogleProgressEvent } from './google.js';
 
 const settings = settingsSchema.parse({ geminiApiKey: 'fixture-key-never-sent' });
 
@@ -88,16 +88,21 @@ test('SDK wire contract: verbatim transcription extracts word_info offsets from 
 });
 
 test('uploaded footage is deleted after an analysis failure and a failed file never enters analysis', async t => {
-  const google = new GoogleServices(settings);
+  const events: GoogleProgressEvent[] = [];
+  const google = new GoogleServices(settings, event => events.push(event));
   const client = Reflect.get(google, 'client') as GoogleGenAI;
   const deleted: string[] = [];
   t.mock.method(client.files, 'upload', async () => ({ name: 'files/fixture', state: 'ACTIVE', uri: 'fixture-uri', mimeType: 'video/webm' }));
   t.mock.method(client.files, 'delete', async (input: { name: string }) => { deleted.push(input.name); return {}; });
   await assert.rejects(google.withVideo('/unused-fixture.webm', async () => { throw new Error('analysis failed'); }), /analysis failed/);
   assert.deepEqual(deleted, ['files/fixture']);
+  assert.deepEqual(events.map(event => `${event.stage}:${event.status}`), ['upload:started', 'upload:completed', 'processing:started', 'processing:completed', 'ready:completed', 'cleanup:started', 'cleanup:completed']);
+  events.length = 0;
   t.mock.method(client.files, 'upload', async () => ({ name: 'files/failed', state: 'FAILED' }));
   await assert.rejects(google.withVideo('/unused-fixture.webm', async () => { throw new Error('must not analyze'); }), /could not process/);
   assert.deepEqual(deleted, ['files/fixture', 'files/failed']);
+  assert.ok(events.some(event => event.stage === 'processing' && event.status === 'failed'));
+  assert.ok(!events.some(event => event.stage === 'ready'));
 });
 
 test('incomplete model responses and malformed timestamps fail explicitly', async t => {
@@ -108,7 +113,7 @@ test('incomplete model responses and malformed timestamps fail explicitly', asyn
   for (const value of ['', '-1s', 'NaN', '00:01.5', '1e3s']) assert.throws(() => seconds(value));
 });
 
-test('JSON, speech, and transcription do not retry a transient provider response', async t => {
+test('JSON, speech, and transcription never retry an authentication error', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'google-retry-fixture-'));
   try {
     const path = join(directory, 'speech.wav');
@@ -116,7 +121,7 @@ test('JSON, speech, and transcription do not retry a transient provider response
     let requests = 0;
     t.mock.method(globalThis, 'fetch', async () => {
       requests++;
-      return Response.json({ error: { code: 503, message: 'Fixture unavailable', status: 'UNAVAILABLE' } }, { status: 503 });
+      return Response.json({ error: { code: 401, message: 'Fixture unauthorized', status: 'UNAUTHENTICATED' } }, { status: 401 });
     });
     const google = new GoogleServices(settings);
     await assert.rejects(google.json('fixture', z.object({ usable: z.boolean() })));
@@ -148,4 +153,72 @@ test('upload handshake and body each receive the 45-second deadline and no HTTP 
       assert.equal(requests, failAt);
     }
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('explicit transient retries succeed on the third request and emit safe progress', async t => {
+  const events: GoogleProgressEvent[] = [];
+  const bodies: string[] = [];
+  t.mock.method(Math, 'random', () => 0);
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+    bodies.push(input instanceof Request ? await input.clone().text() : String(init?.body));
+    if (bodies.length < 3) {
+      const status = bodies.length === 1 ? 503 : 429;
+      return Response.json({ error: { code: status, message: settings.geminiApiKey } }, { status });
+    }
+    return Response.json({ id: 'fixture', status: 'completed', steps: [{ type: 'model_output', content: [{ type: 'text', text: '{"usable":true}' }] }] });
+  });
+  assert.deepEqual(await new GoogleServices(settings, event => events.push(event)).json('fixture', z.object({ usable: z.boolean() })), { usable: true });
+  assert.equal(bodies.length, 3);
+  assert.ok(bodies.every(body => body === bodies[0]));
+  assert.deepEqual(events.map(event => `${event.attempt}:${event.status}`), ['1:started', '1:retrying', '2:started', '2:retrying', '3:started', '3:completed']);
+  assert.deepEqual(events.filter(event => event.status === 'retrying').map(event => event.retryAfterMs), [750, 1500]);
+  assert.ok(events.every(event => event.model === settings.reasoningModel && event.stage === 'json'));
+  assert.ok(!JSON.stringify(events).includes(settings.geminiApiKey));
+});
+
+test('overload stops after three total attempts, with no hidden SDK retries', async t => {
+  let requests = 0;
+  t.mock.method(Math, 'random', () => 0);
+  t.mock.method(globalThis, 'fetch', async () => { requests++; return Response.json({ error: { code: 503, message: 'Fixture overloaded' } }, { status: 503 }); });
+  await assert.rejects(new GoogleServices(settings).json('fixture', z.object({ usable: z.boolean() })));
+  assert.equal(requests, 3);
+});
+
+test('Retry-After is honored within the wait limit and long waits stop immediately', async t => {
+  const error = (value: string, status = 503) => ({ status, headers: new Headers({ 'retry-after': value }) });
+  assert.equal(retryDelayMs(error('10'), 1, 0, 0), 10_000);
+  assert.equal(retryDelayMs(error('Thu, 01 Jan 1970 00:00:10 GMT'), 1, 0, 0), 10_000);
+  assert.equal(retryDelayMs(error('Thu, 01 Jan 1970 00:00:00 GMT'), 1, 1000, 0), 750);
+  for (const value of ['invalid', '-1', '1.5']) assert.equal(retryDelayMs(error(value), 1, 0, 0), 750);
+  assert.equal(retryDelayMs(error('16'), 1, 0, 0), undefined);
+  assert.equal(retryDelayMs(error('1'), 3, 0, 0), undefined);
+  assert.equal(retryDelayMs(error('1', 403), 1, 0, 0), undefined);
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', async () => { requests++; return Response.json({ error: { code: 429, message: 'Fixture quota' } }, { status: 429, headers: { 'retry-after': '60' } }); });
+  await assert.rejects(new GoogleServices(settings).json('fixture', z.object({ usable: z.boolean() })));
+  assert.equal(requests, 1);
+});
+
+test('cancellation during backoff prevents another attempt', async t => {
+  let requests = 0;
+  const controller = new AbortController();
+  t.mock.method(globalThis, 'fetch', async () => { requests++; return Response.json({ error: { code: 503, message: 'Fixture overloaded' } }, { status: 503 }); });
+  const google = new GoogleServices(settings, event => { if (event.status === 'retrying') controller.abort(); });
+  await assert.rejects(google.json('fixture', z.object({ usable: z.boolean() }), [], controller.signal));
+  assert.equal(requests, 1);
+});
+
+test('retries share the original deadline and schema failures are never retried', async t => {
+  let now = 1000;
+  let requests = 0;
+  t.mock.method(Date, 'now', () => now);
+  t.mock.method(globalThis, 'fetch', async () => {
+    requests++; now += 119_900;
+    return Response.json({ error: { code: 503, message: 'Fixture overloaded' } }, { status: 503 });
+  });
+  await assert.rejects(new GoogleServices(settings).json('fixture', z.object({ usable: z.boolean() })));
+  assert.equal(requests, 1);
+  mockInteraction(t, [{ type: 'text', text: '{"usable":"wrong type"}' }], () => { requests++; });
+  await assert.rejects(new GoogleServices(settings).json('fixture', z.object({ usable: z.boolean() })));
+  assert.equal(requests, 2);
 });
