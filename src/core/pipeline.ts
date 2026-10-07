@@ -134,7 +134,7 @@ async function report(directory: string, run: CoreRun) {
     }
     if (attempt?.error) lines.push(`Attempt stopped: ${attempt.error}`, '');
   }
-  if (run.script) lines.push('## Edit', '', `Provider/model: ${run.scriptProvider ?? 'gemini'}/${run.scriptModel}`, '', `Hook: ${run.script.hook}`, '', `Decision: ${run.script.rationale}`, '', `Cuts: ${run.script.cuts.map(cut => `${cut.startSeconds}–${cut.endSeconds}s`).join(', ')}`, '', 'Caption:', '', run.script.caption, '');
+  if (run.script) lines.push('## Edit', '', `Provider/model: ${run.scriptProvider ?? 'gemini'}/${run.scriptModel}`, '', `Hook: ${run.script.hook}`, '', `${run.script.editorial ? 'Initial concept selection' : 'Decision'}: ${run.script.rationale}`, '', `Cuts: ${run.script.cuts.map(cut => `${cut.startSeconds}–${cut.endSeconds}s`).join(', ')}`, '', 'Caption:', '', run.script.caption, '');
   if (run.script?.editorial) {
     const editorial = run.script.editorial;
     lines.push('### Editorial alternatives', '');
