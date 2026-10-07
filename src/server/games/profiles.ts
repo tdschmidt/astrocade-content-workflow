@@ -1,4 +1,5 @@
 import carWashProfile from './profiles/car-wash-simulator.json' with { type: 'json' };
+import stickmanArcherProfile from './profiles/stickman-archer.json' with { type: 'json' };
 import { gameProfileSchema, type GameCandidate, type GameProfile } from './schema.js';
 
 const gameFrame = ['iframe[title="Astrocade Game"]'];
@@ -31,7 +32,7 @@ export const verifiedProfiles: GameProfile[] = [gameProfileSchema.parse({
       { type: 'wait', durationMs: 3500 },
     ],
   },
-}), gameProfileSchema.parse(carWashProfile)];
+}), gameProfileSchema.parse(carWashProfile), gameProfileSchema.parse(stickmanArcherProfile)];
 
 /** A starting form, never automatically treated as supported gameplay. */
 export function unverifiedProfileTemplate(candidate: Pick<GameCandidate, 'id' | 'url' | 'title'>): GameProfile {

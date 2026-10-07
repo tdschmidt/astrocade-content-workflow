@@ -1,0 +1,72 @@
+{
+  "id": "stickman-archer",
+  "name": "Stickman Archer",
+  "gameUrl": "https://www.astrocade.com/games/stickman-archer/01KHYPFX5D977V3PTZSKR6XFVK",
+  "verification": "verified",
+  "verificationNotes": "Two fresh captures of this exact native-input plan passed on 2026-10-07 UTC: the first arrow hit the Level 1 opponent, who fell from the platform, followed by VICTORY, three stars and +90. Orange remained at 100 health. Sources: 8.277s and 8.293s; saved calibration profiles were byte-identical. This was engineering calibration from observed controls and footage, not autonomous discovery. Later levels, repeated aiming adjustments and reflex control are not verified. See docs/acceptance.md.",
+  "viewport": {
+    "width": 720,
+    "height": 1280
+  },
+  "surface": {
+    "selector": ":nth-match(canvas, 1)",
+    "frames": [
+      "iframe[title=\"Astrocade Game\"]"
+    ]
+  },
+  "ready": {
+    "selector": ":nth-match(canvas, 1)",
+    "frames": [
+      "iframe[title=\"Astrocade Game\"]"
+    ]
+  },
+  "setup": [
+    {
+      "type": "click",
+      "target": {
+        "selector": "[aria-label=\"Start playing\"]",
+        "frames": []
+      }
+    },
+    {
+      "type": "wait",
+      "durationMs": 1500
+    }
+  ],
+  "start": [
+    {
+      "type": "wait",
+      "durationMs": 700
+    }
+  ],
+  "reset": [],
+  "focus": "focus",
+  "objective": "Aim one arrow at the Level 1 opponent and record its actual consequence and any visible victory result. The first-shot configuration passed twice; verify the outcome in each new recording.",
+  "maxDurationMs": 25000,
+  "controller": {
+    "type": "timed",
+    "actions": [
+      {
+        "type": "wait",
+        "durationMs": 1500
+      },
+      {
+        "type": "drag",
+        "from": {
+          "x": 0.22,
+          "y": 0.56
+        },
+        "to": {
+          "x": 0.22,
+          "y": 0.55
+        },
+        "durationMs": 700
+      },
+      {
+        "type": "wait",
+        "durationMs": 5000
+      }
+    ],
+    "repetitions": 1
+  }
+}

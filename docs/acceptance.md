@@ -125,6 +125,14 @@ The comeback run retained two real failures and their recoveries. Frame sampling
 
 At implementation commit `e0b643e`, `npm run check` passed typechecking and **116 tests**, with **27 opt-in tests skipped and zero failures**. The focused frame suite passed all **5 tests** (4 real FFmpeg cases), and the renderer suites passed all **13 tests** (4 real FFmpeg cases). These overlap the default suite and are not additive counts. Checks cover source-time precision, changing video dimensions, complete multi-cut output, text layout, actual presenter-video length, and preserved short speech cues. The focused editorial suite passed **20 tests**, including per-window content rejection, complete episode retention and payoff/duration bounds. [CI for the final implementation](https://github.com/tdschmidt/astrocade-content-workflow/actions/runs/37589960124) passed. No new browser/controller behavior was introduced in this quality pass; the earlier live gameplay evidence still applies.
 
+## Stickman Archer: calibrated first-shot profile (2026-10-07)
+
+The original run, `data/runs/variety-2026-10-07-13-stickman-archer`, established the visible drag-up/down and release-to-shoot controls but missed. Source review corrected its feedback report: the orange player's arrow went too high after a normalized upward drag from `(0.22, 0.56)` to `(0.22, 0.48)`. The later arrow below the left platform was a separate shot fired by the black opponent, not the player's low miss.
+
+Two explicitly directed engineering probes reduced the upward displacement to `0.01`, keeping the original 720×1280 viewport, canvas coordinate space, start steps and a single 700 ms drag. Both fresh sessions showed the player's arrow striking the opponent in the head area, the opponent falling, and **VICTORY / three stars / +90**, with orange still at 100 health. Their profiles were byte-identical; sources lasted **8.277s and 8.293s**. Power-up positions and enemy shot timing visibly differed. The shipped `stickman-archer` profile preserves the tested geometry and inputs exactly; only its identification, verification notes and objective changed.
+
+Evidence: `data/experiments/variety-2026-10-07/archer-calibration/{probe-01,probe-02}/` contains each exact profile, native source recording, before/after screenshots, input trace, capture metadata, source SHA-256 and provenance. The parent `report.md`, `summary.json` and `probe.ts` retain the comparison and bounded procedure. No game code, hidden state, clock or storage was changed. This verifies the tested Level 1 first-shot configuration; it does not establish autonomous angle discovery, repeated-angle adjustment semantics, later-level performance or general reflex control. Future captures still require footage review.
+
 ## Changes driven by measured failures
 
 - Loading overlays intercepted Start; bounded actionability checks and displayed frame geometry fixed repeated capture and HUD cropping.
