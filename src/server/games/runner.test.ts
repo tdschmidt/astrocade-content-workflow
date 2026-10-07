@@ -15,11 +15,11 @@ canvas.onkeydown=e=>{if(e.code==='ArrowRight'){position++;held=true;trusted=e.is
 canvas.onkeyup=()=>{held=false;draw()};canvas.onclick=()=>{clicks++;draw()};draw();
 </script>`;
 
-async function fixture(t: TestContext, maxDurationMs = 10000) {
+async function fixture(t: TestContext, maxDurationMs = 10000, frameHtml = frame) {
   const browser = await chromium.launch({ channel: 'chromium', headless: true });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 640, height: 480 } });
-  await page.route('http://127.0.0.1/**', route => route.fulfill({ contentType: 'text/html', body: route.request().url().endsWith('/frame') ? frame : '<iframe id="game" src="/frame" width="360" height="400" style="border:0"></iframe>' }));
+  await page.route('http://127.0.0.1/**', route => route.fulfill({ contentType: 'text/html', body: route.request().url().endsWith('/frame') ? frameHtml : '<iframe id="game" src="/frame" width="360" height="400" style="border:0"></iframe>' }));
   const profile = gameProfileSchema.parse({
     id: 'feedback-fixture', name: 'Feedback fixture', gameUrl: 'http://127.0.0.1/game', verification: 'verified',
     viewport: { width: 640, height: 480 }, surface: { selector: 'canvas', frames: ['#game'] }, ready: { selector: 'canvas', frames: ['#game'] },
@@ -131,4 +131,35 @@ test('operator cancellation releases held native inputs before closing the captu
   assert.equal(lifecycle.finish, 0);
   assert.equal(lifecycle.cancel, 1);
   assert.equal(lifecycle.close, 1);
+});
+
+test('feedback observes the settled board after a rejected drag returns its object', browserTest, async t => {
+  const returningObject = `<!doctype html><style>body{margin:0}canvas{display:block}</style>
+  <canvas width="320" height="320" tabindex="0"></canvas><p id="hud">Ready</p><script>
+  const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');let x=50,dragging=false;
+  function draw(){ctx.fillStyle='#123';ctx.fillRect(0,0,320,320);ctx.fillStyle='#8fc';ctx.fillRect(x,140,40,40)}
+  canvas.onpointerdown=()=>{dragging=true};
+  canvas.onpointermove=event=>{if(dragging){x=event.offsetX;draw()}};
+  canvas.onpointerup=event=>{dragging=false;x=230;draw();document.querySelector('#hud').textContent='Returning';
+    setTimeout(()=>{x=50;draw();document.querySelector('#hud').textContent='Returned to origin; trusted: '+event.isTrusted},600)};draw();
+  </script>`;
+  const { options, lifecycle } = await fixture(t, 10000, returningObject);
+  const drag = { type: 'drag' as const, from: { x: 0.2, y: 0.5 }, to: { x: 0.8, y: 0.5 }, durationMs: 100 };
+  let initialImage: Buffer | undefined;
+  let calls = 0;
+  const result = await runCaptureAttempt({ ...options, decide: async observation => {
+    if (!calls++) {
+      assert.equal(observation.text, 'Ready');
+      initialImage = observation.image;
+      return { stop: false, reason: 'Test one placement.', actions: [drag] };
+    }
+    assert.equal(observation.text, 'Returned to origin; trusted: true');
+    assert.deepEqual(observation.previousActions, [drag]);
+    assert.deepEqual(observation.previousImage, initialImage);
+    assert.deepEqual(observation.image, initialImage, 'the visible object must be back at its original coordinates, not mid-return');
+    return { stop: true, reason: 'Placement was rejected; object returned to origin.', actions: [] };
+  } });
+  assert.equal(result.stopReason, 'model_stop', result.controllerError ?? 'The settled observation should stop normally.');
+  assert.equal(calls, 2);
+  assert.equal(lifecycle.finalText, 'Returned to origin; trusted: true');
 });

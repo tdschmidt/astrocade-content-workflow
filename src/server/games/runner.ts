@@ -166,7 +166,9 @@ export async function runCaptureAttempt(options: {
           previousImage = image;
           previousReason = decision.reason;
           for (const action of decision.actions) await perform('control', action, () => executor.execute(action));
-          await delay(250, undefined, { signal: controlSignal });
+          // Rejected puzzle pieces can animate back for longer than one frame.
+          // Observe their resting positions before a slow model chooses coordinates.
+          await delay(1000, undefined, { signal: controlSignal });
         }
       }
     } catch (error) {
