@@ -67,6 +67,28 @@ test('a known Start is omitted from model decisions and unexpected start fields 
   await assert.rejects(learnGameProfile(inspection, candidate, google), /unrecognized_keys/);
 });
 
+test('visual menu steps are replayed once and omitted from model start decisions', async t => {
+  const { candidate, inspection, proposal } = await fixture(t);
+  inspection.performedVisualStart = [{ type: 'tap', point: { x: 0.5, y: 0.7 } }, { type: 'wait', durationMs: 700 }];
+  const { start: _start, ...withoutStart } = proposal;
+  const google = { json: async (prompt: string) => {
+    assert.match(prompt, /already knows the Start actions/);
+    return withoutStart;
+  } } as unknown as Pick<GoogleServices, 'json'>;
+  const learned = await learnGameProfile(inspection, candidate, google);
+  assert.deepEqual(learned.profile?.start, inspection.performedVisualStart);
+});
+
+test('a visual intro skip is replayed before the DOM Start it revealed', async t => {
+  const { candidate, inspection, proposal } = await fixture(t);
+  inspection.performedVisualStart = [{ type: 'tap', point: { x: 0.5, y: 0.7 } }, { type: 'wait', durationMs: 700 }];
+  inspection.performedStart = inspection.startTargets[0];
+  const { start: _start, ...withoutStart } = proposal;
+  const google = { json: async () => withoutStart } as unknown as Pick<GoogleServices, 'json'>;
+  const learned = await learnGameProfile(inspection, candidate, google);
+  assert.deepEqual(learned.profile?.start, [...inspection.performedVisualStart, { type: 'click', target: { selector: '#start', frames: inspection.surface.frames } }, { type: 'wait', durationMs: 700 }]);
+});
+
 test('plans longer than the learning budget are skipped', async t => {
   const { candidate, inspection, proposal, google } = await fixture(t);
   proposal.actions = Array.from({ length: 10 }, () => ({ type: 'wait', durationMs: 5000 })) as typeof proposal.actions;
@@ -125,10 +147,51 @@ for (const label of ['START RUN', 'DEPLOY ↗']) test(`inspection clicks ${label
   await page.setContent('<style>body{margin:0}iframe{width:600px;height:1100px;border:0}button{position:absolute;z-index:2;top:0;left:0}</style><button aria-label="Start playing" onclick="this.remove()">Open game</button><iframe title="Astrocade Game"></iframe>');
   const frame = page.frames()[1]!;
   await frame.setContent(`<style>body{margin:0;background:#123}canvas{display:none;background:#24b}button{margin:100px;width:200px;height:80px}</style><button id="start">${label}</button><canvas width="600" height="1100"></canvas><script>document.querySelector("button").onclick=event=>{document.body.dataset.trusted=String(event.isTrusted);document.querySelector("button").remove();document.querySelector("canvas").style.display="block"}</script>`);
-  const inspection = await inspectGamePage(page, candidate.url, outputDir);
+  const provider = { json: async () => assert.fail('an observed DOM Start must not require visual menu inference') } as unknown as Pick<GoogleServices, 'json'>;
+  const inspection = await inspectGamePage(page, candidate.url, outputDir, undefined, provider);
   assert.deepEqual(inspection.performedStart, { selector: '#start', label });
   assert.equal(inspection.ready.selector, '#start');
   assert.equal(inspection.surface.selector, ':nth-match(canvas, 1)');
   assert.equal(await frame.locator('body').getAttribute('data-trusted'), 'true');
   assert.notDeepEqual(await readFile(inspection.beforeImagePath), await readFile(inspection.imagePath));
+});
+
+for (const scenario of ['play', 'skip then play', 'skip then DOM start', 'game board', 'unrelated label'] as const) test(`visual menu inspection handles ${scenario} with bounded native input`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
+  const { outputDir, candidate } = await fixture(t);
+  const browser = await chromium.launch({ channel: 'chromium', headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 720, height: 1280 } });
+  await page.setContent('<style>body{margin:0}iframe{width:600px;height:1100px;border:0}button{position:absolute;z-index:2;top:0;left:0}</style><button aria-label="Start playing" onclick="this.remove()">Open game</button><iframe title="Astrocade Game"></iframe>');
+  const frame = page.frames()[1]!;
+  await frame.setContent(`<style>body{margin:0}</style><canvas width="600" height="1100"></canvas><script>
+    const canvas=document.querySelector('canvas'), context=canvas.getContext('2d');
+    let clicks=0;
+    function draw(){context.fillStyle=clicks?'#247':'#123';context.fillRect(0,0,600,1100);context.fillStyle='white';context.font='32px sans-serif';context.fillText(clicks?${scenario === 'skip then play' ? "clicks===1?'PLAY':'BOARD '+clicks" : "'BOARD '+clicks"}:${JSON.stringify(scenario.startsWith('skip') ? 'Tap to skip' : scenario === 'game board' ? 'Drag the shapes' : 'PLAY')},200,600)}
+    draw();
+    canvas.onclick=event=>{clicks++;document.body.dataset.clicks=String(clicks);document.body.dataset.trusted=String(event.isTrusted);draw();${scenario === 'skip then DOM start' ? "const button=document.createElement('button');button.id='startAfterSkip';button.textContent='Start';button.style='position:absolute;left:200px;top:500px;width:200px;height:80px';button.onclick=e=>{document.body.dataset.domStarted=String(e.isTrusted);button.remove()};document.body.append(button);" : ''}};
+  </script>`);
+  const observedImages: string[] = [];
+  const provider = { json: async (prompt: string, _schema: unknown, media: { data: string }[]) => {
+    assert.match(prompt, /point=null if this is already a game board/);
+    observedImages.push(media[0]!.data);
+    assert.ok(observedImages.length <= (scenario === 'skip then play' ? 2 : 1), 'menu discovery must remain bounded');
+    if (scenario === 'game board') return { point: null, label: '', reason: 'Active game board, no menu control.' };
+    return { point: { x: 0.5, y: 0.55 }, label: scenario === 'unrelated label' ? 'Buy upgrade' : scenario.startsWith('skip') && observedImages.length === 1 ? 'Tap to skip' : 'PLAY', reason: 'Visible menu label.' };
+  } } as unknown as Pick<GoogleServices, 'json'>;
+  const inspection = await inspectGamePage(page, candidate.url, outputDir, undefined, provider);
+  const expectedTaps = scenario === 'skip then play' ? 2 : scenario === 'play' || scenario === 'skip then DOM start' ? 1 : 0;
+  assert.equal(Number(await frame.locator('body').getAttribute('data-clicks') ?? '0'), expectedTaps);
+  assert.equal(inspection.performedVisualStart?.filter(step => step.type === 'tap').length ?? 0, expectedTaps);
+  if (scenario === 'skip then DOM start') {
+    assert.deepEqual(inspection.performedStart, { selector: '#startAfterSkip', label: 'Start' });
+    assert.equal(await frame.locator('body').getAttribute('data-dom-started'), 'true');
+  } else assert.equal(inspection.performedStart, undefined);
+  assert.equal(inspection.ready.selector, ':nth-match(canvas, 1)');
+  assert.equal((await readFile(inspection.beforeImagePath)).toString('base64'), observedImages[0]);
+  if (expectedTaps) {
+    assert.equal(await frame.locator('body').getAttribute('data-trusted'), 'true');
+    assert.notDeepEqual(await readFile(inspection.beforeImagePath), await readFile(inspection.imagePath));
+  }
+  if (expectedTaps === 2) assert.notEqual(observedImages[0], observedImages[1], 'each visual menu decision must see the updated screen');
+  assert.equal(JSON.parse(await readFile(join(outputDir, 'inspection-menu-1.json'), 'utf8')).reason, scenario === 'game board' ? 'Active game board, no menu control.' : 'Visible menu label.');
 });
