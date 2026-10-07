@@ -6,6 +6,7 @@ import test, { type TestContext } from 'node:test';
 import { chromium } from 'playwright';
 import type { GoogleServices } from '../providers/google.js';
 import { inspectGamePage, isObservedStartLabel, learnGameProfile, type GameInspection } from './learning.js';
+import { learnFeedbackProfile } from './feedback.js';
 import { InputExecutor } from './input.js';
 import type { GameCandidate } from './schema.js';
 
@@ -34,6 +35,9 @@ test('learning builds an unverified profile from observed selectors and saves it
   assert.deepEqual(learned.profile?.surface, inspection.surface);
   assert.deepEqual(learned.profile?.start, [{ type: 'click', target: { selector: '#start', frames: inspection.surface.frames } }]);
   assert.deepEqual(JSON.parse(await readFile(join(outputDir, 'learning.json'), 'utf8')), learned);
+  const assessment = JSON.parse(await readFile(join(outputDir, 'timed-assessment.json'), 'utf8'));
+  assert.equal(assessment.supported, true);
+  assert.equal(assessment.confidence, 'high');
 });
 
 test('low-confidence controls are skipped rather than promoted to a runnable plan', async t => {
@@ -42,6 +46,20 @@ test('low-confidence controls are skipped rather than promoted to a runnable pla
   const learned = await learnGameProfile(inspection, candidate, google);
   assert.equal(learned.profile, undefined);
   assert.match(learned.limitations.join(' '), /No high-confidence/);
+  assert.equal(JSON.parse(await readFile(join(inspection.outputDir, 'timed-assessment.json'), 'utf8')).confidence, 'low');
+});
+
+test('observed fixed controls allow an unverified probe without implying a likely win', async t => {
+  const { candidate, inspection, proposal } = await fixture(t);
+  const google = { json: async (prompt: string) => {
+    assert.match(prompt, /NOT the probability of winning/);
+    assert.match(prompt, /uncertain.*outcome varies|outcome varies/i);
+    assert.match(prompt, /an unseen keyboard mapping cannot/);
+    return { ...proposal, objective: 'Take a visible bite and observe the consequence.', actions: [{ type: 'tap', point: { x: 0.77, y: 0.90 } }], evidence: ['The visible CHOMP button previously removed part of the sandwich.'], limitations: ['Coworker timing varies; avoiding detection and winning are unproven.'] };
+  } } as unknown as Pick<GoogleServices, 'json'>;
+  const learned = await learnGameProfile(inspection, candidate, google);
+  assert.equal(learned.profile?.verification, 'unverified');
+  assert.deepEqual(learned.limitations, ['Coworker timing varies; avoiding detection and winning are unproven.']);
 });
 
 test('a model cannot select an unobserved start button', async t => {
@@ -136,6 +154,9 @@ test('the inspector recognizes observed game-start labels without broadening to 
   assert.equal(isObservedStartLabel('Start Shift'), true);
   assert.equal(isObservedStartLabel('DEPLOY ↗'), true);
   assert.equal(isObservedStartLabel('Deploy'), true);
+  assert.equal(isObservedStartLabel('New Game'), true);
+  assert.equal(isObservedStartLabel('New World'), true);
+  assert.equal(isObservedStartLabel('New World Options'), false);
   assert.equal(isObservedStartLabel('Deploy update'), false);
   assert.equal(isObservedStartLabel('ENTER SHOP'), false);
   assert.equal(isObservedStartLabel('Play ad for reward'), false);
@@ -166,7 +187,7 @@ test('the learning request supplies exact native-input wire examples', async t =
   assert.ok((await learnGameProfile(inspection, candidate, google)).profile);
 });
 
-for (const label of ['START RUN', 'DEPLOY ↗']) test(`inspection clicks ${label} before waiting for its hidden game canvas`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
+for (const label of ['START RUN', 'DEPLOY ↗', 'New Game', 'New World']) test(`inspection clicks ${label} before waiting for its hidden game canvas`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
   const { outputDir, candidate } = await fixture(t);
   const browser = await chromium.launch({ channel: 'chromium', headless: true });
   t.after(() => browser.close());
@@ -315,6 +336,7 @@ for (const { label, gameSetup, allowed } of [
   { label: 'Continue', gameSetup: false, allowed: false },
   { label: 'Buy upgrade', gameSetup: true, allowed: false },
   { label: 'With a friend', gameSetup: true, allowed: false },
+  { label: 'CHOMP', gameSetup: true, allowed: false },
 ]) test(`setup confirmation ${label} requires both visible setup evidence and an allowed label (${gameSetup})`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
   const { outputDir, candidate, proposal } = await fixture(t);
   const browser = await chromium.launch({ channel: 'chromium', headless: true });
@@ -331,7 +353,9 @@ for (const { label, gameSetup, allowed } of [
   };
   await loadFixture();
   const images: string[] = [];
-  const provider = { json: async (_prompt: string, _schema: unknown, media: { data: string }[]) => {
+  const provider = { json: async (prompt: string, _schema: unknown, media: { data: string }[]) => {
+    assert.match(prompt, /First transcribe the button's exact visible label, then classify it/);
+    assert.match(prompt, /CHOMP is not CHOOSE/);
     images.push(media[0]!.data);
     return images.length === 1
       ? { loading: false, gameSetup, point: { x: 0.5, y: 0.55 }, label, reason: 'The free sandwich is already selected in the lunch setup menu; its confirmation advances to controls.' }
@@ -360,4 +384,68 @@ for (const { label, gameSetup, allowed } of [
   const saved = JSON.parse(await readFile(join(outputDir, 'inspection-menu-1.json'), 'utf8'));
   assert.equal(saved.gameSetup, gameSetup);
   assert.match(saved.reason, /free sandwich.*setup/);
+});
+
+for (const scenario of ['DOM instructions', 'canvas instructions', 'missing return', 'broken return'] as const) test(`help inspection handles ${scenario} with one native round trip before New World`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
+  const { outputDir, candidate, proposal } = await fixture(t);
+  const browser = await chromium.launch({ channel: 'chromium', headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 720, height: 1280 } });
+  const helpName = scenario === 'canvas instructions' ? 'Controls' : 'How to Play';
+  const returnName = scenario === 'canvas instructions' ? 'Close' : 'Back';
+  const loadFixture = async () => {
+    await page.setContent('<style>body{margin:0}iframe{width:600px;height:1100px;border:0}button{position:absolute;z-index:2;top:0;left:0}</style><button aria-label="Start playing" onclick="this.remove()">Open game</button><iframe title="Astrocade Game"></iframe>');
+    await page.frames()[1]!.setContent(`<style>body{margin:0;background:#123;color:white}button{width:240px;height:80px}#board,#help{display:none}</style>
+      <div id="menu"><button id="start">New World</button><button id="openHelp">${helpName}</button><button>Options...</button><button>About</button></div>
+      <div id="help">${scenario === 'canvas instructions' ? '<canvas id="helpCanvas" width="600" height="800"></canvas>' : '<p>Hold ArrowRight to walk. Tap Space to jump.</p>'}${scenario === 'missing return' ? '<button aria-label="Unlabeled icon">?</button>' : `<button id="return">${returnName}</button>`}</div>
+      <canvas id="board" width="600" height="1000"></canvas><script>
+        const menu=document.getElementById('menu'),help=document.getElementById('help'),board=document.getElementById('board');
+        document.body.dataset.clicks='';document.body.dataset.keys='';
+        document.addEventListener('keydown',event=>{document.body.dataset.keys+=event.code+','});
+        function log(event,name){document.body.dataset.clicks+=name+':'+event.isTrusted+','}
+        document.getElementById('openHelp').onclick=event=>{log(event,'help');menu.style.display='none';help.style.display='block';${scenario === 'canvas instructions' ? "const context=document.getElementById('helpCanvas').getContext('2d');context.fillStyle='white';context.font='30px sans-serif';context.fillText('Hold ArrowRight to walk.',30,150)" : ''}};
+        ${scenario === 'missing return' ? '' : `document.getElementById('return').onclick=event=>{log(event,'return');${scenario === 'broken return' ? '' : "help.style.display='none';menu.style.display='block'"}};`}
+        document.getElementById('start').onclick=event=>{log(event,'start');menu.style.display='none';board.style.display='block'};
+      </script>`);
+  };
+  await loadFixture();
+  const provider = { json: async () => assert.fail('Observed help and New World controls need no menu inference.') } as unknown as Pick<GoogleServices, 'json'>;
+  if (scenario === 'missing return' || scenario === 'broken return') {
+    await assert.rejects(inspectGamePage(page, candidate.url, outputDir, undefined, provider), scenario === 'missing return' ? /no visible Back\/Close button/ : /did not return from help to the menu/);
+    const failed = JSON.parse(await readFile(join(outputDir, 'inspection-help.json'), 'utf8'));
+    assert.equal(failed.returnCompleted, false);
+    assert.ok((await readFile(failed.imagePath)).length);
+    assert.equal(await page.frames()[1]!.locator('body').getAttribute('data-clicks'), scenario === 'missing return' ? 'help:true,' : 'help:true,return:true,');
+    assert.equal(await page.frames()[1]!.locator('body').getAttribute('data-keys'), '', 'missing return must not cause a guessed Escape key');
+    await assert.rejects(readFile(join(outputDir, 'inspection.json')), { code: 'ENOENT' });
+    return;
+  }
+  const inspection = await inspectGamePage(page, candidate.url, outputDir, undefined, provider);
+  assert.deepEqual(inspection.help?.opened, { selector: '#openHelp', label: helpName });
+  assert.deepEqual(inspection.help?.returned, { selector: '#return', label: returnName });
+  assert.deepEqual(inspection.performedStart, { selector: '#start', label: 'New World' });
+  assert.equal(await page.frames()[1]!.locator('body').getAttribute('data-clicks'), 'help:true,return:true,start:true,');
+  assert.equal(JSON.parse(await readFile(join(outputDir, 'inspection-help.json'), 'utf8')).returnCompleted, true);
+  assert.equal(JSON.parse(await readFile(join(outputDir, 'inspection.json'), 'utf8')).help.imagePath, inspection.help!.imagePath);
+  if (scenario === 'DOM instructions') assert.match(inspection.text, /Observed help panel:\nHold ArrowRight to walk/);
+  else assert.doesNotMatch(inspection.help!.text, /ArrowRight/, 'canvas instructions must be carried by the saved raster');
+  const helpImage = (await readFile(inspection.help!.imagePath)).toString('base64');
+  const { start: _start, ...withoutStart } = proposal;
+  const learned = await learnGameProfile(inspection, candidate, { json: async (prompt: string, _schema: unknown, media: { data: string }[]) => {
+    assert.match(prompt, /third image is the observed How to Play\/Controls panel/);
+    assert.equal(media.length, 3); assert.equal(media[2]!.data, helpImage);
+    return withoutStart;
+  } } as unknown as Pick<GoogleServices, 'json'>);
+  assert.ok(learned.profile);
+  assert.equal(learned.profile.start.filter(step => step.type === 'click').length, 1);
+  await rm(join(outputDir, 'learning.json'));
+  await learnFeedbackProfile(inspection, candidate, { json: async (prompt: string, _schema: unknown, media: { data: string }[]) => {
+    assert.match(prompt, /third image is the saved How to Play\/Controls panel/);
+    assert.equal(media.length, 3); assert.equal(media[2]!.data, helpImage);
+    return { supported: false, confidence: 'high', latencyTolerant: false, objective: 'Observe one movement.', instructions: 'ArrowRight walks.', allowedKeys: ['ArrowRight'], allowPointer: false, evidence: ['Observed help panel maps ArrowRight to walking.'], limitations: ['SYNTHETIC reflex game.'] };
+  } } as unknown as Pick<GoogleServices, 'json'>);
+  await loadFixture();
+  const executor = new InputExecutor(page, learned.profile.surface);
+  for (const step of [...learned.profile.setup, ...learned.profile.start]) await executor.step(step);
+  assert.equal(await page.frames()[1]!.locator('body').getAttribute('data-clicks'), 'start:true,', 'fresh capture must not replay help navigation');
 });
