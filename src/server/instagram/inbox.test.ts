@@ -10,7 +10,7 @@ const criteria = {
 const message: VerificationMessage = {
   id: 'new-message', receivedAt: '2026-10-06T12:00:01Z',
   to: ['project@example.com'], from: 'verify@mail.instagram.com',
-  subject: '123456 is your Instagram code', text: 'Confirm your account with code 123456.',
+  subject: '123456 is your Instagram code', text: 'Confirm your account with code 123456. Copyright 2026.',
 };
 
 test('finds a fresh code without guessing aliases or accepting spoofed sender suffixes', () => {

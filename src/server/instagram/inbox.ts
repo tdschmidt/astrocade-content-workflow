@@ -23,6 +23,8 @@ export interface VerificationCriteria {
   /** Exact addresses observed/configured for the selected signup flow. */
   allowedSenders: string[];
   usedMessageIds?: string[];
+  /** Six is the conservative supported format; an unfamiliar format needs a checkpoint. */
+  codeLength?: 4 | 5 | 6 | 7 | 8;
 }
 
 export type CodeMatch =
@@ -49,7 +51,8 @@ export function matchVerificationCode(
     // Parse normalized text supplied by the adapter; never render email HTML.
     const text = `${message.subject}\n${message.text}`.slice(0, 32_768);
     if (!/\binstagram\b/i.test(text) || !/\b(code|confirm|verification)\b/i.test(text)) continue;
-    const codes = new Set(Array.from(text.matchAll(/(?<!\d)(\d{4,8})(?!\d)/g), match => match[1]));
+    const pattern = new RegExp(`(?<!\\d)(\\d{${criteria.codeLength ?? 6}})(?!\\d)`, 'g');
+    const codes = new Set(Array.from(text.matchAll(pattern), match => match[1]));
     if (codes.size > 1) return { status: 'ambiguous' };
     const code = codes.values().next().value;
     if (code) candidates.push({ code, messageId: message.id });
