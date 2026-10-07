@@ -1,6 +1,16 @@
-import { gameProfileSchema, type GameCandidate, type GameProfile } from './schema.js';
+import { gameProfileSchema, type GameCandidate, type GameProfile, type InputAction } from './schema.js';
 
 const gameFrame = ['iframe[title="Astrocade Game"]'];
+
+function carWashSweeps(count: number, durationMs: number): InputAction[] {
+  return Array.from({ length: count }, (_, row): InputAction[] => {
+    const y = [0.41, 0.49, 0.57][row % 3]!;
+    return [
+      { type: 'drag', from: { x: row % 2 ? 0.9 : 0.1, y }, to: { x: row % 2 ? 0.1 : 0.9, y }, durationMs },
+      { type: 'wait', durationMs: 100 },
+    ];
+  }).flat();
+}
 
 // Two fresh live captures passed on 2026-10-07 UTC. See docs/acceptance.md.
 export const verifiedProfiles: GameProfile[] = [gameProfileSchema.parse({
@@ -28,6 +38,31 @@ export const verifiedProfiles: GameProfile[] = [gameProfileSchema.parse({
       { type: 'wait', durationMs: 3500 },
       { type: 'drag', from: { x: 0.75, y: 0.7 }, to: { x: 0.5, y: 0.7 }, durationMs: 500 },
       { type: 'wait', durationMs: 3500 },
+    ],
+  },
+}), gameProfileSchema.parse({
+  id: 'car-wash-simulator',
+  name: 'Car Wash Simulator',
+  gameUrl: 'https://www.astrocade.com/games/car-wash-simulator/01M3J5ZVKCWQ7K5XGXWZ6RRRTY',
+  verification: 'verified',
+  verificationNotes: 'Two fresh 29.43s/29.58s live captures passed on 2026-10-07 UTC. Both showed dirt falling from 100% to 26% and foam rinsed away. This profile demonstrates cleaning progress, not a completed customer or level.',
+  viewport: { width: 720, height: 1280 },
+  surface: { selector: '#game-canvas', frames: gameFrame },
+  ready: { selector: '#start-btn', frames: gameFrame },
+  setup: [{ type: 'click', target: { selector: '[aria-label="Start playing"]' } }],
+  start: [{ type: 'click', target: { selector: '#start-btn', frames: gameFrame } }, { type: 'wait', durationMs: 700 }],
+  reset: [], focus: 'click',
+  objective: 'Apply visible foam, scrub dirt, and rinse the vehicle. Capture changes in the visible dirt and foam meters; do not claim a completed customer or level unless shown.',
+  maxDurationMs: 35000,
+  controller: {
+    type: 'timed', repetitions: 1,
+    actions: [
+      ...carWashSweeps(9, 1200),
+      { type: 'tap', point: { x: 0.36, y: 0.85 } }, // Observed Scrub tool.
+      ...carWashSweeps(6, 1100),
+      { type: 'tap', point: { x: 0.50, y: 0.85 } }, // Observed Rinse tool.
+      ...carWashSweeps(6, 1100),
+      { type: 'wait', durationMs: 1200 },
     ],
   },
 })];
