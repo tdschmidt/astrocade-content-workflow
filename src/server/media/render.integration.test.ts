@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { mediaExecutables, probeMedia, type MediaTools } from './probe.js';
 import { runProcess } from './process.js';
-import { renderPortrait } from './render.js';
+import { presenterVideoDuration, renderPortrait } from './render.js';
 
 test('portrait renderer produces validated video, captions, and complete audio', { skip: process.env.RUN_RENDER_TESTS !== '1', timeout: 120_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'astrocade-render-test-'));
@@ -53,6 +53,9 @@ test('split-screen keeps complete gameplay, labels its presenter, and refuses in
     await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x18A060:size=720x1280:rate=30:duration=2.4', '-vf', 'drawbox=x=0:y=0:w=720:h=64:color=red:t=fill,drawbox=x=0:y=1216:w=720:h=64:color=blue:t=fill', '-c:v', 'libx264', '-preset', 'ultrafast', source]);
     await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=yellow:size=640x360:rate=30:duration=2.4', '-f', 'lavfi', '-i', 'sine=frequency=800:sample_rate=48000:duration=2.4', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', presenter]);
     await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=yellow:size=640x360:rate=30:duration=1', '-f', 'lavfi', '-i', 'sine=frequency=800:sample_rate=48000:duration=2.4', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', shortPresenter]);
+    assert.ok(Math.abs(await presenterVideoDuration(presenter, tools) - 2.4) < 0.001);
+    assert.ok((await probeMedia(shortPresenter, tools)).durationSeconds >= 2.4);
+    assert.ok(Math.abs(await presenterVideoDuration(shortPresenter, tools) - 1) < 0.001, 'the editor receives actual video duration even when audio extends the container');
     const options = { outputPath: output, cuts: [{ path: source, startSeconds: 0, endSeconds: 2.4 }], hook: 'One spot left', overlays: [{ startSeconds: 0, endSeconds: 1.2, text: 'One spot left', position: 'upper' as const }], presenter: { path: presenter }, ffmpeg: tools };
     await assert.rejects(renderPortrait({ ...options, outputPath: rejected, presenter: { path: shortPresenter } }), /Presenter video is too short: 1.00s/u);
     await assert.rejects(access(rejected), /ENOENT/u);

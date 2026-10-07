@@ -13,7 +13,7 @@ import { verifiedProfiles } from '../server/games/profiles.js';
 import { runCaptureAttempt } from '../server/games/runner.js';
 import { gameCandidateSchema, gameProfileSchema } from '../server/games/schema.js';
 import { validateVideo } from '../server/media/probe.js';
-import { renderPortrait } from '../server/media/render.js';
+import { presenterVideoDuration, renderPortrait } from '../server/media/render.js';
 import { analyzeFootage, draftScript } from '../server/providers/editorial.js';
 import { GoogleServices } from '../server/providers/google.js';
 import { CodexServices } from '../server/providers/codex.js';
@@ -46,7 +46,7 @@ export const coreRunSchema = z.object({
 export type CoreRun = z.infer<typeof coreRunSchema>;
 export type CoreStage = 'discover' | 'capture' | 'edit' | 'all';
 
-const defaults = { discoverGames, nominateGames, inspectGame, learnGameProfile, learnFeedbackProfile, createFeedbackController, runCaptureAttempt, analyzeFootage, draftScript, renderPortrait, validateVideo };
+const defaults = { discoverGames, nominateGames, inspectGame, learnGameProfile, learnFeedbackProfile, createFeedbackController, runCaptureAttempt, analyzeFootage, draftScript, renderPortrait, presenterVideoDuration, validateVideo };
 export type CoreServices = typeof defaults;
 
 async function hashFile(path: string) { return createHash('sha256').update(await readFile(path)).digest('hex'); }
@@ -335,7 +335,10 @@ export async function runPipeline(options: {
       const selected = usable[0]!;
       await save(run => { run.selectedGameId = selected.gameId; });
       trace.event('select', 'completed', `Selected ${selected.capture!.game.title} from verified action windows and editorial evidence. Scores are heuristics out of 30, not audience probabilities.`, usable.map(item => ({ game: item.capture!.game.title, score: contentScore(item.capture!.analysis!.content!), content: item.capture!.analysis!.content, reason: item.capture!.analysis!.reason })));
-      const script = await services.draftScript({ capture: selected.capture!, format: 'highlight', topic: '', brief: store.read().contentBrief, presenter: Boolean(store.read().presenterPath) }, getProvider(), options.signal);
+      const presenterPath = store.read().presenterPath;
+      const maxDurationSeconds = presenterPath ? Math.min(40, await services.presenterVideoDuration(presenterPath, config.mediaTools, options.signal)) : undefined;
+      if (maxDurationSeconds !== undefined) trace.event('edit', 'observed', `Presenter footage limits the edit to ${maxDurationSeconds.toFixed(2)} seconds.`, { maxDurationSeconds });
+      const script = await services.draftScript({ capture: selected.capture!, format: 'highlight', topic: '', brief: store.read().contentBrief, presenter: Boolean(presenterPath), maxDurationSeconds }, getProvider(), options.signal);
       await save(run => { run.script = script; run.scriptModel = options.model; run.scriptProvider = providerName; });
       trace.artifact('edit.json', script);
       trace.event('edit', 'completed', script.rationale, { hook: script.hook, cuts: script.cuts, editorial: script.editorial, overlays: script.overlays });

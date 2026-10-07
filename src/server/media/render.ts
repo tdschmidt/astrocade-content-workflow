@@ -143,7 +143,7 @@ function makeFilter(cuts: readonly VideoCut[], narration: boolean, duration: num
   return filters.join(';\n');
 }
 
-async function validatePresenter(path: string, duration: number, tools: MediaTools, signal?: AbortSignal): Promise<void> {
+export async function presenterVideoDuration(path: string, tools: MediaTools = {}, signal?: AbortSignal): Promise<number> {
   const info = await probeMedia(path, tools, signal);
   if (!info.video || info.video.width <= 0 || info.video.height <= 0) throw new Error('Presenter source has no usable video');
   // Audio can outlast the video stream, so container duration alone is not proof
@@ -154,7 +154,8 @@ async function validatePresenter(path: string, duration: number, tools: MediaToo
   const start = Math.min(...times.map(packet => packet.start));
   const end = Math.max(...times.map(packet => packet.start + (packet.duration > 0 ? packet.duration : 1 / (info.video!.frameRate ?? 30))));
   const available = end - start;
-  if (!times.length || !Number.isFinite(available) || available + 1e-6 < duration) throw new Error(`Presenter video is too short: ${Number.isFinite(available) ? available.toFixed(2) : '0'}s available for ${duration.toFixed(2)}s of gameplay. Generate a longer presenter or select a shorter edit.`);
+  if (!times.length || !Number.isFinite(available) || available <= 0) throw new Error('Presenter source has no usable video duration');
+  return available;
 }
 
 export async function renderPortrait(options: PortraitRender): Promise<RenderArtifact> {
@@ -169,7 +170,10 @@ export async function renderPortrait(options: PortraitRender): Promise<RenderArt
   if (narration && !narration.audio) throw new Error('Narration file contains no audio');
   const duration = validateTimeline(options.cuts, sources, options.overlays === undefined ? options.subtitles : [], narration?.durationSeconds);
   if (options.overlays) validateOverlayCues(options.overlays, duration);
-  if (options.presenter) await validatePresenter(options.presenter.path, duration, tools, options.signal);
+  if (options.presenter) {
+    const available = await presenterVideoDuration(options.presenter.path, tools, options.signal);
+    if (available + 1e-6 < duration) throw new Error(`Presenter video is too short: ${available.toFixed(2)}s available for ${duration.toFixed(2)}s of gameplay. Generate a longer presenter or select a shorter edit.`);
+  }
   await mkdir(dirname(options.outputPath), { recursive: true });
   const directory = await mkdtemp(join(dirname(options.outputPath), '.render-'));
   const partial = join(directory, 'render.mp4');

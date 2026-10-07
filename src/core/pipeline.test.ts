@@ -447,19 +447,27 @@ test('re-edit requires saved recordings and CLI rejects contradictory run modes 
   });
 });
 
-test('a supplied presenter is hashed, sent to the renderer and cannot change on resume', async t => {
+test('presenter video duration bounds new edits and the hashed asset cannot change on resume', async t => {
   const { directory, config, services, calls } = await fixture(t);
   const presenterPath = join(directory, '..', 'presenter.mp4');
   const otherPresenter = join(directory, '..', 'other-presenter.mp4');
   await writeFile(presenterPath, 'SYNTHETIC generated presenter, not actual video');
   await writeFile(otherPresenter, 'SYNTHETIC alternate generated presenter');
-  const render = services.renderPortrait!;
+  let probes = 0;
+  services.presenterVideoDuration = async path => { probes++; assert.equal(path, presenterPath); return 5; };
+  const draft = services.draftScript!, render = services.renderPortrait!;
+  services.draftScript = async (...args) => {
+    assert.equal(args[0].maxDurationSeconds, 5);
+    assert.equal(args[0].presenter, true);
+    return { ...await draft(...args), cuts: [{ startSeconds: 1, endSeconds: 6 }] };
+  };
   services.renderPortrait = async options => {
     assert.deepEqual(options.presenter, { path: presenterPath });
     return render(options);
   };
   const options = { directory, model: 'fixture-model', quiet: true };
   const run = await runPipeline({ ...options, presenterPath }, config, services);
+  assert.equal(probes, 1);
   assert.equal(run.presenterPath, presenterPath);
   assert.match(run.presenterSha256!, /^[a-f0-9]{64}$/);
   assert.match(await readFile(join(directory, 'report.md'), 'utf8'), /Fictional AI commentator/);
@@ -467,10 +475,33 @@ test('a supplied presenter is hashed, sent to the renderer and cannot change on 
   await assert.rejects(runPipeline({ ...options, presenterPath: otherPresenter }, config, services), /saved presenter cannot be changed/);
   assert.equal(await readFile(join(directory, 'run.json'), 'utf8'), original);
   await runPipeline(options, config, services);
+  assert.equal(probes, 1, 'completed edits reuse their script and video without probing or drafting again');
   assert.equal(calls.render, 1);
   assert.equal(calls.validate, 1);
   await writeFile(presenterPath, 'SYNTHETIC changed presenter');
   await assert.rejects(runPipeline(options, config, services), /saved presenter asset changed/);
   assert.equal(calls.render, 1);
   assert.equal(calls.validate, 1);
+});
+
+test('a longer presenter retains the edit ceiling and saved scripts resume without redrafting', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const presenterPath = join(directory, '..', 'presenter.mp4');
+  await writeFile(presenterPath, 'SYNTHETIC long presenter, not actual video');
+  let probes = 0;
+  services.presenterVideoDuration = async () => { probes++; return 55; };
+  const draft = services.draftScript!, render = services.renderPortrait!;
+  services.draftScript = async (...args) => {
+    assert.equal(args[0].maxDurationSeconds, 40);
+    return draft(...args);
+  };
+  services.renderPortrait = async () => { throw new Error('SYNTHETIC render interruption'); };
+  const options = { directory, model: 'fixture-model', quiet: true, presenterPath };
+  await assert.rejects(runPipeline(options, config, services), /render interruption/);
+  services.renderPortrait = render;
+  const completed = await runPipeline(options, config, services);
+  assert.equal(completed.status, 'complete');
+  assert.equal(probes, 1);
+  assert.equal(calls.draft, 1);
+  assert.equal(calls.render, 1);
 });
