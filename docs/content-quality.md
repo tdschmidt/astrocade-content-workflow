@@ -1,0 +1,46 @@
+# Editorial thesis and experiments
+
+Choose **a game, an attainable moment, and a viewer question together**. The first audience hypothesis is people who enjoy predicting a small game decision or watching an incomplete state resolve. A title or attractive thumbnail can nominate a game; only recorded play can establish an episode. This is a creative thesis, not a claim of proven audience performance.
+
+The user's “Write Gen Z gameplay hooks” discussion supplies the voice: recognizable reactions, occasional POVs, incidental slang, and gameplay finishing the joke. “Who gave the group chat a game engine” suits a visibly absurd premise; it is not a default for an ordinary sorting puzzle. “POV: your relaxing game has a timer” requires a visible countdown. Never invent personal history, attempts, authorship or popularity to make a line sound casual.
+
+## Selection and duration
+
+The shortlist now names a content angle, capture goal and explicit rejection condition. For example, a gate runner should show readable choices *before* a decision and a visible crowd-size consequence afterward. Reject it if the gates are unreadable; a tested controller or big public counter cannot repair that failure.
+
+Recorded footage receives five evidence-based 0–3 ratings: goal clarity, viewer participation, visible payoff, portrait readability and distinctiveness. Clarity, payoff or readability at zero disqualifies it. The weighted score is a small, inspectable editorial heuristic; it is not a viral-probability estimate. Reports retain the evidence and rejected candidates.
+
+| Episode | What earns screen time | Initial creative budget | Reject when |
+| --- | --- | --- | --- |
+| Prediction or reveal | A choice the viewer can read, the actual input, its consequence | About 6–10s | The answer happens before viewers can form a prediction |
+| Mistake and recovery | An understandable error, a changed action, a different result | About 10–18s | Ordinary poor play is presented as unfair difficulty, or the correction is missing |
+| Transformation | Distinct before-state, causal progress, completed change | About 12–25s | Repeated movement adds no visible information, or the final state never arrives |
+| Escalation or unusual rule | A familiar expectation and a visible change that challenges it | As short as the complete event permits | The novelty exists only in the title or caption |
+
+These ranges are budgets, not minimums or platform rules. Retain enough setup to understand the action and roughly 1–2 seconds to register a settled payoff. Cut loading, inference waits and redundant action. Do not freeze, repeat, or invent footage to reach a duration. A five-second completed event can be valid; a longer clip must keep adding information. Cuts across pauses do not establish a continuous combo or speedrun.
+
+## Hooks, captions and composition
+
+For each selected sequence, generate three distinct concepts, record their visual support and tradeoffs, then choose one. A separate bounded visual review sees the actual source windows and can correct text or placement, or reject the sequence. This adds one review call per draft; it does not run an unbounded writer/critic loop. The review uses 2 FPS samples, while event verification uses 8 FPS. Neither replaces inspection of the final render.
+
+The opening overlay creates tension; it does not announce the answer. Prefer a natural 5–8 word line such as “would you rinse it yet?” to “A dirty car earns three stars.” Place it directly over nonessential picture, with bold outlined text, and remove it after reading time so the result is clear. Preserve the complete game canvas and use upper/lower placement based on its actual HUD and controls. The planner's placement is a hypothesis until the rendered frame is checked at phone size.
+
+Keep three kinds of text separate: an opening hook, subtitles for words actually spoken, and a post caption adding a brief reaction/invitation plus attribution. Silent clips do not get pretend speech subtitles. Post captions can be conversational rather than copied analysis logs, but their claims must survive visual review. No compulsory emoji, slang, hashtag pile, invented statistics, fake urgency or false human-play claim.
+
+## Research and trend handling
+
+The October 6 local research compared official Astrocade Shorts and adjacent gameplay examples, including counterexamples and unknown paid distribution. Its useful conclusion is format transfer, not an expected view count. Its older Level Devil, cleaning and sorting references do not establish what is trending today.
+
+Current primary guidance offers context: [TikTok Next 2026](https://ads.tiktok.com/business/en-US/next) describes curiosity and process as creative opportunities; [TikTok creative guidance](https://ads.tiktok.com/resources/help/article/creative-best-practices?lang=en) supports early hooks and UI-safe vertical composition in advertising; [YouTube Shorts guidance](https://support.google.com/youtube/answer/11914225?co=YOUTUBE._YTVideoType%3Dshorts&hl=en) emphasizes viewer response rather than a universally favored format. These are not controlled evidence that our edits will succeed organically.
+
+The default brief therefore contains **no verified current trend**. A supplied brief can carry a dated source, region, observed signal, game terms and explicit expiry. Future observations, expired signals and observations older than fourteen days are excluded from prompt context. Fourteen days is a local freshness ceiling, not a claim that every trend lasts that long. A fresh signal must still match visible gameplay; it cannot rescue a dull event. Save the exact brief with the run so a later edit can be explained.
+
+## Bounded experiments and stretch formats
+
+First compare Car Wash's transformation with Sort It Out's choice/mistake footage. Reuse the original recordings and hashes to spend inference on editorial differences. Save three hook alternatives per draft and inspect the opening, causal action and result of each final video. Record whether the goal and consequence are understandable muted, whether text covers critical information, and whether each cut adds something. This is an editorial comparison, not an audience A/B test; no retention or conversion improvement is claimed without publication data.
+
+The stretch split-screen uses a **fictional AI commentator**, visibly labeled throughout. The host occupies one quarter of the frame and the complete gameplay the rest. No fake LIVE badge, viewer count, chat, real-person endorsement or claim that the generated person performed the recorded inputs. Require enough actual presenter video for the entire edit; never loop or freeze a short reaction to fill space. A supplied asset's audio is ignored unless a separate narration track is deliberately provided.
+
+The main competing hypothesis is that a host distracts from a self-explanatory game. Compare against the faceless version of the same moment. Keep an additional participation format cheap: put a specific choice before the action and let the recorded outcome answer it. More elaborate formats should earn their production cost through clearer entertainment, not merely look more elaborate.
+
+Live outputs and measured defects are recorded in [acceptance.md](acceptance.md). Current capabilities and future experiments remain separate in the [decision log](design-decisions.md).

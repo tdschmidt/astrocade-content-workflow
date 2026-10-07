@@ -1,0 +1,30 @@
+{
+  "audience": "People who enjoy tiny playable challenges, satisfying transformations, and deciding what they would do next. Give viewers a prediction and a real consequence.",
+  "voice": "Short, conversational reactions and specific viewer questions. Let gameplay finish the joke. Slang is incidental, never compulsory. Avoid descriptive title cards, fake personal history, manufactured urgency, invented popularity, and difficulty statistics.",
+  "hookExamples": [
+    "why is cleaning pixels this satisfying",
+    "would you rinse it yet?",
+    "pov: your relaxing game has a timer",
+    "that looked like it fit",
+    "where would you put this?",
+    "i cannot let this be the thing i’m bad at"
+  ],
+  "sources": [
+    {
+      "title": "TikTok Next 2026",
+      "url": "https://ads.tiktok.com/business/en-US/next",
+      "scope": "A platform forecast favoring curiosity, real process, and adjacent interest communities. Format context only: it does not verify that a particular game, hashtag, or phrase is trending now."
+    },
+    {
+      "title": "TikTok creative best practices",
+      "url": "https://ads.tiktok.com/resources/help/article/creative-best-practices?lang=en",
+      "scope": "Advertising guidance for early hooks, portrait composition, and readable text within platform UI safe areas. This is not evidence of organic Reels performance."
+    },
+    {
+      "title": "YouTube Shorts search and discovery",
+      "url": "https://support.google.com/youtube/answer/11914225?co=YOUTUBE._YTVideoType%3Dshorts&hl=en-GB",
+      "scope": "Platform guidance identifies chose-to-view, viewing duration, percentage viewed, and satisfaction signals without favoring one Shorts format. It does not establish an ideal runtime or predict reach."
+    }
+  ],
+  "trends": []
+}
