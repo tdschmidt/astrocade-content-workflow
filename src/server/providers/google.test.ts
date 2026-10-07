@@ -36,6 +36,7 @@ test('SDK wire contract: structured JSON and dense video metadata round-trip fro
     assert.equal(request.model, settings.reasoningModel);
     assert.equal(request.store, false);
     assert.equal(request.stream, false);
+    assert.equal(request.generation_config.thinking_level, 'low');
     assert.equal(request.response_format.mime_type, 'application/json');
     assert.equal(request.response_format.schema.$schema, undefined);
     assert.equal(request.response_format.schema.properties.usable.type, 'boolean');
