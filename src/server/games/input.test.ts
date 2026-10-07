@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import { chromium, type Page } from 'playwright';
 import { InputExecutor, withinGame, withAbort } from './input.js';
-import { gameProfileSchema, inputActionSchema } from './schema.js';
+import { gameProfileSchema, inputActionSchema, plannedInputActionSchema } from './schema.js';
 import { GameCaptureError, runCaptureAttempt } from './runner.js';
 
 test('canceling a held native key releases it before the action rejects', async () => {
@@ -63,6 +63,23 @@ test('pointer actions accept one optional left or right button without changing 
     for (const button of ['left', 'right']) assert.deepEqual(inputActionSchema.parse({ ...action, button }), { ...action, button });
     for (const button of ['middle', ['left', 'right'], null]) assert.equal(inputActionSchema.safeParse({ ...action, button }).success, false);
   }
+});
+
+test('relative look has bounded signed CSS-pixel deltas and no button or absolute point', () => {
+  const action = { type: 'look', dx: -200, dy: 200, durationMs: 50 };
+  assert.deepEqual(inputActionSchema.parse(action), action);
+  assert.deepEqual(plannedInputActionSchema.parse({ ...action, dx: 0, dy: -0.5, durationMs: 2000 }), { ...action, dx: 0, dy: -0.5, durationMs: 2000 });
+  for (const invalid of [
+    { ...action, dx: -201 }, { ...action, dy: 201 }, { ...action, dx: Number.NaN }, { ...action, dy: Infinity },
+    { ...action, durationMs: 49 }, { ...action, durationMs: 2001 }, { ...action, durationMs: 50.5 },
+    { ...action, button: 'left' }, { ...action, point: { x: 0.5, y: 0.5 } },
+    { type: 'look', dx: 20, dy: 0 },
+  ]) {
+    assert.equal(inputActionSchema.safeParse(invalid).success, false);
+    assert.equal(plannedInputActionSchema.safeParse(invalid).success, false);
+  }
+  const legacy = gameProfileSchema.parse({ id: 'legacy-look', name: 'Legacy', gameUrl: 'https://www.astrocade.com/games/fixture/abc', viewport: { width: 800, height: 600 }, ready: { selector: 'canvas' }, surface: { selector: 'canvas' }, objective: 'Use visible controls.', controller: { type: 'sparse', allowPointer: true } });
+  assert.equal(legacy.controller.type === 'sparse' && legacy.controller.allowLook, undefined, 'old profiles do not acquire look permission');
 });
 
 type PointerEventRecord = { type: string; x: number; y: number; button: number; buttons: number; trusted: boolean };
@@ -213,4 +230,84 @@ for (const wholeFrame of [false, true]) test(`a locked ${wholeFrame ? 'iframe' :
   assert.equal(unlocked.button, 2);
   assert.equal(unlocked.trusted, true);
   assert.ok(Math.abs(unlocked.x - 320) < 1 && Math.abs(unlocked.y - 280) < 1, 'normal clicks still use their observed target');
+});
+
+type LookEvent = { type: string; dx: number; dy: number; buttons: number; trusted: boolean; locked: boolean };
+async function lookFixture(t: TestContext) {
+  const browser = await chromium.launch({ channel: 'chromium', headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 800, height: 800 } });
+  await page.route('https://**.look.test/**', route => route.fulfill({ contentType: 'text/html', body:
+    new URL(route.request().url()).hostname === 'game.look.test' ? `<style>body{margin:0}canvas{display:block;background:#345}</style><canvas width="400" height="400"></canvas><script>
+      const canvas=document.querySelector('canvas'); window.lookEvents=[];
+      canvas.onclick=()=>{if(!document.pointerLockElement) void canvas.requestPointerLock()};
+      canvas.oncontextmenu=event=>event.preventDefault();
+      for(const type of ['mousemove','mousedown','mouseup'])canvas.addEventListener(type,event=>{
+        window.lookEvents.push({type,dx:event.movementX,dy:event.movementY,buttons:event.buttons,trusted:event.isTrusted,locked:!!document.pointerLockElement});
+        if(type==='mousemove'&&document.pointerLockElement){
+          if(window.releaseOnMove) document.exitPointerLock();
+          if(window.abortLook) void window.abortLook();
+        }
+      });
+    </script>` : '<style>body{margin:0}iframe{position:absolute;left:40px;top:60px;width:400px;height:400px;border:0}</style><iframe id="game" src="https://game.look.test/"></iframe>',
+  }));
+  await page.goto('https://outer.look.test/');
+  const frame = page.frameLocator('#game');
+  const events = (): Promise<LookEvent[]> => frame.locator('body').evaluate(() => (window as unknown as { lookEvents: LookEvent[] }).lookEvents);
+  const surface = { selector: '#game', frames: [] };
+  const waitForLock = (locked = true) => page.frame({ url: 'https://game.look.test/' })!.waitForFunction(expected => (document.pointerLockElement !== null) === expected, locked, { timeout: 3000 });
+  return { page, frame, events, surface, waitForLock };
+}
+
+test('native look preserves setup cursor origin across executors and moves without buttons in a cross-origin game', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
+  const { page, frame, events, surface, waitForLock } = await lookFixture(t);
+  const setup = new InputExecutor(page, surface);
+  await setup.step({ type: 'click', target: { selector: 'canvas', frames: ['#game'] } });
+  await waitForLock();
+  const baseline = (await events()).length;
+  const executor = new InputExecutor(page, surface);
+  await executor.execute({ type: 'look', dx: 80, dy: -40, durationMs: 200 });
+  await new InputExecutor(page, surface).execute({ type: 'look', dx: -30, dy: 20, durationMs: 200 });
+  const motion = (await events()).slice(baseline);
+  assert.ok(motion.length >= 2);
+  assert.ok(motion.every(event => event.type === 'mousemove' && event.buttons === 0 && event.trusted && event.locked));
+  assert.equal(motion.reduce((sum, event) => sum + event.dx, 0), 50, 'look must not first jump to a guessed mouse origin');
+  assert.equal(motion.reduce((sum, event) => sum + event.dy, 0), -20);
+  await executor.execute({ type: 'tap', point: { x: 0.1, y: 0.1 }, button: 'right' });
+  const clicked = (await events()).slice(baseline + motion.length);
+  assert.deepEqual(clicked.map(event => [event.type, event.buttons]), [['mousedown', 2], ['mouseup', 0]], 'right placement must preserve the new aim');
+  await frame.locator('body').evaluate(() => document.exitPointerLock());
+  await waitForLock(false);
+  const beforeRejected = await events();
+  await assert.rejects(executor.execute({ type: 'look', dx: 10, dy: 0, durationMs: 100 }), /active pointer lock/);
+  assert.deepEqual(await events(), beforeRejected, 'unlocked look must emit no native input');
+});
+
+test('a locked look rejects an unknown native origin without guessing or moving', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
+  const { page, frame, events, surface, waitForLock } = await lookFixture(t);
+  // The fixture deliberately acquires lock outside the executor's ownership.
+  await page.mouse.click(240, 260);
+  await waitForLock();
+  const before = await events();
+  await assert.rejects(new InputExecutor(page, surface).execute({ type: 'look', dx: 80, dy: 0, durationMs: 200 }), /native mouse position/);
+  assert.deepEqual(await events(), before);
+});
+
+for (const interruption of ['cancel', 'unlock'] as const) test(`native look stops on ${interruption} without button input or later movement`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
+  const { page, frame, events, surface, waitForLock } = await lookFixture(t);
+  await new InputExecutor(page, surface).execute({ type: 'tap', point: { x: 0.5, y: 0.5 } });
+  await waitForLock();
+  const abort = new AbortController();
+  if (interruption === 'cancel') await page.exposeFunction('abortLook', () => abort.abort(new Error('Stop looking')));
+  else await frame.locator('body').evaluate(() => { (window as unknown as { releaseOnMove: boolean }).releaseOnMove = true; });
+  const before = (await events()).length;
+  const executor = new InputExecutor(page, surface, abort.signal);
+  await assert.rejects(executor.execute({ type: 'look', dx: 120, dy: 0, durationMs: 600 }), /Stop looking|aborted|lock was lost/i);
+  const moved = (await events()).slice(before);
+  assert.ok(moved.length >= 1 && moved.length < 15);
+  assert.ok(moved.every(event => event.type === 'mousemove' && event.buttons === 0 && event.trusted));
+  assert.ok(moved.reduce((sum, event) => sum + event.dx, 0) < 120);
+  assert.equal(executor.executed, 0);
+  await executor.releaseAll();
+  assert.deepEqual((await events()).slice(before), moved);
 });

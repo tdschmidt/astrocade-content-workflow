@@ -254,9 +254,18 @@ test('literal action types use singleton enums on the wire and invalid aliases s
     requests++;
     const body = JSON.parse(input instanceof Request ? await input.clone().text() : String(init?.body));
     const alternatives = body.response_format.schema.properties.actions.items.oneOf;
-    assert.deepEqual(alternatives.map((branch: any) => branch.properties.type.enum), [['key'], ['tap'], ['drag'], ['path'], ['wait']]);
+    assert.deepEqual(alternatives.map((branch: any) => branch.properties.type.enum), [['key'], ['tap'], ['drag'], ['path'], ['wait'], ['look']]);
     assert.ok(alternatives.every((branch: any) => branch.properties.type.const === undefined));
     assert.equal(alternatives[0].properties.durationMs.maximum, 2000);
+    const look = alternatives[5];
+    for (const axis of ['dx', 'dy']) {
+      assert.equal(look.properties[axis].minimum, -200);
+      assert.equal(look.properties[axis].maximum, 200);
+    }
+    assert.equal(look.properties.durationMs.minimum, 50);
+    assert.equal(look.properties.durationMs.maximum, 2000);
+    assert.equal(look.properties.button, undefined);
+    assert.deepEqual([...look.required].sort(), ['durationMs', 'dx', 'dy', 'type']);
     return Response.json({ id: 'fixture', status: 'completed', steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify(output) }] }] });
   });
   const google = new GoogleServices(settings);

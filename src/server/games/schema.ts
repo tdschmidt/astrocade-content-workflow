@@ -37,6 +37,7 @@ export const inputActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('drag'), from: pointSchema, to: pointSchema, durationMs: z.number().int().min(50).max(2000), button: pointerButtonSchema }),
   z.object({ type: z.literal('path'), points: z.array(pointSchema).min(2).max(32), durationMs: z.number().int().min(50).max(2000), button: pointerButtonSchema }),
   z.object({ type: z.literal('wait'), durationMs: z.number().int().min(20).max(5000) }),
+  z.object({ type: z.literal('look'), dx: z.number().min(-200).max(200), dy: z.number().min(-200).max(200), durationMs: z.number().int().min(50).max(2000) }).strict(),
 ]);
 export type InputAction = z.infer<typeof inputActionSchema>;
 
@@ -48,6 +49,7 @@ export const plannedInputActionSchema = z.discriminatedUnion('type', [
   inputActionSchema.options[2].required({ button: true }).strict(),
   inputActionSchema.options[3].required({ button: true }).strict(),
   inputActionSchema.options[4].strict(),
+  inputActionSchema.options[5].strict(),
 ]);
 
 export const surfaceLocatorSchema = z.object({
@@ -85,6 +87,7 @@ export const gameProfileSchema = z.object({
       instructions: z.string().max(3000).default(''),
       allowedKeys: z.array(keySchema).max(20).default([]),
       allowPointer: z.boolean().default(false),
+      allowLook: z.boolean().optional(),
     }),
   ]),
 });

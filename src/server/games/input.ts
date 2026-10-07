@@ -75,7 +75,7 @@ export async function gameBounds(page: Page, target: SurfaceLocator): Promise<Ga
   return composedBounds(page, target);
 }
 
-async function gameHasPointerLock(page: Page, surface: SurfaceLocator): Promise<boolean> {
+export async function gameHasPointerLock(page: Page, surface: SurfaceLocator): Promise<boolean> {
   const target = locate(page, surface);
   // Read the browser's input mode, never game state. New profiles use the whole
   // iframe; older profiles locate a canvas inside its document.
@@ -83,6 +83,10 @@ async function gameHasPointerLock(page: Page, surface: SurfaceLocator): Promise<
     ? target.contentFrame().locator(':root') : target;
   return documentRoot.evaluate(element => element.ownerDocument.pointerLockElement !== null);
 }
+
+// Setup and gameplay use separate executors on the same page. Retain only our
+// own native cursor position; a relative look must never guess its origin.
+const nativeMousePositions = new WeakMap<Page, { x: number; y: number }>();
 
 export function withinGame(bounds: GameBounds, point: { x: number; y: number }): { x: number; y: number } {
   // Composed bounds include every iframe's displayed scale and border offset.
@@ -108,6 +112,13 @@ export class InputExecutor {
 
   constructor(readonly page: Page, readonly surface: SurfaceLocator, readonly signal?: AbortSignal) {}
 
+  private async moveMouse(x: number, y: number): Promise<void> {
+    try {
+      await this.page.mouse.move(x, y);
+      nativeMousePositions.set(this.page, { x, y });
+    } catch (error) { nativeMousePositions.delete(this.page); throw error; }
+  }
+
   async execute(value: InputAction): Promise<void> {
     const action = inputActionSchema.parse(value);
     this.signal?.throwIfAborted();
@@ -122,16 +133,32 @@ export class InputExecutor {
         const point = withinGame(await gameBounds(this.page, this.surface), action.point);
         // In mouse-look mode, repositioning before a click changes the aim.
         // The native button must act on the current crosshair instead.
-        if (!await gameHasPointerLock(this.page, this.surface)) await this.page.mouse.move(point.x, point.y);
+        if (!await gameHasPointerLock(this.page, this.surface)) await this.moveMouse(point.x, point.y);
         this.heldPointerButton = action.button ?? 'left';
         await this.page.mouse.down({ button: this.heldPointerButton });
+      }
+      if (action.type === 'look') {
+        const origin = nativeMousePositions.get(this.page);
+        if (!await gameHasPointerLock(this.page, this.surface)) throw new Error('Relative look requires active pointer lock in the game.');
+        if (!origin) throw new Error('Relative look requires a native mouse position established by this executor.');
+        const started = performance.now();
+        const steps = Math.ceil(action.durationMs / 40);
+        for (let index = 1; index <= steps; index++) {
+          this.signal?.throwIfAborted();
+          const wait = started + action.durationMs * index / steps - performance.now();
+          if (wait > 0) await delay(wait, undefined, { signal: this.signal });
+          // Lock can be lost while a menu opens or the user presses Escape.
+          if (!await gameHasPointerLock(this.page, this.surface)) throw new Error('Pointer lock was lost during relative look.');
+          this.signal?.throwIfAborted();
+          await this.moveMouse(origin.x + action.dx * index / steps, origin.y + action.dy * index / steps);
+        }
       }
       if (action.type === 'drag' || action.type === 'path') {
         const bounds = await gameBounds(this.page, this.surface);
         const points = (action.type === 'drag' ? [action.from, action.to] : action.points).map(point => withinGame(bounds, point));
         const lengths = points.slice(1).map((point, index) => Math.hypot(point.x - points[index]!.x, point.y - points[index]!.y));
         const totalLength = lengths.reduce((sum, length) => sum + length, 0);
-        await this.page.mouse.move(points[0]!.x, points[0]!.y);
+        await this.moveMouse(points[0]!.x, points[0]!.y);
         this.heldPointerButton = action.button ?? 'left';
         await this.page.mouse.down({ button: this.heldPointerButton });
         const started = performance.now();
@@ -146,7 +173,7 @@ export class InputExecutor {
             this.signal?.throwIfAborted();
             const wait = started + elapsed + duration * index / steps - performance.now();
             if (wait > 0) await delay(wait, undefined, { signal: this.signal });
-            await this.page.mouse.move(from.x + (to.x - from.x) * index / steps, from.y + (to.y - from.y) * index / steps);
+            await this.moveMouse(from.x + (to.x - from.x) * index / steps, from.y + (to.y - from.y) * index / steps);
           }
           elapsed += duration;
         }
@@ -176,7 +203,11 @@ export class InputExecutor {
       }
       this.signal?.throwIfAborted();
       // Only readiness is retried. Once input is dispatched, never replay the click.
-      await this.page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      const point = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+      try {
+        await this.page.mouse.click(point.x, point.y);
+        nativeMousePositions.set(this.page, point);
+      } catch (error) { nativeMousePositions.delete(this.page); throw error; }
     }
     else if (step.type === 'waitFor') await withAbort(locate(this.page, step.target).waitFor({ state: 'visible', timeout: 5000 }), this.signal);
     else await this.execute(step);
