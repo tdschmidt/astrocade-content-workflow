@@ -52,7 +52,20 @@ test('pointer paths have bounded normalized points and duration', () => {
   ]) assert.equal(inputActionSchema.safeParse(invalid).success, false);
 });
 
-type PointerEventRecord = { type: string; x: number; y: number; buttons: number; trusted: boolean };
+test('pointer actions accept one optional left or right button without changing older profiles', () => {
+  const actions = [
+    { type: 'tap', point: { x: 0.2, y: 0.2 } },
+    { type: 'drag', from: { x: 0.2, y: 0.2 }, to: { x: 0.8, y: 0.2 }, durationMs: 100 },
+    { type: 'path', points: [{ x: 0.2, y: 0.2 }, { x: 0.8, y: 0.2 }], durationMs: 100 },
+  ];
+  for (const action of actions) {
+    assert.deepEqual(inputActionSchema.parse(action), action);
+    for (const button of ['left', 'right']) assert.deepEqual(inputActionSchema.parse({ ...action, button }), { ...action, button });
+    for (const button of ['middle', ['left', 'right'], null]) assert.equal(inputActionSchema.safeParse({ ...action, button }).success, false);
+  }
+});
+
+type PointerEventRecord = { type: string; x: number; y: number; button: number; buttons: number; trusted: boolean };
 async function pathFixture(t: TestContext) {
   const browser = await chromium.launch({ channel: 'chromium', headless: true });
   t.after(() => browser.close());
@@ -61,8 +74,9 @@ async function pathFixture(t: TestContext) {
   const frame = page.frames()[1]!;
   await frame.setContent(`<style>body{margin:0}canvas{display:block;background:#234}</style><canvas width="400" height="400"></canvas><script>
     const canvas=document.querySelector('canvas'),events=[];
-    for(const type of ['pointerdown','pointermove','pointerup']) canvas.addEventListener(type,event=>{
-      events.push({type:event.type,x:event.offsetX,y:event.offsetY,buttons:event.buttons,trusted:event.isTrusted});
+    for(const type of ['pointerdown','pointermove','pointerup','contextmenu']) canvas.addEventListener(type,event=>{
+      if(event.type==='contextmenu') event.preventDefault();
+      events.push({type:event.type,x:event.offsetX,y:event.offsetY,button:event.button,buttons:event.buttons,trusted:event.isTrusted});
       document.body.dataset.events=JSON.stringify(events);
       if(event.type==='pointermove'&&event.buttons&&window.abortPath) void window.abortPath();
     });
@@ -95,18 +109,57 @@ test('a native pointer path visits every corner through a scaled iframe with one
   assert.deepEqual(await events(), observed, 'cleanup must not release a second time');
 });
 
-test('canceling a native pointer path releases it mid-gesture and prevents later segments', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
+for (const button of ['left', 'right'] as const) test(`canceling a native ${button} pointer path releases that button and prevents later segments`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
   const { page, events, surface } = await pathFixture(t);
   const abort = new AbortController();
   await page.exposeFunction('abortPath', () => abort.abort(new Error('Stop the path')));
   const executor = new InputExecutor(page, surface, abort.signal);
-  await assert.rejects(executor.execute({ type: 'path', points: [{ x: 0.2, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.8, y: 0.8 }], durationMs: 1500 }), /Stop the path|aborted/i);
+  await assert.rejects(executor.execute({ type: 'path', button, points: [{ x: 0.2, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.8, y: 0.8 }], durationMs: 1500 }), /Stop the path|aborted/i);
   const observed = await events();
   assert.equal(observed.filter(event => event.type === 'pointerdown').length, 1);
   assert.equal(observed.filter(event => event.type === 'pointerup').length, 1);
   assert.ok(observed.every(event => event.trusted));
   assert.equal(observed.at(-1)!.type, 'pointerup');
+  assert.equal(observed.at(-1)!.button, button === 'left' ? 0 : 2);
   assert.equal(observed.at(-1)!.buttons, 0);
+  assert.ok(observed.filter(event => event.type === 'pointermove' && event.buttons).every(event => event.buttons === (button === 'left' ? 1 : 2)));
   assert.ok(observed.every(event => event.y < 100), 'cancellation must stop before the second segment');
   assert.equal(executor.executed, 0);
+  await executor.releaseAll();
+  assert.deepEqual(await events(), observed, 'cleanup must not release a second time');
+});
+
+test('native right taps, drags and paths send trusted secondary-button input and release before a left tap', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
+  const { page, events, surface } = await pathFixture(t);
+  const executor = new InputExecutor(page, surface);
+  const actions = [
+    { type: 'tap' as const, point: { x: 0.2, y: 0.2 } },
+    { type: 'drag' as const, from: { x: 0.2, y: 0.2 }, to: { x: 0.8, y: 0.2 }, durationMs: 150 },
+    { type: 'path' as const, points: [{ x: 0.2, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.8, y: 0.8 }], durationMs: 300 },
+  ];
+  let count = 0;
+  for (const action of actions) {
+    await executor.execute({ ...action, button: 'right' });
+    const all = await events(), observed = all.slice(count);
+    count = all.length;
+    assert.ok(observed.every(event => event.trusted));
+    const presses = observed.filter(event => event.type === 'pointerdown');
+    const releases = observed.filter(event => event.type === 'pointerup');
+    assert.equal(presses.length, 1);
+    assert.equal(presses[0]!.button, 2);
+    assert.equal(presses[0]!.buttons, 2);
+    assert.equal(releases.length, 1);
+    assert.equal(releases[0]!.button, 2);
+    assert.equal(releases[0]!.buttons, 0);
+    assert.equal(observed.filter(event => event.type === 'contextmenu' && event.button === 2).length, 1);
+    const held = observed.filter(event => event.type === 'pointermove' && event.buttons);
+    if (action.type !== 'tap') assert.ok(held.length > 1);
+    assert.ok(held.every(event => event.buttons === 2));
+  }
+  await executor.execute({ type: 'tap', point: { x: 0.5, y: 0.5 } });
+  const last = (await events()).slice(count);
+  assert.equal(last.find(event => event.type === 'pointerdown')!.buttons, 1, 'right must be released before the default left action');
+  assert.equal(last.at(-1)!.button, 0);
+  assert.equal(last.at(-1)!.buttons, 0);
+  assert.equal(executor.executed, 4);
 });

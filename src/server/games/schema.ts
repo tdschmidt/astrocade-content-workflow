@@ -28,16 +28,27 @@ export const gameCandidateSchema = z.object({
 export type GameCandidate = z.infer<typeof gameCandidateSchema>;
 
 const pointSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) });
+const pointerButtonSchema = z.enum(['left', 'right']).optional();
 export const keySchema = z.string().regex(/^(Arrow(Up|Down|Left|Right)|Space|Enter|Escape|Tab|Backspace|Key[A-Z]|Digit[0-9])$/);
 
 export const inputActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('key'), key: keySchema, durationMs: z.number().int().min(20).max(2000) }),
-  z.object({ type: z.literal('tap'), point: pointSchema }),
-  z.object({ type: z.literal('drag'), from: pointSchema, to: pointSchema, durationMs: z.number().int().min(50).max(2000) }),
-  z.object({ type: z.literal('path'), points: z.array(pointSchema).min(2).max(32), durationMs: z.number().int().min(50).max(2000) }),
+  z.object({ type: z.literal('tap'), point: pointSchema, button: pointerButtonSchema }),
+  z.object({ type: z.literal('drag'), from: pointSchema, to: pointSchema, durationMs: z.number().int().min(50).max(2000), button: pointerButtonSchema }),
+  z.object({ type: z.literal('path'), points: z.array(pointSchema).min(2).max(32), durationMs: z.number().int().min(50).max(2000), button: pointerButtonSchema }),
   z.object({ type: z.literal('wait'), durationMs: z.number().int().min(20).max(5000) }),
 ]);
 export type InputAction = z.infer<typeof inputActionSchema>;
+
+// Persisted actions may omit button (legacy left-click). New model plans must
+// choose it explicitly: strict Structured Outputs requires every property.
+export const plannedInputActionSchema = z.discriminatedUnion('type', [
+  inputActionSchema.options[0].strict(),
+  inputActionSchema.options[1].required({ button: true }).strict(),
+  inputActionSchema.options[2].required({ button: true }).strict(),
+  inputActionSchema.options[3].required({ button: true }).strict(),
+  inputActionSchema.options[4].strict(),
+]);
 
 export const surfaceLocatorSchema = z.object({
   selector: z.string().min(1).max(500),

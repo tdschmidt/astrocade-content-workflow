@@ -94,7 +94,7 @@ export async function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): P
 /** A single owner executes native inputs; no action leaves a held input behind. */
 export class InputExecutor {
   private readonly keys = new Set<string>();
-  private pointerDown = false;
+  private heldPointerButton: 'left' | 'right' | undefined;
   executed = 0;
 
   constructor(readonly page: Page, readonly surface: SurfaceLocator, readonly signal?: AbortSignal) {}
@@ -112,8 +112,8 @@ export class InputExecutor {
       if (action.type === 'tap') {
         const point = withinGame(await gameBounds(this.page, this.surface), action.point);
         await this.page.mouse.move(point.x, point.y);
-        this.pointerDown = true;
-        await this.page.mouse.down();
+        this.heldPointerButton = action.button ?? 'left';
+        await this.page.mouse.down({ button: this.heldPointerButton });
       }
       if (action.type === 'drag' || action.type === 'path') {
         const bounds = await gameBounds(this.page, this.surface);
@@ -121,8 +121,8 @@ export class InputExecutor {
         const lengths = points.slice(1).map((point, index) => Math.hypot(point.x - points[index]!.x, point.y - points[index]!.y));
         const totalLength = lengths.reduce((sum, length) => sum + length, 0);
         await this.page.mouse.move(points[0]!.x, points[0]!.y);
-        this.pointerDown = true;
-        await this.page.mouse.down();
+        this.heldPointerButton = action.button ?? 'left';
+        await this.page.mouse.down({ button: this.heldPointerButton });
         const started = performance.now();
         let elapsed = 0;
         for (let segment = 0; segment < lengths.length; segment++) {
@@ -174,7 +174,7 @@ export class InputExecutor {
   async releaseAll(): Promise<void> {
     for (const key of this.keys) await this.page.keyboard.up(key).catch(() => {});
     this.keys.clear();
-    if (this.pointerDown) await this.page.mouse.up().catch(() => {});
-    this.pointerDown = false;
+    if (this.heldPointerButton) await this.page.mouse.up({ button: this.heldPointerButton }).catch(() => {});
+    this.heldPointerButton = undefined;
   }
 }

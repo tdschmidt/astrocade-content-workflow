@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { z } from 'zod';
-import { inputActionSchema } from '../games/schema.js';
+import { inputActionSchema, plannedInputActionSchema } from '../games/schema.js';
 import { codexEnvironment, CodexServices, executeCodex, type CodexExecutor } from './codex.js';
 import type { InferenceProgressEvent } from './inference.js';
 
@@ -87,7 +87,7 @@ test('malformed JSON and invalid schema values fail explicitly and remove tempor
 });
 
 test('nested tagged action unions use supported anyOf while invalid actions still fail local validation', async () => {
-  const actionsSchema = z.object({ actions: z.array(inputActionSchema) });
+  const actionsSchema = z.object({ actions: z.array(plannedInputActionSchema) });
   let output: unknown = { actions: [{ type: 'key', key: 'Space', durationMs: 200 }] };
   const provider = new CodexServices(options, undefined, async command => {
     if (command.args[0] === 'login') return login;
@@ -95,10 +95,28 @@ test('nested tagged action unions use supported anyOf while invalid actions stil
     assert.equal(wire.properties.actions.items.oneOf, undefined);
     assert.equal(wire.properties.actions.items.anyOf.length, inputActionSchema.options.length);
     assert.ok(!JSON.stringify(wire).includes('"oneOf"'));
+    const checkRequired = (node: any) => {
+      if (!node || typeof node !== 'object') return;
+      if (node.properties) {
+        assert.deepEqual([...node.required].sort(), Object.keys(node.properties).sort(), 'every property sent to strict Structured Outputs must be required');
+        assert.equal(node.additionalProperties, false);
+      }
+      for (const child of Object.values(node)) if (Array.isArray(child)) child.forEach(checkRequired); else checkRequired(child);
+    };
+    checkRequired(wire);
+    for (const option of wire.properties.actions.items.anyOf) {
+      if (option.properties.button) assert.deepEqual(option.properties.button, { type: 'string', enum: ['left', 'right'] }, 'buttons are explicit enums, not nullable values or defaults');
+    }
     await writeFile(outputFile(command.args), JSON.stringify(output));
     return completed;
   });
   assert.deepEqual(await provider.json('Fixture', actionsSchema), output);
+  const legacy = { type: 'tap' as const, point: { x: 0.5, y: 0.5 } };
+  assert.deepEqual(inputActionSchema.parse(legacy), legacy, 'saved left-click actions remain readable without rewriting their JSON');
+  output = { actions: [{ ...legacy, button: 'right' }] };
+  assert.deepEqual(await provider.json('Fixture', actionsSchema), output);
+  output = { actions: [legacy] };
+  await assert.rejects(provider.json('Fixture', actionsSchema), z.ZodError, 'new plans must select a pointer button explicitly');
   output = { actions: [{ type: 'execute', command: 'unapproved action' }] };
   await assert.rejects(provider.json('Fixture', actionsSchema), z.ZodError);
 });
