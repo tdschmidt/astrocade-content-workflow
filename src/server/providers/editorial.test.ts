@@ -202,7 +202,7 @@ test('a highlight preserves the whole context of a single selected event', async
     await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, eventIndexes }])));
   }
   const trimmed = await draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, cuts: [{ startSeconds: 2.2, endSeconds: 6.4 }] }, review]));
-  assert.deepEqual(trimmed.cuts, [{ startSeconds: 2.2, endSeconds: 6.4 }]);
+  assert.deepEqual(trimmed.cuts, [{ startSeconds: 2.2, endSeconds: 6.6 }], 'restore the verified payoff context while allowing setup trims');
   for (const cuts of [[{ startSeconds: 1, endSeconds: 6.6 }], [{ startSeconds: 2, endSeconds: 5 }, { startSeconds: 4, endSeconds: 6 }]]) {
     await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, cuts }])), /outside the verified action|overlap/);
   }
@@ -225,12 +225,14 @@ test('a highlight joins overlapping transformation phases once and preserves rev
 });
 
 test('a presenter duration ceiling accepts an exact fit and rejects longer edits before visual review', async () => {
-  const input = { capture, format: 'highlight' as const, topic: '', presenter: true, maxDurationSeconds: 5 };
+  const boundedCapture = { ...capture, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, startSeconds: 2, endSeconds: 7 }] } };
+  const input = { capture: boundedCapture, format: 'highlight' as const, topic: '', presenter: true, maxDurationSeconds: 5 };
   const fiveSeconds = { ...choiceFor([0]), cuts: [{ startSeconds: 2, endSeconds: 7 }] };
   const result = await draftScript(input, googleFixture([fiveSeconds, review]));
   assert.deepEqual(result.cuts, fiveSeconds.cuts);
   // The fixture has no review response; an oversized edit must stop before that call.
-  await assert.rejects(draftScript(input, googleFixture([{ ...fiveSeconds, cuts: [{ startSeconds: 2, endSeconds: 7.01 }] }])), /5-second edit target/);
+  const longerPayoff = { ...boundedCapture, analysis: { ...boundedCapture.analysis, events: [{ ...boundedCapture.analysis.events[0]!, endSeconds: 7.01 }] } };
+  await assert.rejects(draftScript({ ...input, capture: longerPayoff }, googleFixture([fiveSeconds])), /5-second edit target/, 'restoring verified payoff context must not bypass the presenter ceiling');
   for (const maxDurationSeconds of [0, -1, NaN, Infinity]) {
     await assert.rejects(draftScript({ ...input, maxDurationSeconds }, googleFixture([])), /positive finite/);
   }
@@ -246,6 +248,7 @@ test('a highlight orders separate verified phases without filling gaps or exceed
   ] } };
   const result = await draftScript({ capture: separated, format: 'highlight', topic: '' }, googleFixture([choice, review]));
   assert.deepEqual(result.cuts, [{ startSeconds: 1, endSeconds: 10 }, { startSeconds: 20, endSeconds: 25 }]);
+  await assert.rejects(draftScript({ capture: separated, format: 'highlight', topic: '' }, googleFixture([{ ...choice, cuts: [{ startSeconds: 1, endSeconds: 9 }] }])), /omits the last selected episode/, 'restoring a payoff must never bridge a gap in verified footage');
   const overlap = { ...capture, analysis: { ...capture.analysis!, events: [
     { ...event, startSeconds: 0, endSeconds: 30 }, { ...event, startSeconds: 20, endSeconds: 40 },
   ] } };
