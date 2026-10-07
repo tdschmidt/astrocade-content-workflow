@@ -232,3 +232,40 @@ test('one loading observation and three tutorial actions still leave a final gam
   assert.equal(await page.frameLocator(frameSelector).locator('body').getAttribute('data-last-trusted'), 'true');
   assert.equal(await page.locator('body').getAttribute('data-outside-clicked'), null);
 });
+
+test('menu indexes refer to the visible list rather than hidden DOM button ordinals', browserTest, async t => {
+  const body = `${Array.from({ length: 9 }, () => '<button hidden>Hidden control</button>').join('')}
+    <button>SKIP</button><button>LET'S GO!</button><script>
+    document.querySelectorAll('button')[9].onclick=()=>{document.body.dataset.skipped='true'};
+    document.querySelectorAll('button')[10].onclick=event=>{document.body.dataset.started=String(event.isTrusted);document.body.innerHTML='<h1>Active board</h1>'};
+    </script>`;
+  const { outputDir, page, newPage } = await fixture(t, body);
+  let calls = 0;
+  const chosen = { phase: 'tutorial', buttonIndex: 1, point: null, label: "LET'S GO!", reason: 'The visible final tutorial button enters gameplay.' };
+  const inspection = await inspectGamePage(page, candidate.url, outputDir, undefined, { json: async (prompt: string, schema: { safeParse: (value: unknown) => { success: boolean } }) => {
+    calls++;
+    const line = prompt.split('\n').find(line => line.startsWith('Visible in-frame buttons'))!;
+    const buttons = JSON.parse(line.slice(line.indexOf(': ') + 2));
+    assert.doesNotMatch(prompt, /:nth-match|"selector"/);
+    if (calls === 1) {
+      assert.deepEqual(buttons, [{ index: 0, label: 'SKIP' }, { index: 1, label: "LET'S GO!" }]);
+      assert.equal(schema.safeParse(chosen).success, true);
+      assert.equal(schema.safeParse({ ...chosen, buttonIndex: 11 }).success, false, 'the real DOM ordinal is outside the visible-list schema');
+      return chosen;
+    }
+    assert.deepEqual(buttons, []);
+    assert.equal(schema.safeParse({ ...chosen, buttonIndex: 0 }).success, false, 'an empty visible list permits no DOM index');
+    return playing;
+  } } as unknown as Pick<Inference, 'json'>);
+  assert.equal(calls, 2);
+  assert.equal(inspection.readyToPlay, true);
+  assert.deepEqual(inspection.performedMenuSteps?.[0], { type: 'click', target: { selector: ':nth-match(button, 11)', frames: [frameSelector] } });
+  const fresh = await newPage();
+  const executor = new InputExecutor(fresh, inspection.surface);
+  for (const step of [...inspection.setup, ...inspection.performedMenuSteps!]) await executor.step(step);
+  for (const current of [page, fresh]) {
+    assert.equal(await current.frameLocator(frameSelector).locator('body').getAttribute('data-started'), 'true');
+    assert.equal(await current.frameLocator(frameSelector).locator('body').getAttribute('data-skipped'), null);
+    assert.equal(await current.locator('body').getAttribute('data-outside-clicked'), null);
+  }
+});
