@@ -38,7 +38,7 @@ for (const [index, clip] of selection.clips.entries()) {
  const frames = Math.floor((clip.end - clip.start) * 30 + 1e-6);
  if (frames < 3) throw new Error('Selected clip has fewer than three frames');
  const filename = `clip-${String(index).padStart(2, '0')}.mp4`;
- await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', ...sourceSeekArgs(clip.start), '-i', path, '-an', '-vf', `${sourceWindowVideoFilter(frames / 30)},setsar=1`, '-frames:v', String(frames), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-pix_fmt', 'yuv420p', filename], { cwd: output, timeoutMs: 120_000 });
+ await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', ...sourceSeekArgs(clip.start), '-reinit_filter', '0', '-i', path, '-an', '-vf', `${sourceWindowVideoFilter(frames / 30)},scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1`, '-frames:v', String(frames), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-pix_fmt', 'yuv420p', filename], { cwd: output, timeoutMs: 120_000 });
  timeline.push({ sourcePath: path, sourceSha256: sha256, sourceStart: clip.start, sourceEnd: clip.start + frames / 30, speed: 1, outputStart: frameCursor / 30, outputEnd: (frameCursor + frames) / 30, frames, evidence: clip.evidence, reason: clip.reason, file: filename });
  frameCursor += frames;
 }

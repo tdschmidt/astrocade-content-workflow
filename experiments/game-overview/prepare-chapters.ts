@@ -70,14 +70,16 @@ export async function prepareOverviewChapters(options: {
   const sourcePath = resolve(options.sourcePath), output = resolve(options.output), tools = storyTools();
   if (await hashFile(sourcePath) !== options.sourceSha256) throw new Error('Original overview source hash changed.');
   const source = await probeMedia(sourcePath, tools, options.signal);
+  if (!source.video) throw new Error('Overview preparation requires a video stream.');
+  const dimensions = `${source.video.width}:${source.video.height}`;
   const mapping = mapOverviewChapters(options.chapters, source.durationSeconds);
   await mkdir(output);
   const { ffmpeg } = mediaExecutables(tools), clips = [];
   for (const [index, shot] of mapping.entries()) {
     const filename = `clip-${String(index).padStart(2, '0')}.mp4`, path = join(output, filename);
     const args = [
-      '-hide_banner', '-loglevel', 'error', '-nostdin', '-n', ...sourceSeekArgs(shot.originalStart), '-i', sourcePath,
-      '-an', '-vf', `${sourceWindowVideoFilter(shot.originalEnd - shot.originalStart)},setsar=1`, '-frames:v', String(shot.frames),
+      '-hide_banner', '-loglevel', 'error', '-nostdin', '-n', ...sourceSeekArgs(shot.originalStart), '-reinit_filter', '0', '-i', sourcePath,
+      '-an', '-vf', `${sourceWindowVideoFilter(shot.originalEnd - shot.originalStart)},scale=${dimensions}:force_original_aspect_ratio=decrease,pad=${dimensions}:(ow-iw)/2:(oh-ih)/2,setsar=1`, '-frames:v', String(shot.frames),
       '-c:v', 'libx264', '-preset', 'fast', '-crf', '16', '-pix_fmt', 'yuv420p', filename,
     ];
     await runProcess(ffmpeg, args, { cwd: output, timeoutMs: 120_000, signal: options.signal });
@@ -96,9 +98,10 @@ export async function prepareOverviewChapters(options: {
     throw new Error(`Derived overview source timing ${media.durationSeconds}s differs from its original-source map ${duration}s.`);
   }
   const provenancePath = join(output, 'provenance.json');
+  const preparationCodeSha256 = createHash('sha256').update(await readFile(resolve('experiments/game-overview/prepare-chapters.ts'))).digest('hex');
   const timingHelperSha256 = createHash('sha256').update(await readFile(resolve('src/server/media/source-window.ts'))).digest('hex');
   await writeFile(provenancePath, JSON.stringify({
-    version: 2, timingHelperSha256,
+    version: 2, timingHelperSha256, preparationCodeSha256,
     originalSourcePath: sourcePath,
     originalSourceSha256: options.sourceSha256,
     sourcePath: path,
@@ -109,5 +112,5 @@ export async function prepareOverviewChapters(options: {
     selection: options.chapters,
     policy: 'Fresh editorial-agent choices, deterministic forward hard cuts; no loop, frozen frame, reordering or generated gameplay. Original-source provenance remains attached to every derived frame interval. Each shot is rounded down to whole 30fps frames, removing less than one frame at its end.',
   }, null, 2) + '\n', { flag: 'wx' });
-  return { path, sourceSha256, durationSeconds: media.durationSeconds, mapping, provenancePath, timingHelperSha256 };
+  return { path, sourceSha256, durationSeconds: media.durationSeconds, mapping, provenancePath, timingHelperSha256, preparationCodeSha256 };
 }

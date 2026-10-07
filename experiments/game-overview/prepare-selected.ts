@@ -8,10 +8,11 @@ const [selectionArg,outArg,ledgerArg]=process.argv.slice(2);if(!selectionArg||!o
 const selection=JSON.parse(await readFile(resolve(selectionArg),'utf8')),c=JSON.parse(await readFile(selection.candidatesPath,'utf8')),output=resolve(outArg);await mkdir(output);
 const sha=(v:Buffer|string)=>createHash('sha256').update(v).digest('hex');
 const source=resolve(c.sourcePath),sourceHash=sha(await readFile(source));if(sourceHash!==c.sourceSha256)throw new Error('Original source changed');
+const originalMedia=await probeMedia(source);if(!originalMedia.video)throw new Error('Source has no video');const dimensions=`${originalMedia.video.width}:${originalMedia.video.height}`;
 const {ffmpeg}=mediaExecutables(),clips:any[]=[],chapters:any[]=[];let offset=0;
 for(const chapter of selection.chapters){const module=c.modules.find((m:any)=>m.id===chapter.id),allowedStart=offset;
  for(const shot of chapter.shots){const allowed=module.shots.find((s:any)=>s.id===shot.id);if(!allowed||shot.start<allowed.start||shot.end>allowed.end)throw new Error('Out-of-bounds selection');const count=Math.round((shot.end-shot.start)*30),duration=count/30,path=resolve(output,`${clips.length}-${shot.id}.mp4`);
-  const args=['-hide_banner','-loglevel','error','-nostdin','-n',...sourceSeekArgs(shot.start),'-i',source,'-an','-vf',`${sourceWindowVideoFilter(duration)},setsar=1`,'-frames:v',String(count),'-c:v','libx264','-preset','fast','-crf','16','-pix_fmt','yuv420p',path];
+  const args=['-hide_banner','-loglevel','error','-nostdin','-n',...sourceSeekArgs(shot.start),'-reinit_filter','0','-i',source,'-an','-vf',`${sourceWindowVideoFilter(duration)},scale=${dimensions}:force_original_aspect_ratio=decrease,pad=${dimensions}:(ow-iw)/2:(oh-ih)/2,setsar=1`,'-frames:v',String(count),'-c:v','libx264','-preset','fast','-crf','16','-pix_fmt','yuv420p',path];
   await runProcess(ffmpeg,args,{timeoutMs:120000});clips.push({chapterId:chapter.id,id:shot.id,kind:allowed.kind,originalPath:source,originalSha256:sourceHash,originalStart:shot.start,originalEnd:shot.start+duration,derivedStart:offset,derivedEnd:offset+duration,frameCount:count,path,sha256:sha(await readFile(path)),command:[ffmpeg,...args]});offset+=duration;
  }
  const hasMenu=chapter.shots.some((s:any)=>module.shots.find((a:any)=>a.id===s.id).kind==='menu');

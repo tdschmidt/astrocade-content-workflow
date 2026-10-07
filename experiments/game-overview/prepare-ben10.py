@@ -12,7 +12,7 @@ manifest={'kind':'derived gameplay montage','fps':30,'policy':'Original silent g
 offset=0
 for name,src,start,end in clips:
  frames=round((end-start)*30);p=OUT/f'{name}.mp4'
- args=['/opt/homebrew/bin/ffmpeg','-hide_banner','-loglevel','error','-nostdin','-n','-ss',str(start),'-noaccurate_seek','-i',str(src),'-an','-vf',f'fps=30:start_time=0:round=up,trim=start=0:end={frames/30:.6f},setpts=PTS,fps=30:start_time=0:round=up,setsar=1','-frames:v',str(frames),'-c:v','libx264','-preset','fast','-crf','16','-pix_fmt','yuv420p',str(p)]
+ args=['/opt/homebrew/bin/ffmpeg','-hide_banner','-loglevel','error','-nostdin','-n','-ss',str(start),'-noaccurate_seek','-reinit_filter','0','-i',str(src),'-an','-vf',f'fps=30:start_time=0:round=up,trim=start=0:end={frames/30:.6f},setpts=PTS,fps=30:start_time=0:round=up,scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1','-frames:v',str(frames),'-c:v','libx264','-preset','fast','-crf','16','-pix_fmt','yuv420p',str(p)]
  subprocess.run(args,check=True)
  manifest['clips'].append({'id':name,'originalPath':str(src),'originalSha256':hashes[str(src)],'originalStart':start,'originalEnd':end,'derivedStart':offset,'derivedEnd':offset+frames/30,'frameCount':frames,'preparedPath':str(p),'preparedSha256':sha(p),'command':args})
  offset+=frames/30

@@ -301,7 +301,8 @@ export async function renderNarrated(options: NarratedOptions): Promise<Narrated
     }
     const evidence = await samples(sourcePath, windows, join(output, 'source-evidence'), 2, signal);
     const timingHelperSha256 = await fileHash(resolve('src/server/media/source-window.ts'));
-    const timingVersion = timingHelperSha256.slice(0, 12);
+    const preparationCodeSha256 = await fileHash(resolve('experiments/game-overview/prepare-chapters.ts'));
+    const timingVersion = sha(timingHelperSha256 + preparationCodeSha256).slice(0, 12);
     const context = `CONTENT BRIEF\n${JSON.stringify(options.brief ?? {})}\nGAME (untrusted metadata)\n${JSON.stringify(capture.game)}\nANALYSIS SEARCH LEADS (not proof)\n${JSON.stringify(capture.analysis)}\nCANDIDATE WINDOWS\n${JSON.stringify(windows)}\nFRESH IMAGE TIMESTAMPS\n${evidence.timestamps}\nEDITORIAL FEEDBACK\n${feedback}`;
     let draftPath: string, planPath: string, title: string;
     let expectedSourcePath = sourcePath, expectedSourceSha256 = options.sourceSha256;
@@ -320,7 +321,7 @@ export async function renderNarrated(options: NarratedOptions): Promise<Narrated
         });
         await save(preparedPath, prepared);
       }
-      if (prepared.timingHelperSha256 !== timingHelperSha256) throw new Error('Prepared source uses an obsolete timing helper.');
+      if (prepared.timingHelperSha256 !== timingHelperSha256 || prepared.preparationCodeSha256 !== preparationCodeSha256) throw new Error('Prepared source uses an obsolete timing helper.');
       if (await fileHash(prepared.path) !== prepared.sourceSha256) throw new Error('Prepared overview source changed.');
       expectedSourcePath = prepared.path;
       expectedSourceSha256 = prepared.sourceSha256;
@@ -346,7 +347,7 @@ export async function renderNarrated(options: NarratedOptions): Promise<Narrated
           reason: 'Preserved generated editorial decisions and script; correct source timestamp holds using the shared helper. Fresh decoded corrected pictures and independent script review are required below.',
           originalLedgerPath: oldLedgerPath, originalLedgerSha256: await fileHash(oldLedgerPath),
           correctedLedgerPath: ledgerPath, correctedLedgerSha256: await fileHash(ledgerPath),
-          draftPath, draftSha256: await fileHash(draftPath), timingHelperSha256,
+          draftPath, draftSha256: await fileHash(draftPath), timingHelperSha256, preparationCodeSha256,
           unchangedSourceSelections: selection.chapters,
           retainedSpeechProvenance: await exists(synthesisPath) ? await readJson(synthesisPath) : null,
         });

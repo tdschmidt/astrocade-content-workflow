@@ -162,3 +162,33 @@ test('chapter preparation retains the frame actually displayed across a sparse s
     }
   } finally { await rm(folder, { recursive: true, force: true }); }
 });
+
+test('chapter preparation retains its clock through a decoded geometry change', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'overview-resize-'));
+  try {
+    const { ffmpeg, ffprobe } = mediaExecutables();
+    for (const [index, size] of ['160x240', '80x120', '160x240'].entries()) {
+      await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-f', 'lavfi', '-i',
+        `color=${['red', 'blue', 'green'][index]}:size=${size}:rate=10:duration=1`, '-c:v', 'libvpx-vp9', '-deadline', 'realtime', join(folder, `${index}.webm`)]);
+    }
+    await writeFile(join(folder, 'segments.txt'), "file '0.webm'\nfile '1.webm'\nfile '2.webm'\n");
+    const sourcePath = join(folder, 'resize.webm');
+    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'concat', '-i', join(folder, 'segments.txt'), '-c', 'copy', sourcePath]);
+    const raw = await runProcess(ffprobe, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'frame=width,height', '-of', 'json', sourcePath]);
+    const dimensions = (JSON.parse(raw.stdout).frames as Array<{ width: number; height: number }>).map(frame => `${frame.width}x${frame.height}`);
+    assert.equal(new Set(dimensions).size, 2);
+    const sourceSha256 = createHash('sha256').update(await readFile(sourcePath)).digest('hex');
+    const prepared = await prepareOverviewChapters({ sourcePath, sourceSha256, output: join(folder, 'prepared'), chapters: [
+      { id: 'transition', shots: [{ start: 0.2, end: 1.8 }] },
+      { id: 'after', shots: [{ start: 2.1, end: 2.9 }] },
+    ] });
+    const pixels = join(folder, 'pixels.rgb');
+    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-i', prepared.path, '-vf', 'scale=1:1', '-pix_fmt', 'rgb24', '-f', 'rawvideo', pixels]);
+    const bytes = await readFile(pixels);
+    assert.equal(bytes.length, 72 * 3);
+    for (let frame = 0; frame < 48; frame++) {
+      const red = bytes[frame * 3]!, blue = bytes[frame * 3 + 2]!;
+      assert.ok(frame < 24 ? red > 200 && blue < 30 : blue > 200 && red < 30, `Source clock changed at frame ${frame}`);
+    }
+  } finally { await rm(folder, { recursive: true, force: true }); }
+});
