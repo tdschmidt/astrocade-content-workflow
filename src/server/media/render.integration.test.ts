@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +38,55 @@ test('portrait renderer produces validated video, captions, and complete audio',
     assert.ok(!(await readdir(directory)).some(name => name.startsWith('.render-')));
     await assert.rejects(renderPortrait({ outputPath: output, cuts: [{ path: source, startSeconds: 0, endSeconds: 4 }], hook: 'Existing output' }), /already exists/u);
     if (process.env.KEEP_MEDIA_TEST_OUTPUT === '1') console.log(`Media QA artifact: ${output}`);
+  } finally {
+    if (process.env.KEEP_MEDIA_TEST_OUTPUT !== '1') await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('split-screen keeps complete gameplay, labels its presenter, and refuses insufficient video', { skip: process.env.RUN_RENDER_TESTS !== '1', timeout: 120_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'astrocade-presenter-test-'));
+  const source = join(directory, 'game.mp4'), presenter = join(directory, 'synthetic-test-card.mp4'), shortPresenter = join(directory, 'short-video-long-audio.mp4');
+  const output = join(directory, 'split.mp4'), rejected = join(directory, 'rejected.mp4'), frame = join(directory, 'frame.rgb');
+  const tools: MediaTools = { fontPath: fileURLToPath(new URL('../../../assets/fonts/NotoSans-Regular.ttf', import.meta.url)) };
+  const { ffmpeg } = mediaExecutables(tools);
+  try {
+    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x18A060:size=720x1280:rate=30:duration=2.4', '-vf', 'drawbox=x=0:y=0:w=720:h=64:color=red:t=fill,drawbox=x=0:y=1216:w=720:h=64:color=blue:t=fill', '-c:v', 'libx264', '-preset', 'ultrafast', source]);
+    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=yellow:size=640x360:rate=30:duration=2.4', '-f', 'lavfi', '-i', 'sine=frequency=800:sample_rate=48000:duration=2.4', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', presenter]);
+    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=yellow:size=640x360:rate=30:duration=1', '-f', 'lavfi', '-i', 'sine=frequency=800:sample_rate=48000:duration=2.4', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', shortPresenter]);
+    const options = { outputPath: output, cuts: [{ path: source, startSeconds: 0, endSeconds: 2.4 }], hook: 'One spot left', overlays: [{ startSeconds: 0, endSeconds: 1.2, text: 'One spot left', position: 'upper' as const }], presenter: { path: presenter }, ffmpeg: tools };
+    await assert.rejects(renderPortrait({ ...options, outputPath: rejected, presenter: { path: shortPresenter } }), /Presenter video is too short: 1.00s/u);
+    await assert.rejects(access(rejected), /ENOENT/u);
+    await assert.rejects(renderPortrait({ ...options, outputPath: rejected, presenter: { path: join(directory, 'missing.mp4') } }), /ENOENT/u);
+    await assert.rejects(access(rejected), /ENOENT/u);
+    const artifact = await renderPortrait(options);
+    assert.equal(artifact.hasAudio, false, 'presenter sound is not treated as narration');
+    assert.equal((await probeMedia(output)).audio, undefined);
+    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-ss', '0.5', '-i', output, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', frame]);
+    const pixels = await readFile(frame);
+    const pixel = (x: number, y: number) => [...pixels.subarray((y * 1080 + x) * 3, (y * 1080 + x) * 3 + 3)];
+    const top = pixel(540, 80), gameTop = pixel(540, 500), gameBottom = pixel(540, 1900);
+    assert.ok(top[0]! > 230 && top[1]! > 230 && top[2]! < 30, 'synthetic presenter card occupies the top panel');
+    assert.ok(gameTop[0]! > 230 && gameTop[1]! < 30 && gameTop[2]! < 30, 'complete game begins immediately below host');
+    assert.ok(gameBottom[2]! > 230 && gameBottom[0]! < 30 && gameBottom[1]! < 30, 'bottom gameplay marker survives fitting');
+    const whiteCount = (x0: number, y0: number, x1: number, y1: number) => {
+      let count = 0;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (pixel(x, y).every(value => value > 230)) count++;
+      return count;
+    };
+    assert.ok(whiteCount(70, 350, 500, 420) > 500, 'the host panel visibly contains the permanent AI disclosure');
+    assert.ok(whiteCount(120, 660, 900, 900) > 1000, 'upper caption is mapped into gameplay rather than covering the host');
+    const narration = join(directory, 'narration.wav'), narrated = join(directory, 'narrated.mp4');
+    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=400:sample_rate=48000:duration=2', narration]);
+    await assert.rejects(renderPortrait({ ...options, outputPath: rejected, presenter: { path: narration } }), /Presenter source has no usable video/u);
+    await assert.rejects(access(rejected), /ENOENT/u);
+    const narratedArtifact = await renderPortrait({ ...options, outputPath: narrated, narrationPath: narration });
+    assert.equal(narratedArtifact.hasAudio, true);
+    assert.equal((await probeMedia(narrated)).audio?.sampleRate, 48000);
+    assert.ok(!(await readdir(directory)).some(name => name.startsWith('.render-')));
+    if (process.env.KEEP_MEDIA_TEST_OUTPUT === '1') {
+      await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-ss', '0.5', '-i', output, '-frames:v', '1', join(directory, 'split.png')]);
+      console.log(`Split-screen synthetic fixture: ${output}`);
+    }
   } finally {
     if (process.env.KEEP_MEDIA_TEST_OUTPUT !== '1') await rm(directory, { recursive: true, force: true });
   }

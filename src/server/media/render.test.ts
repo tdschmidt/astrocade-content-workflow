@@ -61,3 +61,15 @@ test('attribution remains a single small line and cannot inject subtitles', () =
   assert.ok(credit.endsWith('…'));
   assert.ok(!credit.includes('\\N'));
 });
+
+test('presenter layout maps captions into gameplay and always discloses the fictional host', () => {
+  const ass = makeSubtitles('Unused', undefined, [], 3, 'Noto Sans', [
+    { startSeconds: 0, endSeconds: 1, text: 'One spot left', position: 'upper' },
+    { startSeconds: 1.2, endSeconds: 2.5, text: 'Finally', position: 'lower' },
+  ], true);
+  assert.ok(ass.includes('{\\an8\\pos(510,660)}One spot left'));
+  assert.ok(ass.includes('{\\an2\\pos(510,1632)}Finally'));
+  assert.match(ass, /Dialogue: 2,0:00:00\.00,0:00:03\.00,Credit.*AI commentator/u);
+  assert.ok(!/LIVE|viewers|chat/u.test(ass));
+  assert.ok(makeSubtitles('', undefined, [], 3, 'Noto Sans', [], true).includes('AI commentator'));
+});
