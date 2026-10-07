@@ -182,8 +182,10 @@ export async function renderPortrait(options: PortraitRender): Promise<RenderArt
     await copyFile(preflight.fontPath!, join(directory, 'fonts', `caption${extname(preflight.fontPath!)}`));
     await writeFile(join(directory, 'captions.ass'), makeSubtitles(options.hook, options.attribution, options.subtitles ?? [], duration, tools.fontFamily ?? process.env.FONT_FAMILY ?? 'Noto Sans', options.overlays, !!options.presenter));
     const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n'];
-    for (const cut of options.cuts) args.push('-i', cut.path);
-    if (options.presenter) args.push('-i', options.presenter.path);
+    // Native recordings can resize. Keep trim/concat state intact when a later
+    // input frame changes dimensions instead of resetting the entire graph.
+    for (const cut of options.cuts) args.push('-reinit_filter', '0', '-i', cut.path);
+    if (options.presenter) args.push('-reinit_filter', '0', '-i', options.presenter.path);
     if (options.narrationPath) args.push('-i', options.narrationPath);
     args.push('-filter_complex_threads', '1', '-filter_complex', makeFilter(options.cuts, !!narration, duration, !!options.presenter), '-map', '[video]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', '30', '-fps_mode', 'cfr');
     if (narration) args.push('-map', '[audio]', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2');

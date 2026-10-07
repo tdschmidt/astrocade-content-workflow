@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -141,4 +141,32 @@ test('full-height gameplay preserves its edges and receives timed text without r
   } finally {
     if (process.env.KEEP_MEDIA_TEST_OUTPUT !== '1') await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('multiple cuts survive source resolution changes without losing either sequence', { skip: process.env.RUN_RENDER_TESTS !== '1', timeout: 30_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'astrocade-render-resize-'));
+  const source = join(directory, 'resized.webm'), output = join(directory, 'portrait.mp4');
+  const tools: MediaTools = { fontPath: fileURLToPath(new URL('../../../assets/fonts/NotoSans-Regular.ttf', import.meta.url)) };
+  const { ffmpeg, ffprobe } = mediaExecutables(tools);
+  try {
+    for (const [index, [size, color]] of [['320x240', 'red'], ['256x192', 'green'], ['320x240', 'blue']].entries()) {
+      await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', `color=c=${color}:size=${size}:rate=30:duration=1`, '-c:v', 'libvpx-vp9', '-deadline', 'realtime', join(directory, `${index}.webm`)]);
+    }
+    await writeFile(join(directory, 'segments.txt'), "file '0.webm'\nfile '1.webm'\nfile '2.webm'\n");
+    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'concat', '-i', join(directory, 'segments.txt'), '-c', 'copy', source]);
+    const decoded = JSON.parse((await runProcess(ffprobe, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'frame=width,height', '-of', 'json', source])).stdout).frames as Array<{ width: number; height: number }>;
+    assert.deepEqual([...new Set(decoded.map(frame => `${frame.width}x${frame.height}`))], ['320x240', '256x192']);
+    const artifact = await renderPortrait({ outputPath: output, cuts: [
+      { path: source, startSeconds: 0.2, endSeconds: 0.8, crop: { x: 0, y: 0, width: 256, height: 192 } },
+      { path: source, startSeconds: 2.2, endSeconds: 2.8, crop: { x: 0, y: 0, width: 256, height: 192 } },
+    ], hook: '', overlays: [], ffmpeg: tools, signal: AbortSignal.timeout(20_000) });
+    assert.ok(Math.abs(artifact.durationSeconds - 1.2) < 0.05);
+    for (const [index, seconds] of [0.3, 0.9].entries()) {
+      const frame = join(directory, `${index}.rgb`);
+      await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-ss', String(seconds), '-i', output, '-frames:v', '1', '-vf', 'crop=2:2:540:960', '-f', 'rawvideo', '-pix_fmt', 'rgb24', frame]);
+      const rgb = await readFile(frame);
+      assert.ok(rgb[index === 0 ? 0 : 2]! > 230 && rgb[index === 0 ? 2 : 0]! < 30, 'the first cut stays red and the later cut stays blue');
+    }
+    assert.ok(!(await readdir(directory)).some(name => name.startsWith('.render-')));
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
