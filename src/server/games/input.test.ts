@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import { chromium, type Page } from 'playwright';
 import { InputExecutor, withinGame, withAbort } from './input.js';
-import { gameProfileSchema, inputActionSchema, plannedInputActionSchema } from './schema.js';
+import { gameProfileSchema, inputActionSchema, plannedInputActionSchema, plannedReelInputActionSchema } from './schema.js';
 import { GameCaptureError, runCaptureAttempt } from './runner.js';
 
 test('canceling a held native key releases it before the action rejects', async () => {
@@ -103,6 +103,25 @@ test('pointer actions accept one optional left or right button without changing 
   }
 });
 
+test('compact tap batches bound count and cadence and stay out of legacy planned input', () => {
+  const action = { type: 'taps', point: { x: 0.5, y: 0.5 }, count: 40, durationMs: 4000 };
+  assert.deepEqual(inputActionSchema.parse(action), action);
+  assert.equal(plannedInputActionSchema.safeParse({ ...action, button: 'left' }).success, false);
+  assert.equal(plannedReelInputActionSchema.safeParse(action).success, false, 'new model input requires an explicit button');
+  for (const button of ['left', 'right']) {
+    assert.equal(plannedReelInputActionSchema.safeParse({ ...action, button }).success, true);
+    assert.equal(plannedReelInputActionSchema.safeParse({ ...action, button, count: 2, durationMs: 200 }).success, true);
+  }
+  for (const invalid of [
+    { ...action, count: 1 }, { ...action, count: 41 }, { ...action, count: 2.5 },
+    { ...action, durationMs: 3999 }, { ...action, count: 2, durationMs: 199 }, { ...action, durationMs: 6001 },
+    { ...action, point: { x: 1.1, y: 0.5 } }, { ...action, button: 'middle' }, { ...action, keepHeld: true },
+  ]) {
+    assert.equal(inputActionSchema.safeParse(invalid).success, false);
+    assert.equal(plannedReelInputActionSchema.safeParse({ ...invalid, button: 'button' in invalid ? invalid.button : 'left' }).success, false);
+  }
+});
+
 test('relative look has bounded signed CSS-pixel deltas and no button or absolute point', () => {
   const action = { type: 'look', dx: -200, dy: 200, durationMs: 50 };
   assert.deepEqual(inputActionSchema.parse(action), action);
@@ -120,7 +139,7 @@ test('relative look has bounded signed CSS-pixel deltas and no button or absolut
   assert.equal(legacy.controller.type === 'sparse' && legacy.controller.allowLook, undefined, 'old profiles do not acquire look permission');
 });
 
-type PointerEventRecord = { type: string; x: number; y: number; button: number; buttons: number; trusted: boolean };
+type PointerEventRecord = { type: string; x: number; y: number; button: number; buttons: number; trusted: boolean; at: number };
 async function pathFixture(t: TestContext) {
   const browser = await chromium.launch({ channel: 'chromium', headless: true });
   t.after(() => browser.close());
@@ -131,7 +150,7 @@ async function pathFixture(t: TestContext) {
     const canvas=document.querySelector('canvas'),events=[];
     for(const type of ['pointerdown','pointermove','pointerup','contextmenu']) canvas.addEventListener(type,event=>{
       if(event.type==='contextmenu') event.preventDefault();
-      events.push({type:event.type,x:event.offsetX,y:event.offsetY,button:event.button,buttons:event.buttons,trusted:event.isTrusted});
+      events.push({type:event.type,x:event.offsetX,y:event.offsetY,button:event.button,buttons:event.buttons,trusted:event.isTrusted,at:performance.now()});
       document.body.dataset.events=JSON.stringify(events);
       if(event.type==='pointermove'&&event.buttons&&window.abortPath) void window.abortPath();
     });
@@ -139,6 +158,69 @@ async function pathFixture(t: TestContext) {
   const events = async (): Promise<PointerEventRecord[]> => JSON.parse(await frame.locator('body').getAttribute('data-events') ?? '[]');
   return { page, frame, events, surface: { selector: 'canvas', frames: ['#game'] } };
 }
+
+for (const button of ['left', 'right'] as const) test(`compact native ${button} taps deliver the trusted count and release between intervals`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
+  const { page, frame, events, surface } = await pathFixture(t);
+  await frame.locator('canvas').evaluate(canvas => {
+    canvas.addEventListener('pointerup', () => setTimeout(() => {
+      (document.body as HTMLElement).dataset.releasedChecks = String(Number((document.body as HTMLElement).dataset.releasedChecks ?? '0') + 1);
+    }, 20));
+  });
+  const executor = new InputExecutor(page, surface);
+  await executor.execute({ type: 'taps', point: { x: 0.5, y: 0.5 }, button, count: 12, durationMs: 1200 });
+  const observed = await events();
+  const downs = observed.filter(event => event.type === 'pointerdown'), ups = observed.filter(event => event.type === 'pointerup');
+  assert.equal(downs.length, 12);
+  assert.equal(ups.length, 12);
+  assert.ok(observed.every(event => event.trusted));
+  assert.ok(downs.every(event => event.button === (button === 'left' ? 0 : 2) && Math.abs(event.x - 200) < 1 && Math.abs(event.y - 200) < 1));
+  assert.ok(ups.every(event => event.buttons === 0));
+  assert.ok(observed.filter(event => event.type === 'pointermove').every(event => event.buttons === 0), 'each following click starts with no held pointer');
+  for (let index = 1; index < downs.length; index++) {
+    assert.ok(downs[index]!.at - downs[index - 1]!.at >= 95, 'native delivery must not collapse bounded intervals into a rapid burst');
+    assert.ok(ups[index - 1]!.at < downs[index]!.at);
+  }
+  assert.equal(Number(await frame.locator('body').getAttribute('data-released-checks')), 12);
+  assert.equal(executor.executed, 1);
+  await executor.releaseAll();
+  assert.deepEqual(await events(), observed, 'no held button remains after the final interval');
+});
+
+for (const button of ['left', 'right'] as const) test(`canceling compact native ${button} taps releases the active button and prevents later clicks`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
+  const { page, events, surface } = await pathFixture(t);
+  const abort = new AbortController();
+  const down = page.mouse.down.bind(page.mouse);
+  let presses = 0;
+  page.mouse.down = async options => {
+    await down(options);
+    if (++presses === 2) abort.abort(new Error('Stop repeat taps'));
+  };
+  const executor = new InputExecutor(page, surface, abort.signal);
+  await assert.rejects(executor.execute({ type: 'taps', point: { x: 0.5, y: 0.5 }, button, count: 12, durationMs: 1200 }), /Stop repeat taps|aborted/i);
+  const observed = await events();
+  assert.equal(observed.filter(event => event.type === 'pointerdown').length, 2);
+  assert.equal(observed.filter(event => event.type === 'pointerup').length, 2);
+  assert.ok(observed.every(event => event.trusted));
+  assert.equal(observed.at(-1)!.type, 'pointerup');
+  assert.equal(observed.at(-1)!.buttons, 0);
+  assert.equal(executor.executed, 0);
+  await executor.releaseAll();
+  assert.deepEqual(await events(), observed);
+});
+
+test('compact taps recheck scaled surface bounds before each click', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
+  const { page, events, surface } = await pathFixture(t);
+  const up = page.mouse.up.bind(page.mouse);
+  let releases = 0;
+  page.mouse.up = async options => {
+    await up(options);
+    if (++releases === 1) await page.locator('#game').evaluate(element => { (element as HTMLElement).style.left = '180px'; });
+  };
+  await new InputExecutor(page, surface).execute({ type: 'taps', point: { x: 0.5, y: 0.5 }, count: 3, durationMs: 300 });
+  const downs = (await events()).filter(event => event.type === 'pointerdown');
+  assert.equal(downs.length, 3);
+  assert.ok(downs.every(event => Math.abs(event.x - 200) < 1 && Math.abs(event.y - 200) < 1), 'native pixels must follow the relocated iframe, preserving the normalized point');
+});
 
 test('a native pointer path visits every corner through a scaled iframe with one press and release', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 15000 }, async t => {
   const { page, events, surface } = await pathFixture(t);

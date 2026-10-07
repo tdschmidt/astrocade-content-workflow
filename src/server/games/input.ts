@@ -132,13 +132,27 @@ export class InputExecutor {
         }
         await delay(action.durationMs, undefined, { signal: this.signal });
       }
-      if (action.type === 'tap') {
-        const point = withinGame(await gameBounds(this.page, this.surface), action.point);
-        // In mouse-look mode, repositioning before a click changes the aim.
-        // The native button must act on the current crosshair instead.
-        if (!await gameHasPointerLock(this.page, this.surface)) await this.moveMouse(point.x, point.y);
-        this.heldPointerButton = action.button ?? 'left';
-        await this.page.mouse.down({ button: this.heldPointerButton });
+      if (action.type === 'tap' || action.type === 'taps') {
+        const count = action.type === 'taps' ? action.count : 1;
+        const interval = action.type === 'taps' ? action.durationMs / count : 0;
+        for (let index = 0; index < count; index++) {
+          this.signal?.throwIfAborted();
+          // Recompute the displayed surface each time, never replay stale pixels.
+          const point = withinGame(await gameBounds(this.page, this.surface), action.point);
+          // In mouse-look mode the button acts on the current crosshair.
+          if (!await gameHasPointerLock(this.page, this.surface)) await this.moveMouse(point.x, point.y);
+          this.signal?.throwIfAborted();
+          let started = performance.now();
+          try {
+            this.heldPointerButton = action.button ?? 'left';
+            await this.page.mouse.down({ button: this.heldPointerButton });
+            started = performance.now();
+          } finally { await this.releaseAll(); }
+          // Release before waiting, including the last interval. Do not catch up
+          // slow native calls by dispatching later taps in a faster burst.
+          const wait = interval - (performance.now() - started);
+          if (wait > 0) await delay(wait, undefined, { signal: this.signal });
+        }
       }
       if (action.type === 'look') {
         const origin = nativeMousePositions.get(this.page);

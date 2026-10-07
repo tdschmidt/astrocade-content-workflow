@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { z } from 'zod';
-import { inputActionSchema, plannedInputActionSchema } from '../games/schema.js';
+import { inputActionSchema, plannedInputActionSchema, plannedReelInputActionSchema } from '../games/schema.js';
 import { codexEnvironment, CodexServices, executeCodex, type CodexExecutor } from './codex.js';
 import type { InferenceProgressEvent } from './inference.js';
 import { mediaExecutables } from '../media/probe.js';
@@ -115,7 +115,7 @@ test('nested tagged action unions use supported anyOf while invalid actions stil
     if (command.args[0] === 'login') return login;
     const wire = JSON.parse(await readFile(command.args[command.args.indexOf('--output-schema') + 1]!, 'utf8'));
     assert.equal(wire.properties.actions.items.oneOf, undefined);
-    assert.equal(wire.properties.actions.items.anyOf.length, inputActionSchema.options.length);
+    assert.deepEqual(wire.properties.actions.items.anyOf.map((branch: any) => branch.properties.type.const), ['key', 'tap', 'drag', 'path', 'wait', 'look', 'keys'], 'legacy planned input keeps its seven action types');
     assert.ok(!JSON.stringify(wire).includes('"oneOf"'));
     const checkRequired = (node: any) => {
       if (!node || typeof node !== 'object') return;
@@ -141,6 +141,36 @@ test('nested tagged action unions use supported anyOf while invalid actions stil
   await assert.rejects(provider.json('Fixture', actionsSchema), z.ZodError, 'new plans must select a pointer button explicitly');
   output = { actions: [{ type: 'execute', command: 'unapproved action' }] };
   await assert.rejects(provider.json('Fixture', actionsSchema), z.ZodError);
+  output = { actions: [{ type: 'taps', point: { x: 0.5, y: 0.5 }, button: 'left', count: 4, durationMs: 800 }] };
+  await assert.rejects(provider.json('Fixture', actionsSchema), z.ZodError, 'compact repetition is not exposed to the legacy planner');
+});
+
+test('Codex reel wire adds bounded compact taps while local validation still enforces cadence', async () => {
+  const actionsSchema = z.object({ actions: z.array(plannedReelInputActionSchema) });
+  const taps = { type: 'taps', point: { x: 0.5, y: 0.5 }, button: 'right', count: 40, durationMs: 4000 };
+  let output: unknown = { actions: [taps] };
+  let requests = 0;
+  const provider = new CodexServices(options, undefined, async command => {
+    if (command.args[0] === 'login') return login;
+    requests++;
+    const wire = JSON.parse(await readFile(command.args[command.args.indexOf('--output-schema') + 1]!, 'utf8'));
+    const alternatives = wire.properties.actions.items.anyOf;
+    assert.equal(alternatives.length, 8);
+    const repeated = alternatives.find((branch: any) => branch.properties.type.const === 'taps');
+    assert.deepEqual(repeated.properties.count, { type: 'integer', minimum: 2, maximum: 40 });
+    assert.deepEqual(repeated.properties.durationMs, { type: 'integer', minimum: 200, maximum: 6000 });
+    assert.deepEqual(repeated.properties.button, { type: 'string', enum: ['left', 'right'] });
+    assert.deepEqual([...repeated.required].sort(), ['button', 'count', 'durationMs', 'point', 'type']);
+    assert.equal(repeated.additionalProperties, false);
+    await writeFile(outputFile(command.args), JSON.stringify(output));
+    return completed;
+  });
+  assert.deepEqual(await provider.json('Fixture', actionsSchema), output);
+  output = { actions: [{ ...taps, durationMs: 3999 }] };
+  await assert.rejects(provider.json('Fixture', actionsSchema), /100ms per tap/, 'individual wire bounds cannot express the count-to-duration constraint');
+  output = { actions: [{ ...taps, button: undefined }] };
+  await assert.rejects(provider.json('Fixture', actionsSchema), z.ZodError);
+  assert.equal(requests, 3, 'invalid model output is not retried');
 });
 
 test('a saved JSON result requires turn completion and cancellation still wins after output', async () => {

@@ -23,6 +23,8 @@ After the initial single-control probe, feedback should use safe, goal-directed 
 
 This is screenshot feedback, not a reflex controller. The game continues during inference. Samples reduce mistaken conclusions about transient effects, but sparse views and model latency still limit combat, fast targeting, and timing-sensitive play. The checklist is model memory backed by saved observations, not an independent proof of mastery.
 
+For a confirmed stable clicker target, reel feedback can use compact native `taps`: 2–40 clicks over 200–6000ms, at least 100ms per click. Test a short cadence and compare actual rewards/counts before scaling; slow down if the game drops inputs. Each click releases before the next interval, cancellation stops the remaining sequence, and the declared duration counts toward the same ten-second batch limit. This is unavailable for the first probe or legacy planner requests.
+
 ## Architecture and recovery
 
 Use ordinary TypeScript functions, Zod boundaries, Playwright, FFmpeg, and either Gemini or the authenticated Codex CLI provider. Gemini requires a configured key. Codex uses the existing ChatGPT login and rejects API-key authentication for this workflow. Provider requests are bounded; persistent failures surface with saved progress. No new agent framework or external infrastructure is needed.

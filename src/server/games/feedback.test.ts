@@ -80,6 +80,50 @@ test('only reel feedback expands an observed gameplay loop beyond eight actions'
   }
 });
 
+test('compact repeat taps require reel pointer controls and share the aggregate time budget', () => {
+  const taps = { type: 'taps' as const, point: { x: 0.5, y: 0.5 }, button: 'left' as const, count: 40, durationMs: 4000 };
+  const exactBudget = { ...answer, actions: [taps, { ...taps, durationMs: 6000 }] };
+  assert.deepEqual(validateFeedbackDecision(exactBudget, profile, false, 32).actions, exactBudget.actions);
+  assert.deepEqual(controlDecisionSchema.parse(exactBudget).actions, exactBudget.actions);
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [{ ...taps, durationMs: 4001 }, { ...taps, durationMs: 6000 }] }, profile, false, 32), /exceeds 10 seconds/);
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [{ ...taps, durationMs: 3999 }] }, profile, false, 32), /100ms per tap/);
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [taps] }, profile), 'legacy decisions cannot add compact repetition');
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [taps] }, profile, false, 1), 'the initial control probe cannot repeat');
+  const keyboardOnly = gameProfileSchema.parse({ ...profile, controller: { type: 'sparse', allowedKeys: ['Space'], allowPointer: false } });
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [taps] }, keyboardOnly, false, 32), /control not established/);
+});
+
+test('compact repeat taps enter the reel wire only after a single non-wait probe', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-compact-taps-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const tap = { type: 'tap' as const, point: { x: 0.5, y: 0.5 }, button: 'left' as const };
+  const taps = { ...tap, type: 'taps' as const, count: 4, durationMs: 800 };
+  for (const editingStyle of ['episode', 'reel'] as const) {
+    let calls = 0;
+    const proposal = { ...answer, ...(editingStyle === 'reel' ? { pivotTo: null, mechanics: [] } : {}), actions: [taps] };
+    const provider = { json: async (prompt: string, schema: z.ZodType) => {
+      calls++;
+      const allowed = editingStyle === 'reel' && calls === 3;
+      assert.equal(schema.safeParse(proposal).success, allowed);
+      if (calls === 1) return { ...proposal, actions: [{ type: 'wait', durationMs: 500 }] };
+      if (calls === 2) return { ...proposal, actions: [tap] };
+      if (editingStyle === 'reel') {
+        assert.match(prompt, /First test a small faster-cadence batch/);
+        assert.match(prompt, /Slow the cadence if taps or rewards are missed/);
+        assert.match(prompt, /400ms waits still apply between menu\/puzzle choices/);
+        assert.equal(schema.safeParse({ ...proposal, actions: [{ ...taps, button: undefined }] }).success, false);
+      }
+      return proposal;
+    } } as unknown as Pick<Inference, 'json'>;
+    const decide = createFeedbackController(profile, provider, join(directory, editingStyle), undefined, { editingStyle });
+    const first = await decide(observation);
+    const probe = await decide({ ...observation, observationId: 'fixture:1', previousActions: first.actions, previousImage: observation.image });
+    const next = { ...observation, observationId: 'fixture:2', previousActions: probe.actions, previousImage: observation.image };
+    if (editingStyle === 'reel') assert.deepEqual((await decide(next)).actions, [taps]);
+    else await assert.rejects(decide(next), /invalid_union/);
+  }
+});
+
 test('continuous paths require observed pointer controls and share the action-batch time budget', () => {
   const path = { type: 'path' as const, points: [{ x: 0.4, y: 0.5 }, { x: 0.5, y: 0.6 }, { x: 0.6, y: 0.5 }, { x: 0.4, y: 0.5 }], durationMs: 2000 };
   assert.deepEqual(validateFeedbackDecision({ ...answer, actions: [path] }, profile).actions, [path]);

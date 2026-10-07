@@ -30,6 +30,10 @@ export type GameCandidate = z.infer<typeof gameCandidateSchema>;
 const pointSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) });
 const pointerButtonSchema = z.enum(['left', 'right']).optional();
 export const keySchema = z.string().regex(/^(Arrow(Up|Down|Left|Right)|Space|Enter|Escape|Tab|Backspace|Key[A-Z]|Digit[0-9])$/);
+const tapsActionSchema = z.object({
+  type: z.literal('taps'), point: pointSchema, button: pointerButtonSchema,
+  count: z.number().int().min(2).max(40), durationMs: z.number().int().min(200).max(6000),
+}).strict().refine(action => action.durationMs >= action.count * 100, 'Repeated taps require at least 100ms per tap.');
 
 export const inputActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('key'), key: keySchema, durationMs: z.number().int().min(20).max(6000) }),
@@ -39,6 +43,7 @@ export const inputActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('wait'), durationMs: z.number().int().min(20).max(5000) }),
   z.object({ type: z.literal('look'), dx: z.number().min(-200).max(200), dy: z.number().min(-200).max(200), durationMs: z.number().int().min(50).max(2000) }).strict(),
   z.object({ type: z.literal('keys'), keys: z.array(keySchema).min(2).max(3).refine(keys => new Set(keys).size === keys.length, 'Simultaneous keys must be unique.'), durationMs: z.number().int().min(20).max(6000) }).strict(),
+  tapsActionSchema,
 ]);
 export type InputAction = z.infer<typeof inputActionSchema>;
 
@@ -52,6 +57,12 @@ export const plannedInputActionSchema = z.discriminatedUnion('type', [
   inputActionSchema.options[4].strict(),
   inputActionSchema.options[5].strict(),
   inputActionSchema.options[6].strict(),
+]);
+// Compact repetition is exposed only after a reel's initial control probe.
+// Keep legacy feedback and the timed planner's wire format unchanged.
+export const plannedReelInputActionSchema = z.discriminatedUnion('type', [
+  ...plannedInputActionSchema.options,
+  tapsActionSchema.safeExtend({ button: z.enum(['left', 'right']) }),
 ]);
 
 export const surfaceLocatorSchema = z.object({

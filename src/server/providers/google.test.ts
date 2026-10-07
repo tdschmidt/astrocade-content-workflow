@@ -6,7 +6,7 @@ import test, { type TestContext } from 'node:test';
 import type { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import { settingsSchema } from '../config.js';
-import { inputActionSchema } from '../games/schema.js';
+import { plannedInputActionSchema, plannedReelInputActionSchema } from '../games/schema.js';
 import { GoogleServices, retryDelayMs, seconds, type GoogleProgressEvent } from './google.js';
 
 const settings = settingsSchema.parse({ geminiApiKey: 'fixture-key-never-sent' });
@@ -246,7 +246,7 @@ test('wire schema omits nested maxItems while local bounds still reject oversize
 });
 
 test('literal action types use singleton enums on the wire and invalid aliases still fail locally', async t => {
-  const schema = z.object({ actions: z.array(inputActionSchema).max(2) });
+  const schema = z.object({ actions: z.array(plannedInputActionSchema).max(2) });
   const valid = { actions: [{ type: 'key', key: 'ArrowLeft', durationMs: 250 }] };
   let output: unknown = valid;
   let requests = 0;
@@ -283,7 +283,36 @@ test('literal action types use singleton enums on the wire and invalid aliases s
   assert.deepEqual(await google.json('fixture', schema), output);
   output = { actions: [{ type: 'keys', keys: ['KeyW', 'KeyW'], durationMs: 100 }] };
   await assert.rejects(google.json('fixture', schema), z.ZodError);
-  assert.equal(requests, 5);
+  output = { actions: [{ type: 'taps', point: { x: 0.5, y: 0.5 }, button: 'left', count: 4, durationMs: 800 }] };
+  await assert.rejects(google.json('fixture', schema), z.ZodError, 'legacy planned input keeps its seven action types');
+  assert.equal(requests, 6);
+});
+
+test('Gemini reel wire adds bounded compact taps while local validation still enforces cadence', async t => {
+  const schema = z.object({ actions: z.array(plannedReelInputActionSchema).max(2) });
+  const taps = { type: 'taps', point: { x: 0.5, y: 0.5 }, button: 'right', count: 40, durationMs: 4000 };
+  let output: unknown = { actions: [taps] };
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+    requests++;
+    const body = JSON.parse(input instanceof Request ? await input.clone().text() : String(init?.body));
+    const alternatives = body.response_format.schema.properties.actions.items.oneOf;
+    assert.equal(alternatives.length, 8);
+    const repeated = alternatives.find((branch: any) => branch.properties.type.enum?.[0] === 'taps');
+    assert.equal(repeated.properties.type.const, undefined);
+    assert.deepEqual(repeated.properties.count, { type: 'integer', minimum: 2, maximum: 40 });
+    assert.deepEqual(repeated.properties.durationMs, { type: 'integer', minimum: 200, maximum: 6000 });
+    assert.deepEqual(repeated.properties.button, { type: 'string', enum: ['left', 'right'] });
+    assert.deepEqual([...repeated.required].sort(), ['button', 'count', 'durationMs', 'point', 'type']);
+    return Response.json({ id: 'fixture', status: 'completed', steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify(output) }] }] });
+  });
+  const google = new GoogleServices(settings);
+  assert.deepEqual(await google.json('fixture', schema), output);
+  output = { actions: [{ ...taps, durationMs: 3999 }] };
+  await assert.rejects(google.json('fixture', schema), /100ms per tap/, 'local validation must enforce cross-field cadence even though wire bounds are independent');
+  output = { actions: [{ ...taps, button: undefined }] };
+  await assert.rejects(google.json('fixture', schema), z.ZodError);
+  assert.equal(requests, 3, 'invalid model output is not retried');
 });
 
 test('cancellation during backoff prevents another attempt', async t => {
