@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { mediaExecutables, probeMedia, type MediaTools } from './probe.js';
 import { runProcess } from './process.js';
@@ -12,7 +13,7 @@ test('portrait renderer produces validated video, captions, and complete audio',
   const source = join(directory, 'source.mp4');
   const audio = join(directory, 'narration.wav');
   const output = join(directory, 'portrait.mp4');
-  const tools: MediaTools = {};
+  const tools: MediaTools = { fontPath: fileURLToPath(new URL('../../../assets/fonts/NotoSans-Regular.ttf', import.meta.url)) };
   const { ffmpeg } = mediaExecutables(tools);
   try {
     await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30', '-t', '4', '-c:v', 'libx264', '-preset', 'ultrafast', source]);
@@ -24,6 +25,7 @@ test('portrait renderer produces validated video, captions, and complete audio',
       attribution: 'SYNTHETIC TEST · not Astrocade gameplay',
       subtitles: [{ startSeconds: 0.5, endSeconds: 1.8, text: 'Readable phrase captions' }, { startSeconds: 2.1, endSeconds: 3.5, text: 'Whole game frame preserved' }],
       narrationPath: audio,
+      ffmpeg: tools,
     });
     const info = await probeMedia(output);
     assert.equal(result.hasAudio, true);
