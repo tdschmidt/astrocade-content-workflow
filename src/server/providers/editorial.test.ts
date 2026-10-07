@@ -213,7 +213,13 @@ test('a selected hook must fit before visual review and rewritten copy is checke
   const choice = choiceFor([0]);
   choice.alternatives[0]!.hook = longHook;
   await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([choice])), /too short to read/, 'an impossible chosen hook must not spend another inference call');
-  await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), { ...review, hook: longHook }])), /too short to read/, 'the critic cannot introduce a longer hook that consumes the payoff');
+  const repaired = await draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([
+    choiceFor([0]), { ...review, hook: longHook }, { hook: 'i cannot be bad at this', reason: 'Removed the longer framing while keeping the reaction and negation.' },
+  ]));
+  assert.equal(repaired.hook, 'i cannot be bad at this');
+  assert.equal(repaired.overlays![0]!.endSeconds, 2);
+  assert.ok(repaired.overlays![0]!.endSeconds <= 3.2 - 0.8, 'shortening leaves the required payoff without extending cuts');
+  assert.match(repaired.editorial!.review, /Local caption repair.*too short to read/);
   const exact = { ...shortCapture, analysis: { ...shortCapture.analysis, events: [{ ...shortCapture.analysis.events[0]!, startSeconds: 10, endSeconds: 12.8 }] } };
   assert.ok(await draftScript({ capture: exact, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), review])), 'exact reading-time budgets tolerate timestamp subtraction rounding');
 });
@@ -342,9 +348,36 @@ test('conversational hooks retain their wording with measured reading time and a
     await assert.rejects(draftScript({ capture: tooShort, format: 'highlight', topic: '' }, googleFixture([choice, { ...review, hook }])), /too short to read/, 'longer copy cannot consume the payoff or cause duration padding');
   }
   const overBudget = 'one two three four five six seven eight nine ten eleven twelve thirteen';
-  await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), { ...review, hook: overBudget }])), /hook is too long/);
-  const tooManyLines = 'the fact that someone actually sat down and made this playable';
-  await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), { ...review, hook: tooManyLines }])), /three short lines/, 'word and character ceilings never override the actual renderer width budget');
+  await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([
+    choiceFor([0]), { ...review, hook: overBudget }, { hook: 'one two three four five six seven eight nine ten eleven twelve a', reason: 'Still thirteen words.' },
+  ])), /one hook-shortening repair.*hook is too long/);
+});
+
+test('one repair fits a visually approved hook to the renderer without changing its cut or anchor', async () => {
+  const hook = 'the fact that someone actually sat down and made this playable';
+  const approved = { ...review, hook, position: 'lower', reason: 'The playable absurdity is visible and lower scenery is clear.' };
+  const repair = { hook: 'someone made this playable', reason: 'Removed filler while preserving the reaction to its existence.' };
+  const result = await draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), approved, repair]));
+  assert.equal(result.hook, repair.hook);
+  assert.deepEqual(result.cuts, [{ startSeconds: 0, endSeconds: 30 }]);
+  assert.deepEqual(result.overlays, [{ startSeconds: 0, endSeconds: 2, text: repair.hook, position: 'lower' }]);
+  assert.ok(result.caption.startsWith(`${approved.caption}\n`), 'copy repair cannot change the approved post caption');
+  assert.ok(result.editorial!.review.startsWith(approved.reason));
+  assert.ok(result.editorial!.review.includes(JSON.stringify(hook)));
+  assert.ok(result.editorial!.review.includes(JSON.stringify(repair.hook)));
+  assert.match(result.editorial!.review, /three short lines/);
+  assert.ok(result.editorial!.review.endsWith(repair.reason));
+});
+
+test('an invalid shortening ends after one repair and cannot override visual rejection', async () => {
+  const hook = 'the fact that someone actually sat down and made this playable';
+  const stillWide = 'the fact that someone actually sat down and made it playable';
+  await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([
+    choiceFor([0]), { ...review, hook }, { hook: stillWide, reason: 'Removed one short word, but still too wide.' },
+  ])), /one hook-shortening repair.*three short lines/, 'a second invalid line fails locally without another model call');
+  await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([
+    choiceFor([0]), { ...review, hook, approved: false, reason: 'Both anchors obscure the decisive action.' },
+  ])), /visual editorial review rejected.*Both anchors/, 'a wide rejected line must never enter the repair flow');
 });
 
 test('visual review receives the writing brief and alternative premises before choosing final copy', async () => {
