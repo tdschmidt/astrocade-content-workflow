@@ -3,8 +3,9 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
+import { chromium } from 'playwright';
 import type { GoogleServices } from '../providers/google.js';
-import { learnGameProfile, type GameInspection } from './learning.js';
+import { inspectGamePage, isObservedStartLabel, learnGameProfile, type GameInspection } from './learning.js';
 import type { GameCandidate } from './schema.js';
 
 async function fixture(t: TestContext) {
@@ -51,12 +52,19 @@ test('a model cannot select an unobserved start button', async t => {
 });
 
 test('an observed inspector Start is replayed exactly once', async t => {
-  const { candidate, inspection, proposal, google } = await fixture(t);
+  const { candidate, inspection, proposal } = await fixture(t);
   inspection.performedStart = inspection.startTargets[0];
-  proposal.start = [];
+  const { start: _start, ...withoutStart } = proposal;
+  const google = { json: async () => withoutStart } as unknown as Pick<GoogleServices, 'json'>;
   const learned = await learnGameProfile(inspection, candidate, google);
   assert.equal(learned.profile?.start.filter(step => step.type === 'click').length, 1);
   assert.deepEqual(learned.profile?.start[0], { type: 'click', target: { selector: '#start', frames: inspection.surface.frames } });
+});
+
+test('a known Start is omitted from model decisions and unexpected start fields are rejected', async t => {
+  const { candidate, inspection, google } = await fixture(t);
+  inspection.performedStart = inspection.startTargets[0];
+  await assert.rejects(learnGameProfile(inspection, candidate, google), /unrecognized_keys/);
 });
 
 test('plans longer than the learning budget are skipped', async t => {
@@ -72,4 +80,52 @@ test('inspection provenance mismatch fails before any provider call', async t =>
   const google = { json: async () => { assert.fail('unrelated inspection must not be uploaded'); } } as unknown as Pick<GoogleServices, 'json'>;
   inspection.gameUrl = 'https://www.astrocade.com/games/another/Game2';
   await assert.rejects(learnGameProfile(inspection, candidate, google), /does not belong/);
+});
+
+test('the inspector recognizes the observed ENTER ARENA label without broadening to unrelated buttons', () => {
+  assert.equal(isObservedStartLabel('ENTER ARENA'), true);
+  assert.equal(isObservedStartLabel('Start Shift'), true);
+  assert.equal(isObservedStartLabel('ENTER SHOP'), false);
+  assert.equal(isObservedStartLabel('Play ad for reward'), false);
+});
+
+test('invalid model action aliases are rejected without normalization', async t => {
+  const { candidate, inspection, proposal } = await fixture(t);
+  for (const action of [{ type: 'keyDown', key: 'KeyW', durationMs: 1000 }, { type: 'KeyW', durationMs: 1000 }, { type: 'key', key: 'Shift', durationMs: 1000 }, { type: 'key', key: 'KeyW', durationMs: 1000, selector: '#unobserved' }]) {
+    const google = { json: async () => ({ ...proposal, actions: [action] }) } as unknown as Pick<GoogleServices, 'json'>;
+    await assert.rejects(learnGameProfile(inspection, candidate, google));
+  }
+});
+
+test('tap syntax cannot be substituted for an indexed start button', async t => {
+  const { candidate, inspection, proposal } = await fixture(t);
+  const google = { json: async () => ({ ...proposal, start: [{ type: 'tap', index: 0 }] }) } as unknown as Pick<GoogleServices, 'json'>;
+  await assert.rejects(learnGameProfile(inspection, candidate, google));
+});
+
+test('the learning request supplies exact native-input wire examples', async t => {
+  const { candidate, inspection, proposal } = await fixture(t);
+  const google = { json: async (prompt: string) => {
+    assert.match(prompt, /"type":"key","key":"KeyW","durationMs":1500/);
+    assert.match(prompt, /"type":"button","index":0/);
+    assert.match(prompt, /never emit keyDown\/keyUp/);
+    return proposal;
+  } } as unknown as Pick<GoogleServices, 'json'>;
+  assert.ok((await learnGameProfile(inspection, candidate, google)).profile);
+});
+
+test('inspection clicks an observed menu before waiting for its hidden game canvas', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
+  const { outputDir, candidate } = await fixture(t);
+  const browser = await chromium.launch({ channel: 'chromium', headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 720, height: 1280 } });
+  await page.setContent('<style>body{margin:0}iframe{width:600px;height:1100px;border:0}button{position:absolute;z-index:2;top:0;left:0}</style><button aria-label="Start playing" onclick="this.remove()">Open game</button><iframe title="Astrocade Game"></iframe>');
+  const frame = page.frames()[1]!;
+  await frame.setContent('<style>body{margin:0;background:#123}canvas{display:none;background:#24b}button{margin:100px;width:200px;height:80px}</style><button id="start">START RUN</button><canvas width="600" height="1100"></canvas><script>document.querySelector("button").onclick=event=>{document.body.dataset.trusted=String(event.isTrusted);document.querySelector("button").remove();document.querySelector("canvas").style.display="block"}</script>');
+  const inspection = await inspectGamePage(page, candidate.url, outputDir);
+  assert.deepEqual(inspection.performedStart, { selector: '#start', label: 'START RUN' });
+  assert.equal(inspection.ready.selector, '#start');
+  assert.equal(inspection.surface.selector, ':nth-match(canvas, 1)');
+  assert.equal(await frame.locator('body').getAttribute('data-trusted'), 'true');
+  assert.notDeepEqual(await readFile(inspection.beforeImagePath), await readFile(inspection.imagePath));
 });
