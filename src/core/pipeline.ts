@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { analysisSchema, captureSchema, scriptSchema, type Capture, type FootageAnalysis } from '../shared/domain.js';
 import { contentBriefSchema, contentScore, defaultContentBrief, type ContentBrief } from '../shared/content.js';
 import type { Configuration } from '../server/config.js';
-import { NeedsAttention } from '../server/jobs.js';
+import { NeedsAttention } from '../server/errors.js';
 import { canonicalGameUrl, discoverGames } from '../server/games/discovery.js';
 import { inspectGame, learnGameProfile } from '../server/games/learning.js';
 import { createFeedbackController, learnFeedbackProfile } from '../server/games/feedback.js';
@@ -235,7 +235,7 @@ export async function runPipeline(options: {
     const getProvider = () => provider ??= traceInference(providerName === 'codex'
       ? new CodexServices({ reasoningModel: options.model, mediaTools: config.mediaTools }, onProviderEvent)
       : new GoogleServices(settings, onProviderEvent), trace, providerName, options.model,
-    [settings.geminiApiKey, settings.tavilyApiKey, settings.workbenchPassword, settings.instagramPassword, settings.imapPassword, settings.imapAccessToken, settings.mailtm?.password ?? '']);
+    [settings.geminiApiKey, settings.tavilyApiKey]);
     const save = async (change: (run: CoreRun) => void) => { await store!.update(change); await report(directory, store!.read()); };
     const updateAttempt = async (gameId: string, change: (attempt: CoreRun['attempts'][number]) => void) => save(run => change(run.attempts.find(item => item.gameId === gameId)!));
     const verifySource = async (attempt: CoreRun['attempts'][number]) => {

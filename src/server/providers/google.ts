@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { setTimeout } from 'node:timers/promises';
 import { z } from 'zod';
 import type { Settings } from '../config.js';
-import { NeedsAttention } from '../jobs.js';
+import { NeedsAttention } from '../errors.js';
 
 import type { Inference, InferenceProgressEvent, MediaInput } from './inference.js';
 export interface WordTiming { text: string; startSeconds: number; endSeconds: number }
@@ -47,7 +47,7 @@ export function seconds(value?: string): number {
 export class GoogleServices implements Inference {
   private client: GoogleGenAI;
   constructor(private settings: Settings, private onEvent?: (event: GoogleProgressEvent) => void) {
-    if (!settings.geminiApiKey) throw new NeedsAttention('Add a Gemini API key in Setup to analyze footage and generate videos.');
+    if (!settings.geminiApiKey) throw new NeedsAttention('Set GEMINI_API_KEY to analyze footage and generate videos with the Gemini provider.');
     // Files.upload ignores abortSignal in SDK 2.27; bound each HTTP request instead.
     this.client = new GoogleGenAI({ apiKey: settings.geminiApiKey, httpOptions: { timeout: 45_000, retryOptions: { attempts: 1 } } });
   }

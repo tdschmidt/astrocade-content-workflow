@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-export const selectionModeSchema = z.enum(['balanced', 'popular', 'visual', 'trend']);
-export type SelectionMode = z.infer<typeof selectionModeSchema>;
-
 export const metricSchema = z.object({
   label: z.enum(['plays', 'players', 'likes', 'favorites']),
   raw: z.string(),

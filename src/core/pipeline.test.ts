@@ -7,7 +7,7 @@ import test, { type TestContext } from 'node:test';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import { Configuration } from '../server/config.js';
-import { NeedsAttention } from '../server/jobs.js';
+import { NeedsAttention } from '../server/errors.js';
 import { verifiedProfiles } from '../server/games/profiles.js';
 import { GoogleServices } from '../server/providers/google.js';
 import type { GameCandidate } from '../server/games/schema.js';

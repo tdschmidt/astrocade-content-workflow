@@ -3,7 +3,7 @@ import {
   analysisSchema, cutSchema, eventSchema, hookConceptSchema, scriptSchema, subtitleSchema,
   type Capture, type FootageAnalysis, type ResearchSnapshot, type VideoFormat, type VideoScript,
 } from '../../shared/domain.js';
-import { NeedsAttention } from '../jobs.js';
+import { NeedsAttention } from '../errors.js';
 import type { WordTiming } from './google.js';
 import type { Inference } from './inference.js';
 import { contentAssessmentSchema, contentScore, defaultContentBrief, summarizeBrief, type ContentBrief, type ContentAssessment } from '../../shared/content.js';
