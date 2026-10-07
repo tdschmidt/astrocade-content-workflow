@@ -6,7 +6,7 @@ import test from 'node:test';
 import { z } from 'zod';
 import type { Inference } from '../providers/inference.js';
 import { createFeedbackController, learnFeedbackProfile, validateFeedbackDecision } from './feedback.js';
-import { gameProfileSchema } from './schema.js';
+import { controlDecisionSchema, gameProfileSchema, type InputAction } from './schema.js';
 import type { GameplayObservation } from './runner.js';
 import type { GameInspection } from './learning.js';
 
@@ -30,6 +30,54 @@ test('feedback rejects unknown controls, invalid batches and contradictory termi
     { ...answer, actions: [{ ...move, selector: '#hidden' }] },
   ]) assert.throws(() => validateFeedbackDecision(invalid, profile));
   assert.deepEqual(validateFeedbackDecision(answer, profile), answer);
+});
+
+test('reel tap combos fit the action cap without expanding the ten-second budget', () => {
+  const tap = { type: 'tap' as const, point: { x: 0.5, y: 0.5 }, button: 'left' as const };
+  const combo: InputAction[] = Array.from({ length: 16 }, () => [tap, { type: 'wait' as const, durationMs: 400 }]).flat();
+  const decision = validateFeedbackDecision({ ...answer, actions: combo }, profile, false, 32);
+  assert.equal(decision.actions.filter(action => action.type === 'tap').length, 16);
+  assert.deepEqual(controlDecisionSchema.parse(decision).actions, combo, 'runner transport must accept the validated reel batch');
+  const exactBudget: InputAction[] = [...combo.slice(0, -1), { type: 'wait', durationMs: 2400 }];
+  assert.deepEqual(validateFeedbackDecision({ ...answer, actions: exactBudget }, profile, false, 32).actions, exactBudget);
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [...combo.slice(0, -1), { type: 'wait', durationMs: 2401 }] }, profile, false, 32), /exceeds 10 seconds/);
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [...combo, tap] }, profile, false, 32));
+  assert.equal(controlDecisionSchema.safeParse({ ...decision, actions: [...combo, tap] }).success, false);
+  assert.deepEqual(validateFeedbackDecision({ ...answer, actions: combo.slice(0, 8) }, profile).actions, combo.slice(0, 8));
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: combo.slice(0, 9) }, profile), 'legacy validation defaults to eight actions');
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [tap, tap] }, profile, false, 1), 'the first probe is one action');
+});
+
+test('only reel feedback expands an observed gameplay loop beyond eight actions', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-tap-combo-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const tap = { type: 'tap' as const, point: { x: 0.5, y: 0.5 }, button: 'left' as const };
+  const combo: InputAction[] = Array.from({ length: 16 }, () => [tap, { type: 'wait' as const, durationMs: 400 }]).flat();
+  for (const editingStyle of ['episode', 'reel'] as const) {
+    let calls = 0;
+    const proposal = { ...answer, ...(editingStyle === 'reel' ? { pivotTo: null, mechanics: [] } : {}), actions: combo };
+    const provider = { json: async (prompt: string, schema: z.ZodType) => {
+      calls++;
+      if (calls === 1) {
+        assert.match(prompt, /Choose no more than 1 actions/);
+        assert.equal(schema.safeParse({ ...proposal, actions: [tap, tap] }).success, false);
+        return { ...proposal, actions: [tap] };
+      }
+      assert.match(prompt, new RegExp(`Choose no more than ${editingStyle === 'reel' ? 32 : 8} actions`));
+      assert.equal(schema.safeParse(proposal).success, editingStyle === 'reel');
+      if (editingStyle === 'reel') {
+        assert.match(prompt, /successful probe establishes a stable target and visible combo or earned-currency reward/);
+        assert.match(prompt, /never blind sequences of menu choices/);
+      }
+      return proposal;
+    } } as unknown as Pick<Inference, 'json'>;
+    const decide = createFeedbackController(profile, provider, join(directory, editingStyle), undefined, { editingStyle });
+    const first = await decide(observation);
+    assert.deepEqual(first.actions, [tap]);
+    const next = { ...observation, observationId: 'fixture:1', previousActions: first.actions, previousImage: observation.image };
+    if (editingStyle === 'reel') assert.deepEqual((await decide(next)).actions, combo);
+    else await assert.rejects(decide(next), /too_big/);
+  }
 });
 
 test('continuous paths require observed pointer controls and share the action-batch time budget', () => {

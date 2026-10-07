@@ -432,13 +432,13 @@ for (const { label, gameSetup, allowed } of [
   if (saved.phase === 'setup') assert.match(saved.reason, /free sandwich.*setup/);
 });
 
-for (const scenario of ['DOM instructions', 'canvas instructions', 'symbol close', 'missing return', 'broken return'] as const) test(`help inspection handles ${scenario} with one native round trip before New World`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
+for (const scenario of ['DOM instructions', 'canvas instructions', 'symbol close', 'got it', 'missing return', 'broken return'] as const) test(`help inspection handles ${scenario} with one native round trip before New World`, { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
   const { outputDir, candidate, proposal } = await fixture(t);
   const browser = await chromium.launch({ channel: 'chromium', headless: true });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 720, height: 1280 } });
   const helpName = scenario === 'canvas instructions' ? 'Controls' : 'How to Play';
-  const returnName = scenario === 'symbol close' ? '×' : scenario === 'canvas instructions' ? 'Close' : 'Back';
+  const returnName = scenario === 'symbol close' ? '×' : scenario === 'canvas instructions' ? 'Close' : scenario === 'got it' ? 'GOT IT' : 'Back';
   const loadFixture = async () => {
     await page.setContent('<style>body{margin:0}iframe{width:600px;height:1100px;border:0}button{position:absolute;z-index:2;top:0;left:0}</style><button aria-label="Start playing" onclick="this.remove()">Open game</button><iframe title="Astrocade Game"></iframe>');
     await page.frames()[1]!.setContent(`<style>body{margin:0;background:#123;color:white}button{width:240px;height:80px}#board,#help{display:none}</style>
@@ -478,7 +478,7 @@ for (const scenario of ['DOM instructions', 'canvas instructions', 'symbol close
   const helpImage = (await readFile(inspection.help!.imagePath)).toString('base64');
   const { start: _start, ...withoutStart } = proposal;
   const learned = await learnGameProfile(inspection, candidate, { json: async (prompt: string, _schema: unknown, media: { data: string }[]) => {
-    assert.match(prompt, /third image is the observed How to Play\/Controls panel/);
+    assert.match(prompt, /third image is the observed help\/Controls panel/);
     assert.equal(media.length, 3); assert.equal(media[2]!.data, helpImage);
     return withoutStart;
   } } as unknown as Pick<GoogleServices, 'json'>);
@@ -486,7 +486,7 @@ for (const scenario of ['DOM instructions', 'canvas instructions', 'symbol close
   assert.equal(learned.profile.start.filter(step => step.type === 'click').length, 1);
   await rm(join(outputDir, 'learning.json'));
   await learnFeedbackProfile(inspection, candidate, { json: async (prompt: string, _schema: unknown, media: { data: string }[]) => {
-    assert.match(prompt, /third image is the saved How to Play\/Controls panel/);
+    assert.match(prompt, /third image is the saved help\/Controls panel/);
     assert.equal(media.length, 3); assert.equal(media[2]!.data, helpImage);
     return { supported: false, confidence: 'high', latencyTolerant: false, objective: 'Observe one movement.', instructions: 'ArrowRight walks.', allowedKeys: ['ArrowRight'], allowPointer: false, evidence: ['Observed help panel maps ArrowRight to walking.'], limitations: ['SYNTHETIC reflex game.'] };
   } } as unknown as Pick<GoogleServices, 'json'>);

@@ -32,7 +32,7 @@ export interface CaptureIntent { captureGoal?: string; rejectIf?: string; maxDur
 export const isObservedStartLabel = (label: string) => /^(?:start(?:\s+(?:game|shift|run|playing))?|play(?:\s+now)?|new (?:game|world)|begin|enter arena|deploy(?:\s*↗)?)$/i.test(label.trim());
 const excludedMenuLabel = /\b(?:buy|purchase|shop|upgrade|subscribe|subscription|reward|advert|sign[ -]?(?:in|up)|log[ -]?in|account|register|share|invite|friend|follow|donate)\b/i;
 const helpLabel = /^(?:how to play|controls)$/i;
-const helpReturnLabel = /^(?:back(?: to (?:main )?menu)?|close|done|×|✕)$/i;
+const helpReturnLabel = /^(?:back(?: to (?:main )?menu)?|close|done|got it|×|✕)$/i;
 
 /** Observe ordinary UI; bounded menu clicks reveal the game without guessing gameplay. */
 export async function inspectGame(candidate: GameCandidate, outputDir: string, signal?: AbortSignal, provider?: Pick<Inference, 'json'>): Promise<GameInspection> {

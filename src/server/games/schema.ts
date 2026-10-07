@@ -98,6 +98,7 @@ export type GameProfile = z.infer<typeof gameProfileSchema>;
 export const controlDecisionSchema = z.object({
   stop: z.boolean(),
   reason: z.string().max(1000),
-  actions: z.array(inputActionSchema).max(8),
+  // Feedback applies its mode-specific cap before this transport validation.
+  actions: z.array(inputActionSchema).max(32),
 });
 export type ControlDecision = z.infer<typeof controlDecisionSchema>;
