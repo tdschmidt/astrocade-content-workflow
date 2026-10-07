@@ -10,6 +10,7 @@ import { discoverGames, canonicalGameUrl } from './games/discovery.js';
 import { rankGames } from './games/selection.js';
 import { controlDecisionSchema, type GameProfile } from './games/schema.js';
 import { runCaptureAttempt } from './games/runner.js';
+import { verifiedProfiles } from './games/profiles.js';
 import { GoogleServices } from './providers/google.js';
 import { analyzeFootage, draftScript, phraseCaptions, shortenScript, transcriptWarnings, validateCuts } from './providers/editorial.js';
 import { refreshResearch } from './providers/research.js';
@@ -29,6 +30,9 @@ export class Workflow {
     await mkdir(config.mediaDir, { recursive: true });
     const store = await JsonStore.open(join(config.dataDir, 'workspace.json'), workspaceSchema, emptyWorkspace);
     await store.update(state => {
+      for (const profile of verifiedProfiles) {
+        if (!state.profiles.some(saved => saved.id === profile.id)) state.profiles.push(structuredClone(profile));
+      }
       for (const run of state.runs) if (['capturing', 'generating'].includes(run.status)) {
         run.status = 'needs_attention'; run.message = 'Interrupted by restart. Resume uses saved captures and drafts.';
       }

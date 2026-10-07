@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import type { Draft } from '../shared/domain.js';
 import { Configuration, settingsSchema } from './config.js';
-import { unverifiedProfileTemplate } from './games/profiles.js';
+import { verifiedProfiles, unverifiedProfileTemplate } from './games/profiles.js';
 import { fileSha256 } from './instagram/index.js';
 import type { JobContext } from './jobs.js';
 import { Workflow } from './workflow.js';
@@ -135,6 +135,20 @@ test('reopening a workspace parks interrupted work while preserving completed ar
   assert.equal(reopened.getDraft(draft.id, 2).status, 'planned');
   assert.equal(reopened.store.read().signup.checkpoint?.phase, 'submitted');
   assert.deepEqual(reopened.store.read().runs[0]?.captureIds, ['capture']);
+  await reopened.close();
+});
+
+test('tested presets are available on first start without overwriting saved edits on restart', async t => {
+  const { workflow, config } = await fixture(t);
+  const preset = verifiedProfiles[0]!;
+  assert.equal(workflow.store.read().profiles.find(profile => profile.id === preset.id)?.verification, 'verified');
+  await workflow.saveProfile({ ...preset, objective: 'An operator-edited objective.' });
+  await workflow.close();
+  const reopened = await Workflow.open(config);
+  const saved = reopened.store.read().profiles.filter(profile => profile.id === preset.id);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0]?.objective, 'An operator-edited objective.');
+  assert.equal(saved[0]?.verification, 'unverified');
   await reopened.close();
 });
 
