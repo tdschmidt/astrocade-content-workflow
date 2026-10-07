@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { Configuration } from '../server/config.js';
 import { NeedsAttention } from '../server/jobs.js';
 import { verifiedProfiles } from '../server/games/profiles.js';
+import { GoogleServices } from '../server/providers/google.js';
 import type { GameCandidate } from '../server/games/schema.js';
 import { defaultContentBrief, type ContentAssessment } from '../shared/content.js';
 import { runPipeline, type CoreServices } from './pipeline.js';
@@ -65,6 +66,38 @@ test('SYNTHETIC core run resumes after analysis failure without rediscovery or r
   assert.equal(calls.render, 1);
   assert.equal(calls.analyze, 2);
   assert.equal(calls.validate, 1);
+});
+
+test('returned edit proposals survive later semantic rejection and resume appends unique redacted records', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const proposal = { cuts: [{ startSeconds: 1, endSeconds: 4 }], reason: 'SYNTHETIC proposal PRIVATE_TEST_KEY' };
+  t.mock.method(GoogleServices.prototype, 'json', async () => proposal);
+  const draft = services.draftScript!;
+  let attempts = 0;
+  services.draftScript = async (input, provider, signal) => {
+    const result = await provider.json('PRIVATE_PROMPT_NOT_FOR_TRACE', z.object({ cuts: z.array(z.object({ startSeconds: z.number(), endSeconds: z.number() })), reason: z.string() }), [], signal);
+    assert.equal(result, proposal);
+    if (++attempts === 1) throw new NeedsAttention('SYNTHETIC payoff was cut off after the returned proposal.');
+    return draft(input, provider, signal);
+  };
+  const options = { directory, model: 'fixture-model', quiet: true };
+  await assert.rejects(runPipeline(options, config, services), /payoff was cut off/);
+  const firstText = await readFile(join(directory, 'trace.jsonl'), 'utf8');
+  const first = firstText.trim().split('\n').map(line => JSON.parse(line));
+  const responseIndex = first.findIndex(record => record.stage === 'provider.response');
+  assert.ok(responseIndex >= 0 && responseIndex < first.findIndex(record => record.stage === 'run' && record.status === 'failed'));
+  assert.deepEqual(first[responseIndex].data.response, { ...proposal, reason: 'SYNTHETIC proposal [redacted]' });
+  const resumed = await runPipeline(options, config, services);
+  assert.equal(resumed.status, 'complete');
+  const resumedText = await readFile(join(directory, 'trace.jsonl'), 'utf8');
+  assert.ok(resumedText.startsWith(firstText), 'resume must append instead of replacing the failed-attempt evidence');
+  const responses = resumedText.trim().split('\n').map(line => JSON.parse(line)).filter(record => record.stage === 'provider.response');
+  assert.equal(responses.length, 2);
+  assert.notEqual(responses[0].data.requestId, responses[1].data.requestId);
+  assert.ok(responses.every(record => record.data.provider === 'gemini' && record.data.model === 'fixture-model'));
+  assert.equal(resumedText.includes('PRIVATE_TEST_KEY'), false);
+  assert.equal(resumedText.includes('PRIVATE_PROMPT_NOT_FOR_TRACE'), false);
+  assert.equal(calls.capture, 1, 'observability must not recapture footage on resume');
 });
 
 test('capture stage stops before model analysis and refuses changed source bytes on resume', async t => {

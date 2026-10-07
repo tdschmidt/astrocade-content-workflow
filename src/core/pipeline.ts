@@ -20,7 +20,7 @@ import { CodexServices } from '../server/providers/codex.js';
 import type { Inference, InferenceProgressEvent } from '../server/providers/inference.js';
 import { JsonStore } from '../server/store.js';
 import { nominateGames, nominationSchema } from './selection.js';
-import { Trace } from './trace.js';
+import { Trace, traceInference } from './trace.js';
 
 const attemptSchema = z.object({
   gameId: z.string(), profile: gameProfileSchema.optional(),
@@ -195,9 +195,10 @@ export async function runPipeline(options: {
     trace.artifact('content-brief.json', store.read().contentBrief);
     let provider: Inference | undefined;
     const onProviderEvent = (event: InferenceProgressEvent) => trace.event(`provider.${event.stage}`, event.status, event.message ?? `${event.model ?? providerName} attempt ${event.attempt}`, { provider: providerName, ...event });
-    const getProvider = () => provider ??= providerName === 'codex'
+    const getProvider = () => provider ??= traceInference(providerName === 'codex'
       ? new CodexServices({ reasoningModel: options.model, mediaTools: config.mediaTools }, onProviderEvent)
-      : new GoogleServices(settings, onProviderEvent);
+      : new GoogleServices(settings, onProviderEvent), trace, providerName, options.model,
+    [settings.geminiApiKey, settings.tavilyApiKey, settings.workbenchPassword, settings.instagramPassword, settings.imapPassword, settings.imapAccessToken, settings.mailtm?.password ?? '']);
     const save = async (change: (run: CoreRun) => void) => { await store!.update(change); await report(directory, store!.read()); };
     const updateAttempt = async (gameId: string, change: (attempt: CoreRun['attempts'][number]) => void) => save(run => change(run.attempts.find(item => item.gameId === gameId)!));
     const verifySource = async (attempt: CoreRun['attempts'][number]) => {
