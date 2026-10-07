@@ -40,6 +40,20 @@ test('continuous paths require observed pointer controls and share the action-ba
   assert.throws(() => validateFeedbackDecision({ ...answer, actions: [{ ...path, keepHeld: true }] }, profile), /unrecognized_keys/);
 });
 
+test('right-button actions preserve pointer permission and reject unsupported buttons', () => {
+  const keyboardOnly = gameProfileSchema.parse({ ...profile, controller: { type: 'sparse', allowedKeys: ['Space'], allowPointer: false } });
+  for (const action of [
+    { type: 'tap' as const, point: { x: 0.5, y: 0.5 }, button: 'right' as const },
+    { ...move, button: 'right' as const },
+    { type: 'path' as const, points: [move.from, move.to], durationMs: 500, button: 'right' as const },
+  ]) {
+    assert.deepEqual(validateFeedbackDecision({ ...answer, actions: [action] }, profile).actions, [action]);
+    assert.throws(() => validateFeedbackDecision({ ...answer, actions: [action] }, keyboardOnly), /control not established/);
+    assert.throws(() => validateFeedbackDecision({ ...answer, actions: [{ ...action, button: 'middle' }] }, profile));
+    assert.throws(() => validateFeedbackDecision({ ...answer, actions: [{ ...action, button: ['left', 'right'] }] }, profile));
+  }
+});
+
 test('feedback compares fresh images, retains lessons and saves its actual evidence', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'feedback-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -115,9 +129,54 @@ test('feedback setup skips reflex games and never treats learned mechanics as ve
   assert.equal(learned.profile?.verification, 'unverified');
   assert.equal(learned.profile?.focus, 'focus');
   assert.equal(learned.profile?.controller.type, 'sparse');
+  if (learned.profile?.controller.type === 'sparse') assert.equal(learned.profile.controller.maxDecisions, 16);
   assert.equal(learned.profile?.maxDurationMs, 175000);
   await rm(join(directory, 'learning.json'));
   await rm(join(directory, 'feedback-assessment.json'));
   const shorter = await learnFeedbackProfile(inspection, candidate, provider, undefined, { captureGoal: 'Fill one visible corner.', maxDurationMs: 60000 });
   assert.equal(shorter.profile?.maxDurationMs, 60000);
+  if (shorter.profile?.controller.type === 'sparse') assert.equal(shorter.profile.controller.maxDecisions, 16, 'the call ceiling may increase without extending the requested wall-time cap');
+});
+
+test('an invalid stop proposal is saved before validation and returns no additional actions', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-invalid-stop-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const invalid = { ...answer, observation: 'A single mark is visible.', outcome: 'success', stop: true,
+    reason: 'Hold the completed screen.', actions: [{ type: 'wait', durationMs: 1000 }] };
+  let calls = 0, accepted = 0;
+  const provider = { json: async (prompt: string) => {
+    assert.match(prompt, /For EVERY decision, stop=true requires actions=\[\]/);
+    assert.match(prompt, /success and failure are terminal outcomes/);
+    return calls++ ? invalid : answer;
+  } } as unknown as Pick<Inference, 'json'>;
+  const decide = createFeedbackController(profile, provider, directory, () => { accepted++; });
+  const dispatched: unknown[] = [];
+  const consume = async (current: GameplayObservation) => { dispatched.push(...(await decide(current)).actions); };
+  await consume(observation);
+  await assert.rejects(consume({ ...observation, observationId: 'fixture:1', previousActions: [move] }), /A stop decision cannot contain actions/);
+  assert.deepEqual(dispatched, [move], 'the invalid final wait never reaches the action consumer');
+  assert.equal(accepted, 1, 'only the valid decision is emitted as accepted');
+  const saved = JSON.parse(await readFile(join(directory, 'decision-02-proposal.json'), 'utf8'));
+  assert.equal(saved.observationId, 'fixture:1');
+  assert.deepEqual(saved.previousActions, [move]);
+  assert.deepEqual(saved.proposal, invalid);
+  assert.equal(await readFile(saved.imagePath, 'utf8'), 'CURRENT_SYNTHETIC_IMAGE');
+  await assert.rejects(readFile(join(directory, 'decision-02.json')), { code: 'ENOENT' });
+});
+
+test('an initial reading wait does not bypass the single gameplay-control probe', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-reading-wait-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const provider = { json: async (prompt: string, schema: { safeParse: (value: unknown) => { success: boolean } }) => {
+    calls++;
+    if (calls === 1) return { ...answer, reason: 'Allow time to read the initial choices.', actions: [{ type: 'wait', durationMs: 5000 }] };
+    assert.match(prompt, /first gameplay input is still an unverified control probe/);
+    assert.equal(schema.safeParse({ ...answer, actions: [{ ...move, button: 'left' }, { type: 'wait', durationMs: 400 }] }).success, false);
+    return answer;
+  } } as unknown as Pick<Inference, 'json'>;
+  const decide = createFeedbackController(profile, provider, directory);
+  await decide(observation);
+  const result = await decide({ ...observation, observationId: 'fixture:1', previousActions: [{ type: 'wait', durationMs: 5000 }], previousImage: observation.image });
+  assert.deepEqual(result.actions, [move]);
 });
