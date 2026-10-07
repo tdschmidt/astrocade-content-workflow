@@ -239,8 +239,10 @@ test('a highlight preserves the whole context of a single selected event', async
   for (const eventIndexes of [[], [0, 1, 2, 3], [-1], [0.5]]) {
     await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, eventIndexes }])));
   }
-  const trimmed = await draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, cuts: [{ startSeconds: 2.2, endSeconds: 6.4 }] }, review]));
-  assert.deepEqual(trimmed.cuts, [{ startSeconds: 2.2, endSeconds: 6.6 }], 'restore the verified payoff context while allowing setup trims');
+  const trimmed = await draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, cuts: [{ startSeconds: 2.2, endSeconds: 6.4 }] }, {
+    ...review, tail: { settledAtSeconds: 5.4, essentialText: '', redundant: true, evidence: 'The landing has settled; the omitted 0.2 seconds show only the same resting position.' },
+  }]));
+  assert.deepEqual(trimmed.cuts, [{ startSeconds: 2.2, endSeconds: 6.4 }], 'a visually verified redundant tail can be removed without padding');
   for (const cuts of [[{ startSeconds: 1, endSeconds: 6.6 }], [{ startSeconds: 2, endSeconds: 5 }, { startSeconds: 4, endSeconds: 6 }]]) {
     await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, cuts }])), /outside the verified action|overlap/);
   }
@@ -262,6 +264,55 @@ test('a highlight joins overlapping transformation phases once and preserves rev
   assert.deepEqual(transformationCapture, original, 'selection must not reorder or merge the saved observations');
 });
 
+test('a shortened ending audits the whole omitted tail and retains readable earned results', async () => {
+  const recorded = { ...capture, durationSeconds: 34.6, analysis: { ...capture.analysis!, events: [{
+    startSeconds: 24.6, endSeconds: 34.6, event: 'Polish then earned result', evidence: 'Polishing makes the car glow; three stars and 245 coins then remain on screen.', outcome: 'Three stars and 245 coins.',
+  }] } };
+  const choice = { ...choiceFor([0]), cuts: [{ startSeconds: 24.6, endSeconds: 29.8 }] };
+  const verdict = { ...review, tail: { settledAtSeconds: 27.8, essentialText: 'Three stars 245 coins', redundant: true, evidence: 'The entire omitted tail holds the same reward panel, with no further consequence.' } };
+  const provider = googleFixture([choice, verdict]);
+  const json = provider.json.bind(provider);
+  let calls = 0;
+  provider.json = async (prompt, schema, media, signal) => {
+    if (++calls === 2) {
+      assert.match(prompt, /OMITTED footage[\s\S]*NOT appear in the rendered short/);
+      assert.match(prompt, /Never credit its action or reading time to the edit/);
+      assert.deepEqual(media!.map(item => item.type === 'video' ? item.processing : null), [
+        { type: 'static', fps: 2, start_offset: '24.6s', end_offset: '29.8s' },
+        { type: 'static', fps: 2, start_offset: '29.8s', end_offset: '34.6s' },
+      ], 'the extra audit covers all omitted footage but does not replace the shown cuts');
+      assert.equal(schema.safeParse(review).success, false, 'trimmed endings require a separate evidence verdict');
+    }
+    return json(prompt, schema, media, signal);
+  };
+  const result = await draftScript({ capture: recorded, format: 'highlight', topic: '', maxDurationSeconds: 5.3 }, provider);
+  assert.deepEqual(result.cuts, choice.cuts);
+  assert.equal(calls, 2, 'tail verification shares the existing visual review, with no extra call or retry');
+  assert.match(result.editorial!.review, /Tail trim: result settled at source 27\.8s; 1\.33s minimum reading time/);
+  assert.equal(recorded.analysis.events[0]!.endSeconds, 34.6, 'available source evidence remains unchanged');
+});
+
+test('tail trimming cannot omit a consequence or borrow reading time from unseen footage', async () => {
+  const recorded = { ...capture, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, startSeconds: 10, endSeconds: 20 }] } };
+  const choice = { ...choiceFor([0]), cuts: [{ startSeconds: 10, endSeconds: 15 }] };
+  const tail = { settledAtSeconds: 13, essentialText: '', redundant: true, evidence: 'A synthetic visible result.' };
+  for (const invalid of [
+    { ...tail, settledAtSeconds: null }, { ...tail, settledAtSeconds: 9.9 }, { ...tail, settledAtSeconds: 15 },
+    { ...tail, settledAtSeconds: 18 }, { ...tail, settledAtSeconds: 14.5 }, { ...tail, redundant: false },
+    { ...tail, essentialText: 'one two three four five six seven eight nine ten eleven twelve' },
+  ]) await assert.rejects(draftScript({ capture: recorded, format: 'highlight', topic: '' }, googleFixture([choice, { ...review, tail: invalid }])), /shortened ending/);
+  await assert.rejects(draftScript({ capture: recorded, format: 'highlight', topic: '' }, googleFixture([choice, review])), /tail/, 'a missing tail verdict cannot silently restore or approve the cut');
+});
+
+test('the combined shown and omitted review stays within 360 requested samples', async () => {
+  const recorded = { ...capture, durationSeconds: 200, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, endSeconds: 180 }] } };
+  const choice = { ...choiceFor([0]), cuts: [{ startSeconds: 0, endSeconds: 5 }] };
+  const verdict = { ...review, tail: { settledAtSeconds: 3, essentialText: '', redundant: true, evidence: 'The long omitted tail has no further events.' } };
+  assert.deepEqual((await draftScript({ capture: recorded, format: 'highlight', topic: '' }, googleFixture([choice, verdict]))).cuts, choice.cuts);
+  const oversized = { ...recorded, analysis: { ...recorded.analysis, events: [{ ...recorded.analysis.events[0]!, endSeconds: 180.01 }] } };
+  await assert.rejects(draftScript({ capture: oversized, format: 'highlight', topic: '' }, googleFixture([choice])), /360-frame review budget/, 'reject before making a partial or oversized visual review');
+});
+
 test('a presenter duration ceiling accepts an exact fit and rejects longer edits before visual review', async () => {
   const boundedCapture = { ...capture, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, startSeconds: 2, endSeconds: 7 }] } };
   const input = { capture: boundedCapture, format: 'highlight' as const, topic: '', presenter: true, maxDurationSeconds: 5 };
@@ -270,7 +321,10 @@ test('a presenter duration ceiling accepts an exact fit and rejects longer edits
   assert.deepEqual(result.cuts, fiveSeconds.cuts);
   // The fixture has no review response; an oversized edit must stop before that call.
   const longerPayoff = { ...boundedCapture, analysis: { ...boundedCapture.analysis, events: [{ ...boundedCapture.analysis.events[0]!, endSeconds: 7.01 }] } };
-  await assert.rejects(draftScript({ ...input, capture: longerPayoff }, googleFixture([fiveSeconds])), /5-second edit target/, 'restoring verified payoff context must not bypass the presenter ceiling');
+  await assert.rejects(draftScript({ ...input, capture: longerPayoff }, googleFixture([{ ...fiveSeconds, cuts: [{ startSeconds: 2, endSeconds: 7.01 }] }])), /5-second edit target/, 'a longer selected payoff must not bypass the presenter ceiling');
+  await assert.rejects(draftScript({ ...input, capture: longerPayoff }, googleFixture([fiveSeconds, {
+    ...review, tail: { settledAtSeconds: 6.5, essentialText: '', redundant: true, evidence: 'The landing settles half a second before the proposed ending.' },
+  }])), /payoff reading time/, 'fitting the presenter cannot justify cutting off required result time');
   for (const maxDurationSeconds of [0, -1, NaN, Infinity]) {
     await assert.rejects(draftScript({ ...input, maxDurationSeconds }, googleFixture([])), /positive finite/);
   }

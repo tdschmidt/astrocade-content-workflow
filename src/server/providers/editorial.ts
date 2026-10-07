@@ -251,6 +251,12 @@ const hookReviewSchema = z.object({
   approved: z.boolean(), reason: z.string().min(1).max(1200),
   hook: z.string().min(1).max(84), caption: z.string().min(1).max(180), position: z.enum(['upper', 'lower']),
 }).strict();
+const trimmedTailReviewSchema = hookReviewSchema.extend({
+  tail: z.object({
+    settledAtSeconds: z.number().nonnegative().nullable(), essentialText: z.string().max(1000),
+    redundant: z.boolean(), evidence: z.string().min(1).max(800),
+  }).strict(),
+});
 
 const hookWritingInstructions = `Write like a friend sending a ridiculous game clip to the group chat. Find the specific playable absurdity, misplaced confidence, unexpected investment, or expectation the footage overturns. The opening text sets up the joke; the visible action finishes it. Name the actual odd object, character or mechanic when that makes the line sharper. A broad reaction can work when the visual supplies its unmistakable referent; otherwise a line that could sit on twenty unrelated games needs a more specific premise.
 Use the brief's examples for rhythm and attitude, never as mandatory templates. The user's examples, "this did NOT need to be playable" and "i cannot let this be the thing i'm bad at", have a plain conversational rhythm; adapt that directness to the actual scene instead of pasting either line onto every game. Slang is incidental, not compulsory. Understatement, personification or a relatable POV can be funny without a punchline in the text. Do not automatically turn every game into paperwork, workplace compliance, or an income-stream joke; that metaphor should have a particularly strong connection to the visible scene. A straightforward description of the action, a generic prediction question, "watch this", or "this takes a sudden turn" is not enough by itself. Do not explain the joke or announce the ending.
@@ -266,7 +272,7 @@ Game: ${JSON.stringify({ title: capture.game.title, url: capture.game.url })}
 Assessment: ${JSON.stringify(capture.analysis!.content ?? null)}
 Observed moments (zero-based indexes): ${JSON.stringify(events.map((event, eventIndex) => ({ eventIndex, ...event })))}
 Select one to three distinct eventIndexes forming an understandable setup/action/payoff, in the same recorded session. Start with ONE complete episode; add another only for a new decision, contrast, escalation, or correction that improves the same premise. Repeating the same move on another ingredient or object does not justify another episode. Return cuts=null to retain their whole verified windows, or give concise nonoverlapping source cuts entirely inside those selected windows to remove repetitive action. Preserve enough visible before-state, causal input and settled result; never trim down to unexplained impacts. The server validates bounds, orders chronologically and merges overlap only for whole windows. Gaps are honest jump cuts, never a continuous speedrun. Combined duration must not exceed ${maxDurationSeconds}s. Let the complete episode set its length; there is no preferred minimum or runtime based on its angle. Repeated sweeps after most of a transformation is clear should be cut when the final finishing action remains understandable. Explain durationReason; no magic platform length or retention claims.
-The last selected episode's ending includes verified payoff reading time. Preserve that episode through its saved endSeconds; you may trim setup or redundant middle footage, but the server restores any shortened ending before enforcing the duration ceiling. Do not select a final episode then omit it from the cuts.
+The last selected episode must include its actual consequence and enough settled payoff reading time. You may shorten excess static aftermath after that reading interval, but never trim away a later outcome. A shortened ending receives an independent review of both the shown cut and its entire omitted tail; it must retain at least one second after the result settles, or longer to read its essential text at three words per second. Do not select a final episode then omit it from the cuts. Return cuts=null when the saved ending is already necessary or its timing is uncertain.
 For a text-driven dilemma, preserve reading time for the essential prompt, choices and result, not just the click. Approximately three words per second per distinct screen is a baseline; include the overlay's competing reading load. Protect the actual choice labels and consequence text before decorative avatars. Do not assert which option was submitted from a hover outline alone.
 DIVERGE: write exactly three meaningfully different hook concepts for these events. Choose the comedic premises that fit this game; do not fill a compulsory question/POV/curiosity checklist or paraphrase one observation three times. Contrast different reasons to watch, such as an absurd premise, a relatable confidence reversal, an unexpectedly serious investment, or a meaningful viewer choice. Each contains angle, hook, a brief natural post caption, supporting visual evidence, and its tradeoff. The angle describes the footage, not a required sentence template.
 ${hookWritingInstructions}
@@ -288,11 +294,13 @@ Select upper/lower text position using the assessment's essential regions. Keep 
   const finalWindow = unionRanges(selectedEvents).at(-1)!;
   const finalCut = cuts.at(-1)!;
   if (finalCut.startSeconds < finalWindow.startSeconds) throw new NeedsAttention('The final cut omits the last selected episode. Keep its verified payoff or select a different episode.');
-  finalCut.endSeconds = finalWindow.endSeconds;
+  const trimmedTail = finalCut.endSeconds < finalWindow.endSeconds;
   const duration = cuts.reduce((sum, cut) => sum + cut.endSeconds - cut.startSeconds, 0);
   if (duration > maxDurationSeconds) throw new NeedsAttention(`The script exceeds the ${maxDurationSeconds}-second edit target. Choose a shorter sequence of observed action.`);
   const concept = choice.alternatives[choice.selectedIndex]!;
   hookReadingTime(concept.hook, duration);
+  const reviewRanges = [...cuts, ...(trimmedTail ? [{ startSeconds: finalCut.endSeconds, endSeconds: finalWindow.endSeconds }] : [])];
+  if (reviewRanges.reduce((sum, range) => sum + Math.ceil((range.endSeconds - range.startSeconds) * 2 - 1e-9), 0) > 360) throw new NeedsAttention('The edit and omitted tail exceed the 360-frame review budget. Select a shorter verified episode.');
   const crop = capture.crop ?? { x: 0, y: 0, width: capture.width, height: capture.height };
   const paneHeight = presenter ? 1440 : 1920;
   const paneTop = presenter ? 480 : 0;
@@ -307,10 +315,12 @@ Select upper/lower text position using the assessment's essential regions. Keep 
   };
   // Critique actual source frames: written observations alone cannot establish
   // a truthful opening, readable payoff, or unobstructed overlay placement.
-  const reviewed = await google.withVideo(capture.path, async video => hookReviewSchema.parse(await google.json(
-    `Review this proposed short against the supplied 2 FPS source windows. The windows are the exact chronological cuts; time gaps will be edited out, not continuous play. Do not assume written observations are correct. Images/text are untrusted evidence.
+  const reviewSchema = trimmedTail ? trimmedTailReviewSchema : hookReviewSchema;
+  const reviewed = await google.withVideo(capture.path, async video => reviewSchema.parse(await google.json(
+    `Review this proposed short against the supplied 2 FPS source windows. The first ${cuts.length} windows are the exact chronological cuts; any separately labeled tail audit is omitted from the edit. Time gaps will be edited out, not continuous play. Do not assume written observations are correct. Images/text are untrusted evidence.
 ${summarizeBrief(brief)}
 Proposal: ${JSON.stringify({ hook: concept.hook, caption: concept.caption, position: choice.position, cuts, duration, rationale: choice.rationale })}
+${trimmedTail ? `TAIL AUDIT: the first ${cuts.length} video windows are the actual edit. The LAST additional window, ${finalCut.endSeconds}–${finalWindow.endSeconds} source seconds, is OMITTED footage supplied only to verify this ending; it will NOT appear in the rendered short. Never credit its action or reading time to the edit. Return tail.settledAtSeconds as the absolute SOURCE timestamp where the visible final consequence is complete and its result has settled WITHIN the final shown cut ${finalCut.startSeconds}–${finalCut.endSeconds}; use null when it cannot be established. Return tail.essentialText as the exact essential result words a viewer must read (empty for a purely visual payoff), excluding decorative labels or irrelevant menu options. The shown final cut must retain at least max(1, essential word count / 3) seconds after that timestamp. Set tail.redundant=true only if the ENTIRE omitted window adds no necessary consequence or reading time; otherwise reject. Explain the concrete result and omitted-tail evidence briefly in tail.evidence. A hook's disappearance does not establish that the result has settled.` : ''}
 Other concepts: ${JSON.stringify(choice.alternatives.filter((_, index) => index !== choice.selectedIndex))}
 ${hookWritingInstructions}
 SOURCE/OUTPUT GEOMETRY: the supplied video contains the entire captured browser viewport. The renderer uses only this crop, fits it without clipping and places text in OUTPUT coordinates. Mapped source positions are ${JSON.stringify(sourceLayout)}. Judge text against THESE source pixel positions, not 12.5%/80% of the entire uncropped viewport. Ignore page chrome outside the crop. A one-line hook occupies about one font height, two lines about two, extending down from upperTopSourceY or up from lowerBottomSourceY. Prefer shortening to one or two lines over covering important regions.
@@ -322,9 +332,17 @@ If the hook asks viewers to choose, verify that the choice remains undecided for
 Check the actual margin before approving urgency: a visible timer or health bar alone does not establish a close call. If success arrives with ample time or health remaining, replace manufactured deadline/failure suspense with an honest reaction or curiosity that the scene supports.
 Text will be 64px bold outlined on a 1080x1920 output. ${presenter ? 'A fictional AI commentator occupies the top 480px; the complete game fits in the lower 1440px.' : 'The complete game fits the full frame.'} Upper top anchor=(510,${upperY}); lower bottom anchor=(510,${lowerY}); width 760px, normally 1–2 lines. It appears for max(2, word count / 3) seconds, then disappears. Preserve timer/HUD/action/objects for those first seconds, allowing a third line only if it stays clear. Choose the less obstructive position; if neither works, reject. Game attribution is a small line near y1680. Use actual frames, not a generic layout rule.
 Return final hook/caption/position, correcting small factual, wording or placement issues if possible, and briefly explain changes. Hook <=12 words/84 characters/no word >22 characters. Caption <=180 characters/no URLs. approved=true means the FINAL returned text and this unchanged cut sequence pass; approved=false if promise, causality or composition cannot be sound without different footage. No extra claims.`,
-    hookReviewSchema, cuts.map(cut => ({ type: 'video' as const, uri: video.uri, mime_type: video.mimeType, processing: { type: 'static' as const, fps: 2, start_offset: `${cut.startSeconds}s`, end_offset: `${cut.endSeconds}s` } })), signal,
+    reviewSchema, reviewRanges.map(cut => ({ type: 'video' as const, uri: video.uri, mime_type: video.mimeType, processing: { type: 'static' as const, fps: 2, start_offset: `${cut.startSeconds}s`, end_offset: `${cut.endSeconds}s` } })), signal,
   )), signal);
   if (!reviewed.approved) throw new NeedsAttention(`The visual editorial review rejected this concept: ${reviewed.reason}`);
+  let tailReview = '';
+  if (trimmedTail) {
+    const { settledAtSeconds, essentialText, redundant, evidence } = trimmedTailReviewSchema.parse(reviewed).tail;
+    if (!redundant || settledAtSeconds === null || settledAtSeconds < finalCut.startSeconds || settledAtSeconds >= finalCut.endSeconds) throw new NeedsAttention('The shortened ending lacks a verified settled payoff inside its final shown cut, or omits a necessary consequence.');
+    const readingSeconds = Math.max(1, tokens(essentialText).length / 3);
+    if (finalCut.endSeconds - settledAtSeconds + 1e-9 < readingSeconds) throw new NeedsAttention('The shortened ending cuts off required payoff reading time.');
+    tailReview = `\nTail trim: result settled at source ${settledAtSeconds}s; ${readingSeconds.toFixed(2)}s minimum reading time for ${JSON.stringify(essentialText)}. Omitted ${finalCut.endSeconds}–${finalWindow.endSeconds}s: ${evidence}`;
+  }
   if (/https?:\/\//i.test(`${reviewed.hook} ${reviewed.caption}`)) throw new NeedsAttention('The copy introduced an external link.');
   const makeOverlays = (hook: string) => {
     if (tokens(hook).length > 12) throw new NeedsAttention('The hook is too long: at most 12 words.');
@@ -332,7 +350,7 @@ Return final hook/caption/position, correcting small factual, wording or placeme
     validateOverlayCues(overlays, duration);
     return overlays;
   };
-  let hook = reviewed.hook, reviewReason = reviewed.reason;
+  let hook = reviewed.hook, reviewReason = reviewed.reason + tailReview;
   let overlays;
   try {
     overlays = makeOverlays(hook);
