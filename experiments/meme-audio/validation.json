@@ -1,0 +1,63 @@
+{
+  "validatedAt": "2026-10-07T21:29:27.413987+00:00",
+  "assetCount": 8,
+  "humanAuditioned": false,
+  "results": [
+    {
+      "id": "vine-boom",
+      "exists": true,
+      "sha256Matches": true,
+      "trimWithinBounds": true,
+      "ffmpegDecode": "pass"
+    },
+    {
+      "id": "bruh",
+      "exists": true,
+      "sha256Matches": true,
+      "trimWithinBounds": true,
+      "ffmpegDecode": "pass"
+    },
+    {
+      "id": "metal-pipe",
+      "exists": true,
+      "sha256Matches": true,
+      "trimWithinBounds": true,
+      "ffmpegDecode": "pass"
+    },
+    {
+      "id": "record-scratch",
+      "exists": true,
+      "sha256Matches": true,
+      "trimWithinBounds": true,
+      "ffmpegDecode": "pass"
+    },
+    {
+      "id": "doge-bonk",
+      "exists": true,
+      "sha256Matches": true,
+      "trimWithinBounds": true,
+      "ffmpegDecode": "pass"
+    },
+    {
+      "id": "anime-wow",
+      "exists": true,
+      "sha256Matches": true,
+      "trimWithinBounds": true,
+      "ffmpegDecode": "pass"
+    },
+    {
+      "id": "phonk-execution",
+      "exists": true,
+      "sha256Matches": true,
+      "trimWithinBounds": true,
+      "ffmpegDecode": "pass"
+    },
+    {
+      "id": "badly",
+      "exists": true,
+      "sha256Matches": true,
+      "trimWithinBounds": true,
+      "ffmpegDecode": "pass"
+    }
+  ]
+}

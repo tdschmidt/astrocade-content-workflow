@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "id": "archer-troll",
+  "title": "Gravity gets the last shot",
+  "style": "troll-freeze",
+  "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/runs/2026-10-07T09-52-40-893Z-ab7d60/game-01KHYPFX5D977V3PTZSKR6XFVK/66a3484d-2f19-4c0c-bd38-d8d6f421b809.webm",
+  "segments": [
+    {
+      "kind": "clip",
+      "start": 3.03,
+      "end": 3.533,
+      "speed": 0.7,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 3.533,
+      "end": 3.666,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "freeze",
+      "at": 3.666,
+      "duration": 0.7,
+      "visual": "bw",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 3.666,
+      "end": 6.9,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    }
+  ],
+  "captions": [
+    {
+      "start": 0,
+      "end": 0.8,
+      "text": "Nice safe ledge.",
+      "position": "top",
+      "emphasis": false
+    },
+    {
+      "start": 3.5,
+      "end": 4.8,
+      "text": "Gravity follows through.",
+      "position": "top",
+      "emphasis": true
+    }
+  ],
+  "stickers": [
+    {
+      "start": 0.87,
+      "end": 1.57,
+      "asset": "reaction",
+      "x": 0.27,
+      "y": 0.34,
+      "size": 0.16
+    }
+  ],
+  "punches": [
+    {
+      "at": 0.87,
+      "duration": 0.23,
+      "strength": 0.32
+    }
+  ],
+  "soundCues": [
+    {
+      "at": 0.7,
+      "kind": "whoosh",
+      "gainDb": -12
+    },
+    {
+      "at": 0.87,
+      "kind": "impact",
+      "gainDb": -8
+    }
+  ],
+  "music": {
+    "asset": "troll",
+    "dropAt": 0.87,
+    "gainDb": -9
+  },
+  "rationale": "Visible causal event: orange releases an arrow, it crosses the gap and visibly strikes the black archer at source 3.666s; the opponent then tumbles off the platform before the real Victory, +90, and three-star result appears. Timing: (3.533-3.030)/0.7 rounds to 0.733s, the contact clip rounds to 0.133s, the freeze is 0.700s, and the final clip rounds to 3.233s, totaling 4.800s. The grayscale freeze, impact, punch, reaction face, and troll-music drop align at output 0.87s with the observed hit. Clean footage resumes immediately to preserve the entire fall and result. Zoom remains 1 so the health, reward counter, and victory evidence stay visible; the face sits in empty upper-left sky, captions remain above the combat/result panel, and all overlays end by 4.8s."
+}

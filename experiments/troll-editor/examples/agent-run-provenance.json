@@ -1,0 +1,50 @@
+{
+  "createdAt": "2026-10-07T20:49:53.825Z",
+  "note": "Separate CodexServices calls generated these exact plans after user explicitly approved use of Codex on selected gameplay. Reference-guidance.md was added afterward; original prompt.txt snapshots remain authoritative.",
+  "runs": [
+    {
+      "id": "archer-troll",
+      "runDirectory": "data/experiments/troll-editor/archer-troll-v1",
+      "sourceSha256": "c8123925caa8425acdb09cd3c5d4d088f9f5a103f4015196830a1cc321cb9e8b",
+      "provider": "CodexServices",
+      "modelSetting": "default",
+      "frameCount": 30,
+      "systemPromptSha256": "c4dd5221148c64ff2def6f4e50fff92a945996c24c04e0a181779e5c342770ef",
+      "stylePromptSha256": "0ea401b5bb25b8304b33c4a2451bbf7bce43c55d2cbd77b39ce531133cf0e01a",
+      "executedPromptSha256": "85716db0c2b8efb1c48024f429d2c0809a0ee96df7de085ee7a0e66db9b5b1c5",
+      "generatedPlanSha256": "d1a5b3d860f3b049253147495b7ee37d8eaf73704f51407ef6c859ddf56ddb77",
+      "completedProviderEvent": {
+        "stage": "json",
+        "model": "default",
+        "attempt": 1,
+        "status": "completed",
+        "durationMs": 31740,
+        "inputTokens": 46207,
+        "outputTokens": 1589
+      },
+      "manuallyAltered": false
+    },
+    {
+      "id": "zombie-fail",
+      "runDirectory": "data/experiments/troll-editor/zombie-fail-v1",
+      "sourceSha256": "06fd2f47e12837f2d11a004065a5e4652fd00230ff426182d8efa7f6be173026",
+      "provider": "CodexServices",
+      "modelSetting": "default",
+      "frameCount": 58,
+      "systemPromptSha256": "c4dd5221148c64ff2def6f4e50fff92a945996c24c04e0a181779e5c342770ef",
+      "stylePromptSha256": "d283ce3ac7d03d4206923d479f7570b6a93517a2862f18be4f9259ba115d03d9",
+      "executedPromptSha256": "8ac4d635e594e62f34baea0d93118d48657daf4b94eb73d8bcfe888c644a70df",
+      "generatedPlanSha256": "fbd326a154ca9b29ded4af0b3288828c03088dd341d767f56ee817410cd0354c",
+      "completedProviderEvent": {
+        "stage": "json",
+        "model": "default",
+        "attempt": 1,
+        "status": "completed",
+        "durationMs": 28209,
+        "inputTokens": 79193,
+        "outputTokens": 1334
+      },
+      "manuallyAltered": false
+    }
+  ]
+}

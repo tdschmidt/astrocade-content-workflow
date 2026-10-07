@@ -1,0 +1,269 @@
+Review of failed prior draft: your causal selection and main drop location are appropriate, but both attempts added the durations incorrectly and put captions beyond the actual video end. The exact timeline below is authoritative; your prose20.70 was wrong. Fix every caption and duration statement using the calculated timeline. Do not lengthen idle to match your arithmetic.
+
+Visual inspection of the actual141.610 source frame also shows the proposed y338–475 headBox is too tall and includes chest. The actual face/head is approximately rawsource x315–409,y337–420 (roughly94x83). Aftercrop output around x311,y367,width102,height90. Independently verify that supplied frame; keep the box tight and centered on the tilted HEAD only. A slight leftward rotation follows the visible face.
+
+Real music lead-in should establish a quiet bed from the start or near-start, not leave the first11seconds mostlysilent. You can use14.84seconds of genuine lead-in for sourceStart14.84 and outputdrop15.1, beginning aroundoutput.26. Keep it quiet until the lateprimarydrop. Mainbass onset must not be ducked by a long simultaneousSFX.
+
+Exact computed timeline:
+{
+  "duration": 18.7,
+  "timeline": [
+    {
+      "index": 0,
+      "outputStart": 0,
+      "duration": 2.0,
+      "outputEnd": 2.0
+    },
+    {
+      "index": 1,
+      "outputStart": 2.0,
+      "duration": 8.0,
+      "outputEnd": 10.0
+    },
+    {
+      "index": 2,
+      "outputStart": 10.0,
+      "duration": 4.0,
+      "outputEnd": 14.0
+    },
+    {
+      "index": 3,
+      "outputStart": 14.0,
+      "duration": 1.0333333333333334,
+      "outputEnd": 15.033333333333333
+    },
+    {
+      "index": 4,
+      "outputStart": 15.033333333333333,
+      "duration": 0.06666666666666667,
+      "outputEnd": 15.1
+    },
+    {
+      "index": 5,
+      "outputStart": 15.1,
+      "duration": 0.13333333333333333,
+      "outputEnd": 15.233333333333333
+    },
+    {
+      "index": 6,
+      "outputStart": 15.233333333333333,
+      "duration": 0.6,
+      "outputEnd": 15.833333333333332
+    },
+    {
+      "index": 7,
+      "outputStart": 15.833333333333332,
+      "duration": 2.1,
+      "outputEnd": 17.933333333333334
+    },
+    {
+      "index": 8,
+      "outputStart": 17.933333333333334,
+      "duration": 0.7666666666666667,
+      "outputEnd": 18.7
+    }
+  ]
+}
+
+Prior draft for correction:
+{
+  "version": 1,
+  "id": "zombie-fail-v5",
+  "title": "Fire was only the warm-up",
+  "style": "ironic-fail",
+  "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/runs/2026-10-07T19-15-45-196Z-b9a7a1/game-01KNZ88KS7SHE4H82X4R336N9V/532148ea-0c5d-4873-b902-df5898d077ad.webm",
+  "sourceCrop": {
+    "x": 30,
+    "y": 0,
+    "width": 660,
+    "height": 1176
+  },
+  "audioCatalogPath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/experiments/meme-audio/catalog.json",
+  "narrativeBeats": {
+    "candidates": [
+      {
+        "sourceAt": 141.544,
+        "significance": "The first visible orange blast ring begins the decisive rupture, launch, and dismemberment.",
+        "rank": 1
+      },
+      {
+        "sourceAt": 69.513,
+        "significance": "Fire visibly reaches the specimen, which scorches and bends but remains recognizable.",
+        "rank": 2
+      },
+      {
+        "sourceAt": 138.727,
+        "significance": "The bomb is visibly beneath the specimen with its fuse burning, escalating the threat.",
+        "rank": 3
+      },
+      {
+        "sourceAt": 143.71,
+        "significance": "Separated parts remain visible while the counter reads 02, proving the consequence.",
+        "rank": 4
+      }
+    ],
+    "setup": {
+      "sourceAt": 67.513,
+      "description": "The intact specimen faces the fire attack before visibly enduring its flames."
+    },
+    "escalation": {
+      "sourceAt": 138.727,
+      "description": "A bomb sits beneath the specimen with a burning fuse, building toward detonation."
+    },
+    "climax": {
+      "segmentIndex": 5,
+      "sourceAt": 141.544,
+      "outputAt": 15.1,
+      "visualSegmentIndex": 5,
+      "punchIndex": 0,
+      "reason": "This is the first observed blast ring and the start of the stronger reversal that visibly ruptures and throws the specimen."
+    },
+    "result": {
+      "sourceAt": 143.71,
+      "description": "Clean footage shows scattered body parts and the counter changed to 02."
+    },
+    "tailReason": "The post-climax tail is necessary to show the actual launch, dismemberment, falling debris, and counter change before ending ahead of the later reset sequence.",
+    "latePayoffException": ""
+  },
+  "segments": [
+    {
+      "kind": "clip",
+      "start": 67.513,
+      "end": 69.513,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 69.513,
+      "end": 75.513,
+      "speed": 0.75,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 136.711,
+      "end": 140.727,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 140.727,
+      "end": 141.51,
+      "speed": 0.75,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 141.51,
+      "end": 141.544,
+      "speed": 0.5,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 141.544,
+      "end": 141.61,
+      "speed": 0.5,
+      "visual": "bw",
+      "zoom": 1
+    },
+    {
+      "kind": "freeze",
+      "at": 141.61,
+      "duration": 0.6,
+      "visual": "deepfry",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 141.61,
+      "end": 143.71,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 143.71,
+      "end": 144.277,
+      "speed": 0.75,
+      "visual": "clean",
+      "zoom": 1
+    }
+  ],
+  "captions": [
+    {
+      "start": 0.3,
+      "end": 2.8,
+      "text": "Fire? I'm fine.",
+      "position": "top",
+      "emphasis": false
+    },
+    {
+      "start": 18.4,
+      "end": 20.2,
+      "text": "Never mind.",
+      "position": "top",
+      "emphasis": true
+    }
+  ],
+  "stickers": [],
+  "faceAttachments": [
+    {
+      "segmentIndex": 6,
+      "asset": "reaction",
+      "coordinateSpace": "output-pixels",
+      "headBox": {
+        "x": 301,
+        "y": 368,
+        "width": 110,
+        "height": 149
+      },
+      "scale": 1.15,
+      "rotationDegrees": -28,
+      "evidence": "At supplied source 141.610s, the intact tilted head occupies approximately raw source x306\u2013407, y338\u2013475. With crop x30 and the declared 1.0884 transform, this maps to approximately x301, y368, width110, height149 in output pixels; the rotation follows the visible leftward head tilt."
+    }
+  ],
+  "punches": [
+    {
+      "at": 15.1,
+      "duration": 0.3,
+      "strength": 1
+    }
+  ],
+  "soundCues": [
+    {
+      "at": 2,
+      "kind": "impact",
+      "assetId": "doge-bonk",
+      "sourceStart": 1.12,
+      "duration": 0.73,
+      "gainDb": -12
+    },
+    {
+      "at": 14.1,
+      "kind": "record-stop",
+      "assetId": "record-scratch",
+      "sourceStart": 0.04,
+      "duration": 0.59,
+      "gainDb": -9
+    }
+  ],
+  "music": {
+    "asset": "ironic",
+    "dropAt": 15.1,
+    "assetId": "phonk-execution",
+    "sourceStart": 14.84,
+    "leadInSeconds": 4,
+    "leadInGainDb": -20,
+    "gainDb": -12
+  },
+  "rationale": "Ranked candidates: (1) the first visible bomb blast ring at 141.544s, which begins the decisive rupture and launch; (2) fire contact at 69.513s, where the specimen scorches but remains recognizable; (3) the burning bomb beneath the specimen at 138.727s, which escalates the threat; and (4) the counter reading 02 at 143.710s, which proves the consequence. Setup retains the flame sequence, escalation shows the bomb and fuse, climax is the blast onset, and the result is clean dismemberment plus the changed counter. Per-segment rounded timing is 2.00+8.00+4.00+1.03+0.07+0.13+0.60+2.10+0.77=20.70s. Source 141.544 maps to output 15.10s, where BW begins, the strongest punch lands, and phonk source 14.84 reaches its drop after a genuine four-second lead-in from source 10.84. The exact observed 141.610s frame then receives the brief deep-fried freeze and tightly attached face before clean gameplay resumes. The 5.60s from primary onset through the ending includes only 0.73s of treated interruption and is needed to show launch, separation, debris settling, and counter 02; the readable result after the freeze is 2.87s. Zoom 1 preserves the HUD. Both top captions avoid the central contact area, bottom controls, and upper-right counter, and all overlays end before the 20.70s output boundary."
+}

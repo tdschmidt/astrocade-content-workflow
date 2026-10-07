@@ -1,0 +1,36 @@
+{
+  "researched_at": "2026-10-07",
+  "method": "Web source text and metadata; no frame-by-frame audiovisual measurement",
+  "timing_values": "Proposed experiment defaults, not observed measurements",
+  "sources": [
+    {"id": "minecraft_phonk_edit", "url": "https://www.curseforge.com/minecraft/mc-mods/phonk-edit", "kind": "creator_project", "supports": ["Minecraft Shorts inspiration", "greyscale freeze", "skull overlays", "shake", "motion blur", "variable speed", "gameplay triggers"]},
+    {"id": "minecraft_so_tuff", "url": "https://modrinth.com/mod/so-tuff", "kind": "creator_project", "supports": ["Minecraft Shorts inspiration", "greyscale freeze", "emoji shake"]},
+    {"id": "ka_roblox_tutorial", "url": "https://www.youtube.com/watch?v=-19kugRgvgs", "kind": "creator_tutorial_metadata", "supports": ["Roblox-specific trollface editing tutorial"]},
+    {"id": "ka_written_tutorial", "url": "https://thekaproduction.com/2025/12/14/blue-emoji-troll-face-reel-editing-capcut/", "kind": "creator_tutorial", "supports": ["reaction freeze selection", "overlay", "quick appear and settle", "beat alignment"]},
+    {"id": "velocity_tutorial", "url": "https://www.youtube.com/watch?v=MNHtG39AdyU", "kind": "creator_tutorial_metadata", "supports": ["velocity", "glow", "shake", "zoom", "motion blur", "beat sync"]},
+    {"id": "capcut_velocity", "url": "https://www.capcut.com/resource/how-to-do-velocity-on-capcut", "kind": "official_product_documentation", "supports": ["custom speed curves", "smooth slow motion"]},
+    {"id": "freeze_template", "url": "https://www.capcut.com/template-detail/Freeze-troll-face/7382814681502584070", "kind": "creator_template_metadata", "supports": ["freeze trollface template exists"]},
+    {"id": "deep_fried_template", "url": "https://www.capcut.com/template-detail/Deep-Fried/7384186034285858054", "kind": "creator_template_metadata", "supports": ["deep-fried template exists"], "does_not_support": ["exact effect settings", "game-specific recipe"]},
+    {"id": "xonada_roblox", "url": "https://www.youtube.com/watch?v=FJe2uq38GI8", "kind": "creator_edit_title", "supports": ["MONTAGEM XONADA Roblox edit"]},
+    {"id": "xonada_official", "url": "https://www.youtube.com/watch?v=pUklUX8ITeo", "kind": "official_artist_upload", "supports": ["MONTAGEM XONADA artist credits", "distorted bass and pitched vocals"]},
+    {"id": "metamorphosis_minecraft", "url": "https://www.youtube.com/watch?v=bVlWTuBDKtI", "kind": "creator_edit_title", "supports": ["METAMORPHOSIS Minecraft edit"]},
+    {"id": "metamorphosis_roblox", "url": "https://www.youtube.com/watch?v=r3CAPzsdUhU", "kind": "creator_edit_title", "supports": ["METAMORPHOSIS Roblox edit"]},
+    {"id": "tomada_roblox", "url": "https://www.capcut.com/template-detail/Roblox-edit/7486197073444883765", "kind": "template_viewer_comment", "supports": ["viewer identifies MONTAGEM TOMADA"], "confidence": "moderate_low"},
+    {"id": "tomada_official", "url": "https://www.youtube.com/watch?v=EYaP4h6njtI", "kind": "official_artist_upload", "supports": ["MONTAGEM TOMADA title and MXZI artist"]},
+    {"id": "tomada_slowed_official", "url": "https://www.youtube.com/watch?v=qN_ecsamhms", "kind": "official_artist_upload", "supports": ["official slowed version exists"]},
+    {"id": "darkside_minecraft", "url": "https://www.youtube.com/watch?v=uGG_Eucz0Tc", "kind": "creator_edit_description", "supports": ["DARKSIDE by Neoni credited in trollface-tagged Minecraft cinematic edit"]},
+    {"id": "adjacent_mod_music", "url": "https://github.com/Asterveila/YoutubeShortsEdit", "kind": "creator_credits", "supports": ["Shorts-inspired adjacent game mod", "Minecraft mod inspiration", "track credits"], "does_not_support": ["popularity ranking", "Minecraft/Roblox usage of every listed track", "permission to reuse bundled media"]},
+    {"id": "youtube_shorts_music", "url": "https://support.google.com/youtube/answer/13053317?hl=en-GB", "kind": "official_platform_policy", "supports": ["Shorts picker agreements", "external music insertion can receive standard copyright claims"]},
+    {"id": "youtube_audio_library", "url": "https://support.google.com/youtube/answer/3376882", "kind": "official_platform_documentation", "supports": ["production music library", "track-specific attribution requirements"]}
+  ],
+  "music_references": [
+    {"title": "MONTAGEM XONADA", "artists": ["MXZI", "Dj Samir", "DJ Javi26"], "evidence": ["xonada_roblox", "xonada_official"], "scope": "direct_roblox_edit", "audio_file": null, "reuse_permission": "not_supplied"},
+    {"title": "METAMORPHOSIS", "artists": ["INTERWORLD"], "evidence": ["metamorphosis_minecraft", "metamorphosis_roblox", "adjacent_mod_music"], "scope": "direct_game_edit_titles", "version": "unverified", "audio_file": null, "reuse_permission": "not_supplied"},
+    {"title": "MONTAGEM TOMADA", "artists": ["MXZI"], "evidence": ["tomada_roblox", "tomada_official", "tomada_slowed_official"], "scope": "viewer_identification_not_creator_credit", "audio_file": null, "reuse_permission": "not_supplied"},
+    {"title": "DARKSIDE", "artists": ["Neoni"], "evidence": ["darkside_minecraft"], "scope": "minecraft_cinematic_branch", "audio_file": null, "reuse_permission": "not_supplied"},
+    {"title": "PASSO BEM SOLTO", "artists": ["ATLXS"], "version": "Slowed", "evidence": ["adjacent_mod_music"], "scope": "adjacent_style_reference", "audio_file": null, "reuse_permission": "not_supplied"},
+    {"title": "Sahara", "artists": ["Hensonn"], "evidence": ["adjacent_mod_music"], "scope": "adjacent_style_reference", "audio_file": null, "reuse_permission": "not_supplied"},
+    {"title": "Murder in My Mind", "artists": ["Kordhell"], "source_title": "Mxrd3r in My Mind", "evidence": ["adjacent_mod_music"], "scope": "adjacent_style_reference", "audio_file": null, "reuse_permission": "not_supplied"},
+    {"title": "Acelerada", "artists": ["sma$her", "MXZI"], "evidence": ["adjacent_mod_music"], "scope": "adjacent_style_reference", "audio_file": null, "reuse_permission": "not_supplied"}
+  ]
+}

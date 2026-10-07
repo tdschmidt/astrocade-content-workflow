@@ -1,0 +1,10 @@
+{
+  "id": "golem-troll",
+  "style": "troll-freeze",
+  "title": "Wall tax",
+  "sourcePath": "data/runs/variety-2026-10-07-10-kick-the-buddy-x-irongolem/game-01M38GNMGHSB58XT9J7KA8XN2S/c58e0fd8-9d5e-401c-8665-4aceb082c5fa.webm",
+  "start": 92,
+  "end": 98,
+  "fps": 4,
+  "brief": "The Iron Golem tumbles across the room toward the right wall. A wall contact produces green gems; the visible top-left counter advances from 32 to 40, and the golem settles upright. The exact player input is not shown. Choose a troll-freeze treatment that makes this physics reward funny and keeps the actual impact plus counter increase readable. Do not claim a victory or deliberate attack. Open brick wall in the upper-middle can hold a reaction face; the lower arena holds the golem and the top-left holds score evidence."
+}

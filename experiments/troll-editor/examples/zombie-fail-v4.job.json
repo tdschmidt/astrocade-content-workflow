@@ -1,0 +1,30 @@
+{
+  "id": "zombie-fail-v4",
+  "title": "The second idea was worse",
+  "style": "ironic-fail",
+  "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/runs/2026-10-07T19-15-45-196Z-b9a7a1/game-01KNZ88KS7SHE4H82X4R336N9V/532148ea-0c5d-4873-b902-df5898d077ad.webm",
+  "start": 67.5,
+  "end": 147,
+  "fps": 4,
+  "observationWindows": [
+    {
+      "start": 67.5,
+      "end": 76,
+      "fps": 1
+    },
+    {
+      "start": 136.7,
+      "end": 147,
+      "fps": 1
+    },
+    {
+      "start": 145,
+      "end": 147,
+      "fps": 8
+    }
+  ],
+  "minDuration": 15,
+  "maxDuration": 25,
+  "audioCatalogPath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/experiments/meme-audio/catalog.json",
+  "brief": "The user wants longer edits with real meme audio, no game-name watermark, and a troll face attached to the actual character face. Build 15\u201325 seconds from the flame episode then the later bomb episode in this same recording. Each is distinct real action; jumpcut the long unobserved idle gap honestly. The zombie is scorched and bent by flame, later a bomb falls and fuse burns before an explosion and the SPECIMENS counter increments. This is ironic understatement about the cartoon specimen, not a player failure or fabricated victory. Preserve readable flame contact/reaction and bomb setup/explosion/aftermath. Pick one exact supplied frame while head remains intact, freeze .7\u20131.0sec, and attach reaction face to its actual head with a documented precise output headBox after crop x30/y0/660x1176; keep zoom1 and stickers=[]. No face over a moving character or flying debris. Use actual record-scratch/bruh/vine-boom/metal-pipe or bonk assets sparingly plus phonk-execution sourceStart14.84 at an earned beat. Its drop point is a measured energy candidate only. No procedural bed or sound. Target a real escalation, never pad unchanging footage. This is a targeted ending repair to an already validated prior plan in feedback. Preserve the existing clip windows, caption timings, precise freeze/headBox, sounds, and music lead-in, except trim the final bomb clip end to stop before next specimen respawn begins. Use the dense145\u2013147s tail frames to choose a strong resolved final frame, with counter02 and settled remains. Do not pad, move the freeze, or redesign the earlier sequence. The result must still exceed15seconds."
+}
