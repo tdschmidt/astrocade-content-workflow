@@ -24,12 +24,14 @@ export type GameplayObservation = {
   remainingMs: number;
   previousActions: InputAction[];
   previousImage?: Buffer;
+  /** Fresh, timestamped screenshots taken during the preceding native batch. */
+  recentFrames?: Array<{ image: Buffer; elapsedMs: number }>;
   previousReason?: string;
   /** The last model call evaluates the preceding inputs without starting another batch. */
   isFinal: boolean;
   signal: AbortSignal;
 };
-export type CaptureProgress = { stage: 'loading' | 'ready' | 'recording' | 'deciding' | 'finalizing'; message: string };
+export type CaptureProgress = { stage: 'loading' | 'ready' | 'recording' | 'deciding' | 'finalizing' | 'warning'; message: string };
 export type ActionProgress = { phase: 'setup' | 'start' | 'focus' | 'control'; status: 'started' | 'completed'; action: UiStep; recordingElapsedMs: number | null };
 export type CaptureAttemptResult = {
   attemptId: string;
@@ -64,6 +66,8 @@ export async function runCaptureAttempt(options: {
   decide?: (observation: GameplayObservation) => Promise<unknown>;
   allowUnverified?: boolean;
   allowLocalGame?: boolean;
+  /** Observe transient effects during native actions; legacy captures use only settled frames. */
+  observeActionFrames?: boolean;
   recorderOptions?: Pick<CaptureOptions, 'headless' | 'ffmpeg'>;
   /** Test seam; production uses the native recorder. */
   createCapture?: (options: CaptureOptions) => Promise<GameCapture>;
@@ -136,6 +140,7 @@ export async function runCaptureAttempt(options: {
         let previousActions: InputAction[] = [];
         let previousImage: Buffer | undefined;
         let previousReason: string | undefined;
+        let recentFrames: GameplayObservation['recentFrames'];
         for (let index = 0; index < profile.controller.maxDecisions; index++) {
           controlSignal.throwIfAborted();
           if (profile.maxDurationMs - (performance.now() - recordingStarted) < 2000) { stopReason = 'duration_limit'; break; }
@@ -155,7 +160,7 @@ export async function runCaptureAttempt(options: {
           options.onProgress?.({ stage: 'deciding', message: `Visual decision ${index + 1} of ${profile.controller.maxDecisions}.` });
           let decision;
           try {
-            decision = controlDecisionSchema.parse(await withAbort(options.decide!({ observationId, image, mimeType: 'image/jpeg', text, pointerLocked, gameName: profile.name, objective: profile.objective, elapsedMs, remainingMs, previousActions, previousImage, previousReason, isFinal, signal: decisionSignal }), decisionSignal));
+            decision = controlDecisionSchema.parse(await withAbort(options.decide!({ observationId, image, mimeType: 'image/jpeg', text, pointerLocked, gameName: profile.name, objective: profile.objective, elapsedMs, remainingMs, previousActions, previousImage, previousReason, recentFrames, isFinal, signal: decisionSignal }), decisionSignal));
             if (!decision.stop && !isFinal && !decision.actions.length) throw new GameCaptureError('missing_controls', 'The controller supplied neither an action nor a stop decision.');
           } catch (error) {
             if (controlSignal.aborted || !previousActions.length) throw error;
@@ -171,7 +176,12 @@ export async function runCaptureAttempt(options: {
           previousActions = decision.actions;
           previousImage = image;
           previousReason = decision.reason;
-          for (const action of decision.actions) await perform('control', action, () => executor.execute(action));
+          const executeBatch = async () => {
+            for (const action of decision.actions) await perform('control', action, () => executor.execute(action));
+          };
+          recentFrames = options.observeActionFrames ? await observeActionBatch(page, clip, decision.actions, recordingStarted, controlSignal, executeBatch,
+            message => options.onProgress?.({ stage: 'warning', message })) : undefined;
+          if (!options.observeActionFrames) await executeBatch();
           // Rejected puzzle pieces can animate back for longer than one frame.
           // Observe their resting positions before a slow model chooses coordinates.
           await delay(1000, undefined, { signal: controlSignal });
@@ -193,4 +203,37 @@ export async function runCaptureAttempt(options: {
     if (error instanceof GameCaptureError) throw error;
     throw new GameCaptureError('capture_failed', error instanceof Error ? error.message : 'Gameplay capture failed.', { cause: error });
   } finally { clearTimeout(timer); await executor.releaseAll(); await session.close(); }
+}
+
+/** Capture transient effects without holding inputs during inference or changing game time. */
+async function observeActionBatch(page: Page, clip: GameBounds, actions: InputAction[], recordingStarted: number, signal: AbortSignal, execute: () => Promise<void>, warn: (message: string) => void): Promise<NonNullable<GameplayObservation['recentFrames']>> {
+  const frames: NonNullable<GameplayObservation['recentFrames']> = [];
+  const duration = actions.reduce((sum, action) => sum + ('durationMs' in action ? action.durationMs : 100), 0);
+  const count = duration > 150 ? Math.min(6, Math.ceil(duration / 500)) : 0;
+  const stopped = new AbortController();
+  const samplingSignal = AbortSignal.any([signal, stopped.signal]);
+  const started = performance.now();
+  let failure: unknown;
+  const sampling = (async () => {
+    for (let index = 0; index < count; index++) {
+      const target = count === 1 ? 150 : 150 + (duration - 200) * index / (count - 1);
+      const wait = started + target - performance.now();
+      if (wait > 0) await delay(wait, undefined, { signal: samplingSignal });
+      samplingSignal.throwIfAborted();
+      const elapsedMs = Math.round(performance.now() - recordingStarted);
+      // Await the bounded screenshot itself even on cancellation: no background
+      // page operation may outlive this action batch or the capture session.
+      try {
+        const image = await page.screenshot({ clip, type: 'jpeg', quality: 70, timeout: 1000 });
+        if (!samplingSignal.aborted) frames.push({ image, elapsedMs });
+      } catch {
+        if (!samplingSignal.aborted) warn(`Action screenshots stopped after ${frames.length} sample${frames.length === 1 ? '' : 's'} in this batch; source recording continues. The settled screenshot remains a separate observation.`);
+        return;
+      }
+    }
+  })().catch(error => { if (!samplingSignal.aborted) failure = error; });
+  try { await execute(); }
+  finally { stopped.abort(); await sampling; }
+  if (failure) throw failure;
+  return frames;
 }

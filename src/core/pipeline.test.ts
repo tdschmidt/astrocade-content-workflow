@@ -416,11 +416,37 @@ test('an explicit timed duration replans instead of truncating a preset and cann
 
 test('invalid capture budgets fail before any provider or browser work', async t => {
   const { directory, config, services, calls } = await fixture(t);
-  for (const captureSeconds of [0, 4, 175.1, 176, Number.NaN, Number.POSITIVE_INFINITY]) {
-    await assert.rejects(runPipeline({ directory, model: 'fixture-model', captureSeconds, quiet: true }, config, services), /integer from 5 to 175/);
+  for (const captureSeconds of [0, 4, 600.1, 601, Number.NaN, Number.POSITIVE_INFINITY]) {
+    await assert.rejects(runPipeline({ directory, model: 'fixture-model', captureSeconds, quiet: true }, config, services), /integer from 5 to 600/);
   }
   assert.equal(calls.discover, 0);
   assert.equal(calls.inspect, 0);
+});
+
+test('a ten-minute exploration budget and action observations survive capture and resume', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  let learns = 0;
+  services.learnFeedbackProfile = async (_inspection, _candidate, _provider, _signal, intent) => {
+    learns++;
+    assert.equal(intent?.maxDurationMs, 600000);
+    return { profile: { ...verifiedProfiles[0]!, maxDurationMs: 600000, controller: {
+      type: 'sparse', maxDecisions: 40, instructions: 'SYNTHETIC observed movement.', allowedKeys: ['KeyW', 'Space'], allowPointer: false,
+    } }, evidence: ['SYNTHETIC movement and flight controls'], limitations: [] };
+  };
+  services.createFeedbackController = () => async () => ({ stop: true, reason: 'SYNTHETIC completed exploration', actions: [], observation: 'SYNTHETIC route complete', outcome: 'progress', lesson: 'SYNTHETIC controls worked' });
+  const capture = services.runCaptureAttempt!;
+  services.runCaptureAttempt = async options => {
+    assert.equal(options.profile.maxDurationMs, 600000);
+    assert.equal(options.observeActionFrames, true, 'reel learning receives evidence during active inputs');
+    return capture(options);
+  };
+  const run = await runPipeline({ directory, model: 'fixture-model', playMode: 'feedback', captureSeconds: 600, stage: 'capture', quiet: true }, config, services);
+  assert.equal(run.captureSeconds, 600);
+  const resumed = await runPipeline({ directory, model: 'fixture-model', stage: 'edit', quiet: true }, config, services);
+  assert.equal(resumed.captureSeconds, 600);
+  assert.equal(resumed.attempts[0]!.profile!.maxDurationMs, 600000);
+  assert.equal(calls.capture, 1);
+  assert.equal(learns, 1);
 });
 
 test('an explicit Astrocade URL is inspected directly without inventing catalog metadata', async t => {
@@ -531,7 +557,7 @@ test('new reel runs pass exploration intent and the fifteen-second ceiling throu
   services.learnGameProfile = async (_inspection, _candidate, _provider, _signal, intent) => {
     assert.equal(feedbackFirst, true);
     assert.equal(intent?.editingStyle, 'reel');
-    assert.match(intent!.captureGoal!, /three to six distinct/);
+    assert.match(intent!.captureGoal!, /Learn and practice the controls/);
     assert.match(intent!.captureGoal!, /source exploration may be much longer/i);
     return { profile: { ...verifiedProfiles[0]!, maxDurationMs: 60000 }, evidence: ['SYNTHETIC bounded exploration'], limitations: [] };
   };

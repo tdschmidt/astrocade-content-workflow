@@ -8,6 +8,7 @@ import { createGameCapture } from './recorder.js';
 
 test('invalid capture settings fail before launching a browser', async () => {
   await assert.rejects(createGameCapture({ outputPath: '/tmp/unused.webm', viewport: { width: 0, height: 720 }, maxDurationMs: 1000 }), /viewport/u);
+  await assert.rejects(createGameCapture({ outputPath: '/tmp/unused.webm', viewport: { width: 720, height: 1280 }, maxDurationMs: 605001 }), /605 seconds/u);
 });
 
 const browserTests = process.env.RUN_BROWSER_MEDIA_TESTS === '1';

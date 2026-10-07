@@ -39,7 +39,7 @@ async function fixture(t: TestContext, maxDurationMs = 10000, frameHtml = frame)
     cancel: async () => { lifecycle.cancel++; lifecycle.finalText = await page.frameLocator('#game').locator('#hud').innerText(); },
     close: async () => { lifecycle.close++; await page.close(); },
   });
-  return { profile, lifecycle, actions, options: { profile, outputPath: '/tmp/feedback-fixture.webm', allowLocalGame: true, createCapture, onAction: (action: ActionProgress) => actions.push(action) } };
+  return { page, profile, lifecycle, actions, options: { profile, outputPath: '/tmp/feedback-fixture.webm', allowLocalGame: true, createCapture, onAction: (action: ActionProgress) => actions.push(action) } };
 }
 
 test('sparse feedback observes actual input effects and reserves its last call for evaluation', browserTest, async t => {
@@ -49,6 +49,7 @@ test('sparse feedback observes actual input effects and reserves its last call f
   const result = await runCaptureAttempt({ ...options, decide: async observation => {
     const index = observations.length;
     observations.push(observation);
+    assert.equal(observation.recentFrames, undefined, 'legacy captures do not sample action frames');
     assert.match(observation.text, new RegExp(`Position: ${index}; held: false; trusted: ${index ? 'true' : 'false'}; clicks: 0`));
     assert.doesNotMatch(observation.text, /HIDDEN FIXTURE/);
     assert.equal(observation.isFinal, index === 2);
@@ -72,6 +73,119 @@ test('sparse feedback observes actual input effects and reserves its last call f
   assert.equal(observations.length, 3);
   assert.equal(actions.filter(action => action.phase === 'focus').length, 0);
   assert.equal(lifecycle.finalText, 'Position: 2; held: false; trusted: true; clicks: 0');
+  assert.equal(lifecycle.finish, 1);
+  assert.equal(lifecycle.cancel, 0);
+  assert.equal(lifecycle.close, 1);
+});
+
+const transientFrame = `<!doctype html><style>body{margin:0}canvas{display:block}</style>
+<canvas width="320" height="320" tabindex="0"></canvas><p id="hud"></p>
+<script>
+const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d'),held=new Set();let trusted=true;
+function draw(){ctx.fillStyle=held.has('KeyW')&&held.has('Space')?'#0044ee':'#ee2200';ctx.fillRect(0,0,320,320);document.querySelector('#hud').textContent='held: '+held.size+'; trusted: '+trusted}
+canvas.onkeydown=e=>{held.add(e.code);trusted&&=e.isTrusted;draw()};canvas.onkeyup=e=>{held.delete(e.code);trusted&&=e.isTrusted;draw()};draw();
+</script>`;
+
+test('action sampling sees native simultaneous-key flight that has vanished from the settled frame', browserTest, async t => {
+  const { page, options, lifecycle, actions } = await fixture(t, 12000, transientFrame);
+  let calls = 0;
+  const result = await runCaptureAttempt({ ...options, observeActionFrames: true, decide: async observation => {
+    if (!calls++) {
+      assert.equal(observation.recentFrames, undefined);
+      return { stop: false, reason: 'Move while holding the observed flight control.', actions: [{ type: 'keys', keys: ['KeyW', 'Space'], durationMs: 3200 }] };
+    }
+    assert.match(observation.text, /held: 0; trusted: true/);
+    const frames = observation.recentFrames!;
+    assert.ok(frames.length >= 2 && frames.length <= 6);
+    const started = actions.find(action => action.phase === 'control' && action.status === 'started')!.recordingElapsedMs!;
+    const completed = actions.find(action => action.phase === 'control' && action.status === 'completed')!.recordingElapsedMs!;
+    assert.ok(completed - started >= 3200, 'the held input lasts beyond the old two-second limit');
+    assert.ok(frames.every((frame, index) => frame.elapsedMs > started && frame.elapsedMs < completed && (!index || frame.elapsedMs > frames[index - 1]!.elapsedMs)));
+    assert.ok(observation.elapsedMs > frames.at(-1)!.elapsedMs);
+    const colors = await page.evaluate(async images => Promise.all(images.map(async bytes => {
+      const image = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' }));
+      const canvas = document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;
+      const context = canvas.getContext('2d')!;context.drawImage(image,0,0);image.close();
+      return Array.from(context.getImageData(100,100,1,1).data);
+    })), [...frames.map(frame => [...frame.image]), [...observation.image]]);
+    assert.ok(colors.slice(0, -1).every(color => color[2]! > 200 && color[0]! < 20), 'during-action images show the blue airborne state');
+    assert.ok(colors.at(-1)![0]! > 200 && colors.at(-1)![2]! < 20, 'the separately labeled NOW image is red/landed');
+    return { stop: true, reason: 'The temporal frames establish the transient effect.', actions: [] };
+  } });
+  assert.equal(result.stopReason, 'model_stop');
+  assert.equal(result.actionsExecuted, 1);
+  assert.equal(lifecycle.finalText, 'held: 0; trusted: true');
+  assert.equal(lifecycle.close, 1);
+});
+
+test('canceling sampled native input drains its screenshot before closing and releases the whole chord', browserTest, async t => {
+  const { page, options, lifecycle } = await fixture(t, 10000, transientFrame);
+  const abort = new AbortController();
+  const screenshot = page.screenshot.bind(page);
+  let screenshots = 0, pending = 0, closedWhilePending = false;
+  page.screenshot = async (...args: Parameters<typeof page.screenshot>) => {
+    screenshots++; pending++;
+    try {
+      const result = await screenshot(...args);
+      if (screenshots === 2) {
+        abort.abort(new Error('Cancel during a held chord and screenshot'));
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+      return result;
+    } finally { pending--; }
+  };
+  const createCapture = options.createCapture;
+  await assert.rejects(runCaptureAttempt({ ...options, signal: abort.signal, observeActionFrames: true,
+    createCapture: async config => {
+      const capture = await createCapture(config);
+      return { ...capture, close: async () => { closedWhilePending = pending !== 0; await capture.close(); } };
+    },
+    decide: async () => ({ stop: false, reason: 'Hold movement and flight.', actions: [{ type: 'keys', keys: ['KeyW', 'Space'], durationMs: 6000 }] }),
+  }), /canceled/i);
+  assert.equal(screenshots, 2, 'no additional scheduled sample runs after cancellation');
+  assert.equal(pending, 0);
+  assert.equal(closedWhilePending, false);
+  assert.equal(lifecycle.finalText, 'held: 0; trusted: true');
+  assert.equal(lifecycle.finish, 0);
+  assert.equal(lifecycle.cancel, 1);
+  assert.equal(lifecycle.close, 1);
+});
+
+test('an optional mid-action screenshot failure preserves native footage and reports partial evidence', browserTest, async t => {
+  const { page, options, lifecycle, actions } = await fixture(t, 10000, transientFrame);
+  const screenshot = page.screenshot.bind(page);
+  let screenshots = 0, pending = 0, closedWhilePending = false, decisions = 0;
+  const warnings: string[] = [];
+  page.screenshot = async (...args: Parameters<typeof page.screenshot>) => {
+    screenshots++; pending++;
+    try {
+      if (screenshots === 3) throw new Error('Synthetic optional screenshot timeout');
+      return await screenshot(...args);
+    } finally { pending--; }
+  };
+  const createCapture = options.createCapture;
+  const result = await runCaptureAttempt({ ...options, observeActionFrames: true,
+    onProgress: progress => { if (progress.stage === 'warning') warnings.push(progress.message); },
+    createCapture: async config => {
+      const capture = await createCapture(config);
+      return { ...capture, close: async () => { closedWhilePending = pending !== 0; await capture.close(); } };
+    },
+    decide: async observation => {
+      if (!decisions++) return { stop: false, reason: 'Hold observed movement and flight.', actions: [{ type: 'keys', keys: ['KeyW', 'Space'], durationMs: 2200 }] };
+      assert.equal(observation.recentFrames?.length, 1, 'retain the actual sample captured before failure');
+      assert.match(observation.text, /held: 0; trusted: true/);
+      return { stop: true, reason: 'Final screenshot and partial temporal evidence remain available.', actions: [] };
+    },
+  });
+  assert.equal(result.stopReason, 'model_stop');
+  assert.equal(result.actionsExecuted, 1, 'optional screenshot failure does not interrupt native inputs');
+  const controls = actions.filter(action => action.phase === 'control');
+  assert.ok(controls[1]!.recordingElapsedMs! - controls[0]!.recordingElapsedMs! >= 2200);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!, /after 1 sample.*source recording continues/);
+  assert.equal(screenshots, 4, 'initial, one captured sample, failed sample, then current; no trailing sampler operations');
+  assert.equal(pending, 0);
+  assert.equal(closedWhilePending, false);
   assert.equal(lifecycle.finish, 1);
   assert.equal(lifecycle.cancel, 0);
   assert.equal(lifecycle.close, 1);

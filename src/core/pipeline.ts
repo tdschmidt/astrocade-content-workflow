@@ -35,7 +35,7 @@ export const coreRunSchema = z.object({
   version: z.literal(1), id: z.string(), createdAt: z.string(), model: z.string(), provider: z.enum(['gemini', 'codex']).default('gemini'),
   status: z.enum(['running', 'paused', 'failed', 'complete']),
   playMode: z.enum(['timed', 'feedback', 'auto']).default('timed'),
-  captureSeconds: z.number().int().min(5).max(175).optional(),
+  captureSeconds: z.number().int().min(5).max(600).optional(),
   // Missing briefs belong to old runs. New runs explicitly save the current default.
   contentBrief: contentBriefSchema.default({ ...defaultContentBrief, editingStyle: 'episode' }),
   provenance: z.object({ sourceRunId: z.string(), sourceRunPath: z.string(), discoveryPath: z.string() }).optional(),
@@ -170,7 +170,7 @@ export async function runPipeline(options: {
   const providerName = options.provider ?? 'gemini';
   const requestedBrief = options.contentBrief ? contentBriefSchema.parse(options.contentBrief) : undefined;
   if (!Number.isInteger(limit) || limit < 1 || limit > 5) throw new Error('Shortlist size must be 1–5.');
-  if (options.captureSeconds !== undefined && (!Number.isInteger(options.captureSeconds) || options.captureSeconds < 5 || options.captureSeconds > 175)) throw new Error('Capture seconds must be an integer from 5 to 175.');
+  if (options.captureSeconds !== undefined && (!Number.isInteger(options.captureSeconds) || options.captureSeconds < 5 || options.captureSeconds > 600)) throw new Error('Capture seconds must be an integer from 5 to 600.');
   if (options.fromRun && options.captureSeconds !== undefined) throw new Error('--from-run reuses saved footage; capture seconds only applies to new captures.');
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const release = await lockRun(directory);
@@ -256,9 +256,9 @@ export async function runPipeline(options: {
         const reel = store.read().contentBrief.editingStyle === 'reel';
         shortlist = [{ gameId: game.id, hypothesis: 'Operator-selected candidate; suitability still requires actual play.', viewerQuestion: 'What makes this game worth showing someone?', controlRisk: 'Inspect the actual controls before capturing.',
           captureGoal: reel
-            ? 'Learn the controls, then explore different visible parts of this game. Seek three to six distinct recordable moments: different abilities, transformations, places, encounters or stages and their visible effects. Follow what actual play reveals. A first input, first ordinary reward, or repeated animation is not the whole goal. Collect real gameplay for a varied reel of at most 15 seconds; source exploration may be much longer. Stop when useful variety is captured, the game ends, progress stalls, or the capture budget expires.'
+            ? 'Learn and practice the controls, then explore. Establish movement and camera control; travel to visible places or targets; use supported traversal, attacks, interactions or tools toward real objectives. Confirm transient effects from action-time observations. After a short probe, sustain useful play and combine confirmed controls. Demonstrate several mechanics through coherent action sequences, beyond transformation flashes or cycling menus. The reel is at most 15 seconds; source exploration may be much longer. Stop on a terminal result, exhausted budget, demonstrated control block, or broad useful coverage with no worthwhile visible next opportunity.'
             : 'Play competently toward one small complete challenge or distinctive consequence, with a readable setup and decisive action. A first input confirmation alone is not the goal; determine the angle from actual play.',
-          rejectIf: reel ? 'Only one trivial/repeated action, menus, idle travel or unreadable outcomes are available; no distinct playable moments for a reel.' : 'No attainable, readable consequence or interesting viewer decision is observed.' }];
+          rejectIf: reel ? 'Controls remain ineffective after correction, or only menus, cosmetic reveals and idle scenes are available after exploration. Purposeful traversal, aiming and using abilities count as gameplay when their visible effects are clear.' : 'No attainable, readable consequence or interesting viewer decision is observed.' }];
       } else shortlist = await services.nominateGames(candidates, verifiedProfiles, getProvider(), limit, options.signal, store.read().playMode, store.read().contentBrief);
       await save(run => { run.shortlist = shortlist; run.attempts = shortlist.map(item => attemptSchema.parse({ gameId: item.gameId })); });
       trace.artifact('shortlist.json', shortlist);
@@ -323,6 +323,7 @@ export async function runPipeline(options: {
         trace.event('capture', 'started', `Recording ${game.title} with native input.`, { profile });
         const result = await services.runCaptureAttempt({
           profile, outputPath: join(gameDir, `${id}.webm`), allowUnverified: true, signal: options.signal,
+          observeActionFrames: intent.editingStyle === 'reel',
           recorderOptions: { ffmpeg: config.mediaTools },
           onProgress: progress => trace.event('capture', progress.stage, progress.message),
           onAction: event => trace.event('input', event.status, `${event.phase}: ${event.action.type}`, event),

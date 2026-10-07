@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { z } from 'zod';
 import type { Inference } from '../providers/inference.js';
 import { createFeedbackController, learnFeedbackProfile, validateFeedbackDecision } from './feedback.js';
 import { gameProfileSchema } from './schema.js';
@@ -97,25 +98,27 @@ test('reel exploration remembers earlier mechanics beyond the recent four decisi
   const directory = await mkdtemp(join(tmpdir(), 'feedback-exploration-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   let calls = 0;
+  const learnedMechanics = [{ name: 'Ice wall', status: 'working', evidence: 'SYNTHETIC initial ice form created a wall at 2s.', nextGoal: 'Use the wall beside the visible target.' }];
   const provider = { json: async (prompt: string) => {
     calls++;
     assert.match(prompt, /One ordinary success is a milestone: report outcome=progress and continue/);
     assert.match(prompt, /Stop on death or terminal game completion/);
     if (calls === 6) {
-      assert.match(prompt, /Earlier exploration ledger[^\n]*"atSeconds":2[^\n]*SYNTHETIC initial ice form/);
-      assert.match(prompt, /Earlier exploration ledger[^\n]*SYNTHETIC ice control established/);
+      assert.deepEqual(JSON.parse(prompt.match(/Mechanic checklist from the last decision.*?: (\[.*\])\. Return/)![1]!), learnedMechanics);
+      assert.doesNotMatch(prompt, /Recent observations\/lessons[^\n]*SYNTHETIC initial ice form/);
     }
-    return { ...answer, observation: calls === 1 ? 'SYNTHETIC initial ice form is visible.' : `SYNTHETIC distinct later state ${calls}.`, lesson: calls === 1 ? 'SYNTHETIC ice control established.' : 'Compare the next observed effect.' };
+    return { ...answer, mechanics: learnedMechanics, observation: calls === 1 ? 'SYNTHETIC initial ice form is visible.' : `SYNTHETIC distinct later state ${calls}.`, lesson: calls === 1 ? 'SYNTHETIC ice control established.' : 'Compare the next observed effect.' };
   } } as unknown as Pick<Inference, 'json'>;
   const decide = createFeedbackController(profile, provider, directory, undefined, { editingStyle: 'reel' });
   for (let i = 0; i < 6; i++) {
     const result = await decide({ ...observation, observationId: `fixture:${i}`, elapsedMs: 2000 + i * 5000, previousActions: i ? [move] : [] });
     assert.equal(result.stop, false, 'a subgoal can remain progress while exploration continues');
     assert.deepEqual(result.actions, [move]);
+    assert.deepEqual(result.mechanics, learnedMechanics);
   }
   assert.throws(() => validateFeedbackDecision({ ...answer, outcome: 'success' }, profile), /terminal outcome must stop/, 'reel guidance does not bypass terminal/action consistency');
   const legacy = createFeedbackController(profile, { json: async (prompt: string) => {
-    assert.doesNotMatch(prompt, /REEL EXPLORATION|Earlier exploration ledger/);
+    assert.doesNotMatch(prompt, /REEL EXPLORATION|Mechanic checklist/);
     assert.match(prompt, /Stop on death or completion/);
     return { ...answer, outcome: 'success', stop: true, actions: [] };
   } } as unknown as Pick<Inference, 'json'>, join(directory, 'legacy'));
@@ -129,20 +132,21 @@ test('reel camera correction uses current lock and remembered failed engagement 
   const miss = { type: 'tap' as const, point: { x: 0.5, y: 0.51 }, button: 'left' as const };
   const correction = { type: 'tap' as const, point: { x: 0.5, y: 0.44 }, button: 'left' as const };
   let calls = 0;
+  const reelAnswer = { ...answer, mechanics: [] };
   const provider = { json: async (prompt: string) => {
     calls++;
     assert.match(prompt, /permit ONE corrected engagement attempt/);
     assert.match(prompt, /Do not substitute a generic center-screen click/);
     assert.match(prompt, /After the correction, a still-unlocked browser is an explicit limitation/);
-    if (calls === 1) return { ...answer, reason: 'SYNTHETIC first engagement attempt.', actions: [miss], lesson: 'SYNTHETIC engagement unverified.' };
+    if (calls === 1) return { ...reelAnswer, reason: 'SYNTHETIC first engagement attempt.', actions: [miss], lesson: 'SYNTHETIC engagement unverified.' };
     if (calls === 2) {
       assert.match(prompt, /Browser pointer lock NOW: false/);
       assert.match(prompt, /Previous actions:.*"y":0.51/);
-      return { ...answer, observation: 'SYNTHETIC aim prompt remains and the dial opened.', reason: 'Return using the observed cancel, then correct the visible target once.', lesson: 'SYNTHETIC first engagement failed; one corrected attempt is now used.', actions: [{ type: 'key', key: 'Escape', durationMs: 100 }, { type: 'wait', durationMs: 400 }, correction] };
+      return { ...reelAnswer, observation: 'SYNTHETIC aim prompt remains and the dial opened.', reason: 'Return using the observed cancel, then correct the visible target once.', lesson: 'SYNTHETIC first engagement failed; one corrected attempt is now used.', actions: [{ type: 'key', key: 'Escape', durationMs: 100 }, { type: 'wait', durationMs: 400 }, correction] };
     }
     assert.match(prompt, /Browser pointer lock NOW: false/);
     assert.match(prompt, /one corrected attempt is now used/);
-    return { ...answer, observation: 'SYNTHETIC engagement remains blocked.', outcome: 'uncertain', stop: true, actions: [], lesson: 'SYNTHETIC camera remains unavailable after one correction.' };
+    return { ...reelAnswer, observation: 'SYNTHETIC engagement remains blocked.', outcome: 'uncertain', stop: true, actions: [], lesson: 'SYNTHETIC camera remains unavailable after one correction.' };
   } } as unknown as Pick<Inference, 'json'>;
   const decide = createFeedbackController(cameraProfile, provider, directory, undefined, { editingStyle: 'reel' });
   const first = await decide(observation);
@@ -315,4 +319,95 @@ test('feedback can establish visible Mouse Look before a fresh browser engages p
   assert.equal(learned.profile?.verification, 'unverified');
   if (learned.profile?.controller.type === 'sparse') assert.equal(learned.profile.controller.allowLook, true);
   else assert.fail('Expected a sparse profile with a visible Mouse Look hypothesis.');
+});
+
+test('simultaneous controls require every observed key and retain the ten-second batch limit', () => {
+  const movement = gameProfileSchema.parse({ ...profile, controller: { type: 'sparse', allowedKeys: ['KeyW', 'Space'], allowPointer: false } });
+  const flight = { type: 'keys', keys: ['KeyW', 'Space'], durationMs: 6000 };
+  assert.deepEqual(validateFeedbackDecision({ ...answer, actions: [flight, { type: 'key', key: 'KeyW', durationMs: 4000 }] }, movement).actions[0], flight);
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [{ ...flight, keys: ['KeyW', 'KeyX'] }] }, movement), /control not established/);
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [{ ...flight, keys: ['KeyW', 'KeyW'] }] }, movement), /unique/);
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [flight, { type: 'key', key: 'KeyW', durationMs: 5000 }] }, movement), /exceeds 10 seconds/);
+  assert.throws(() => validateFeedbackDecision({ ...answer, actions: [{ ...flight, durationMs: 6001 }] }, movement));
+});
+
+test('during-action frames survive a landed NOW image and carry working mechanics into the next decision', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-transient-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const movement = gameProfileSchema.parse({ ...profile, controller: { type: 'sparse', allowedKeys: ['KeyW', 'Space'], allowPointer: false } });
+  const probe = { type: 'key' as const, key: 'Space', durationMs: 4000 };
+  const checklist = [{ name: 'Flight', status: 'working', evidence: 'DURING image 2 at 3s shows airborne ascent; NOW landed.', nextGoal: 'Fly toward the visible roof.' }];
+  let calls = 0;
+  const provider = { json: async (prompt: string, schema: z.ZodType, media: Array<{ data: string }>) => {
+    calls++;
+    const proposal = { ...answer, mechanics: checklist, actions: [probe] };
+    const wire = z.toJSONSchema(schema);
+    const assertStrict = (value: unknown) => {
+      if (!value || typeof value !== 'object') return;
+      const node = value as Record<string, unknown>;
+      if (node.type === 'object') assert.deepEqual([...(node.required as string[])].sort(), Object.keys(node.properties as object).sort());
+      Object.values(node).forEach(item => Array.isArray(item) ? item.forEach(assertStrict) : assertStrict(item));
+    };
+    assertStrict(wire);
+    if (calls === 1) {
+      assert.equal(schema.safeParse({ ...proposal, actions: [{ type: 'keys', keys: ['KeyW', 'Space'], durationMs: 4000 }] }).success, false, 'a chord cannot be the first control probe');
+      return { ...proposal, mechanics: [{ ...checklist[0], status: 'testing', evidence: 'Space is an observed hold-to-fly instruction.' }] };
+    }
+    if (calls === 2) {
+      assert.deepEqual(media.map(item => Buffer.from(item.data, 'base64').toString()), ['GROUNDED_BEFORE', 'AIRBORNE_DURING', 'ASCENDING_DURING', 'LANDED_NOW']);
+      const manifest = JSON.parse(prompt.match(/Image order and recording timestamps: (\[.*\])\. BEFORE/)![1]!);
+      assert.deepEqual(manifest.map((item: { elapsedMs: number }) => item.elapsedMs), [2000, 3000, 5000, 10000]);
+      assert.match(prompt, /Absence from a late screenshot alone is not a failed control/);
+      return proposal;
+    }
+    assert.deepEqual(JSON.parse(prompt.match(/Mechanic checklist from the last decision.*?: (\[.*\])\. Return/)![1]!), checklist);
+    assert.equal(media.length, 2, 'old sampled images are not repeatedly retransmitted');
+    assert.equal(schema.safeParse({ ...proposal, actions: [{ type: 'keys', keys: ['KeyW', 'Space'], durationMs: 4000 }] }).success, true);
+    return { ...proposal, actions: [{ type: 'keys', keys: ['KeyW', 'Space'], durationMs: 4000 }] };
+  } } as unknown as Pick<Inference, 'json'>;
+  const decide = createFeedbackController(movement, provider, directory, undefined, { editingStyle: 'reel' });
+  await decide(observation);
+  const observed = await decide({ ...observation, elapsedMs: 10000, previousActions: [probe], previousImage: Buffer.from('GROUNDED_BEFORE'), image: Buffer.from('LANDED_NOW'),
+    recentFrames: [{ image: Buffer.from('AIRBORNE_DURING'), elapsedMs: 3000 }, { image: Buffer.from('ASCENDING_DURING'), elapsedMs: 5000 }] });
+  assert.equal(observed.mechanics?.[0]?.status, 'working');
+  const saved = JSON.parse(await readFile(join(directory, 'decision-02.json'), 'utf8'));
+  assert.equal(await readFile(saved.sampledFrames[0].imagePath, 'utf8'), 'AIRBORNE_DURING');
+  assert.equal(await readFile(saved.sampledFrames[1].imagePath, 'utf8'), 'ASCENDING_DURING');
+  assert.deepEqual(saved.mechanics, checklist);
+  const next = await decide({ ...observation, elapsedMs: 20000, previousActions: [probe], previousImage: Buffer.from('LANDED_NOW') });
+  assert.equal(next.actions[0]?.type, 'keys');
+});
+
+test('frame ordering and checklist size are bounded before actions can be dispatched', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-bounds-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const provider = { json: async () => { calls++; return answer; } } as unknown as Pick<Inference, 'json'>;
+  const decide = createFeedbackController(profile, provider, directory);
+  for (const times of [[1500, 1000], [2100], [Number.NaN], [-1], [1, 2, 3, 4, 5, 6, 7]]) {
+    await assert.rejects(decide({ ...observation, recentFrames: times.map(elapsedMs => ({ image: observation.image, elapsedMs })) }), /six chronological recording timestamps/);
+  }
+  assert.equal(calls, 0);
+  const mechanic = { name: 'Flight', status: 'testing', evidence: 'Observed control, result uncertain.', nextGoal: 'Inspect the next action frames.' };
+  assert.throws(() => validateFeedbackDecision({ ...answer, mechanics: Array.from({ length: 9 }, (_, index) => ({ ...mechanic, name: `Mechanic ${index}` })) }, profile));
+  assert.throws(() => validateFeedbackDecision({ ...answer, mechanics: [mechanic, { ...mechanic, name: 'flight' }] }, profile), /unique/);
+});
+
+test('new reel feedback profiles scale their call ceiling within the requested capture budget', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-budget-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const imagePath = join(directory, 'fixture.png');
+  await writeFile(imagePath, 'SYNTHETIC quiet scene');
+  const provider = { json: async () => ({ supported: true, confidence: 'medium', latencyTolerant: true, objective: 'Reach the visible landmark using flight.',
+    instructions: 'W moves; hold Space to fly.', allowedKeys: ['KeyW', 'Space'], allowPointer: false, allowLook: false,
+    evidence: ['Visible movement and flight controls.'], limitations: [] }) } as unknown as Pick<Inference, 'json'>;
+  for (const [requested, duration, decisions] of [[undefined, 600000, 40], [175000, 175000, 16], [600000, 600000, 40]] as const) {
+    const outputDir = await mkdtemp(join(directory, 'case-'));
+    const inspection: GameInspection = { gameUrl: profile.gameUrl, observedAt: 'fixture', outputDir, imagePath, beforeImagePath: imagePath,
+      text: 'W moves; hold Space to fly.', readyToPlay: true, surface: profile.surface, ready: profile.ready, startTargets: [], viewport: profile.viewport, setup: [] };
+    const result = await learnFeedbackProfile(inspection, { id: 'fixture', url: profile.gameUrl, title: profile.name, titleSource: 'visible_text', metrics: [], observations: [] }, provider, undefined, { editingStyle: 'reel', ...(requested ? { maxDurationMs: requested } : {}) });
+    assert.equal(result.profile?.maxDurationMs, duration);
+    assert.equal(result.profile?.controller.type, 'sparse');
+    if (result.profile?.controller.type === 'sparse') assert.equal(result.profile.controller.maxDecisions, decisions);
+  }
 });

@@ -15,15 +15,15 @@ const { values } = parseArgs({ options: {
 if (values.help) {
   console.log(`Astrocade: discover → inspect/learn → capture → edit
 
-npm run pipeline -- [--provider gemini|codex] [--stage discover|capture|edit|all] [--play timed|feedback|auto] [--game ID_OR_SLUG] [--candidates 1-5] [--capture-seconds 5-175] [--brief PATH.json]
+npm run pipeline -- [--provider gemini|codex] [--stage discover|capture|edit|all] [--play timed|feedback|auto] [--game ID_OR_SLUG] [--candidates 1-5] [--capture-seconds 5-600] [--brief PATH.json]
 npm run pipeline -- --resume data/runs/RUN_DIRECTORY [--model MODEL]
 npm run pipeline -- --from-run data/runs/RUN_DIRECTORY [--brief PATH.json] [--presenter GENERATED_VIDEO.mp4]
 npm run pipeline -- --provider codex --play feedback --game PUBLIC_ASTROCADE_GAME_URL
 
 Default: inspect up to three provisional choices, learn and explore supported games, then render a gameplay reel with several distinct moments in at most 15 seconds. New default-brief runs use --play auto; saved runs retain their mode. An explicit game URL is inspected directly.
-Feedback mode: inspect input-paced games, observe each action batch and adapt to current screenshots. Reel exploration continues through different playable parts within the bounded decision/time limit. Slow model calls cannot supply reflex control.
+Feedback mode: learn controls, practice and explore supported gameplay, then trim the longer source into a reel. New reel feedback profiles allow up to ten minutes by default and observe frames during action batches so transient effects can be learned. Saved profiles retain their limits. Slow model calls cannot supply reflex control.
 Auto mode: reuse a tested timed profile when available. For unfamiliar reel games, assess latency-tolerant screenshot feedback first, then timed controls if unsupported. Legacy episode runs try timed controls first. Both assessments share one inspection; provider errors do not trigger a fallback.
-Capture budget: --capture-seconds bounds active capture and guides a new control plan. It is a ceiling, not a target runtime; useful episodes may finish sooner.
+Capture budget: --capture-seconds bounds recording wall time, including inference, and guides a new control plan. It is separate from the at-most-15-second edit; exploration can finish earlier when useful gameplay coverage is complete.
 Editorial brief: optional JSON with audience, voice, hookExamples, format sources, dated trend evidence, and editingStyle: reel or episode. The new default is reel; older briefs without editingStyle preserve their episode behavior. Resumes reuse the saved brief; start a new run to change it.
 Re-edit: --from-run creates a new run referencing saved gameplay, with a new edit and no recapture. It inherits the original brief unless --brief is supplied. Changing editingStyle reanalyzes the source for that format; unchanged analyses are reused. --from-run and --resume cannot be combined.
 Presenter: --presenter adds a supplied fictional AI commentator video; generation is separate. It is saved with a file hash and cannot change on resume. New edits are faceless unless --presenter is supplied.
