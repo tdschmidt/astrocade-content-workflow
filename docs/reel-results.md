@@ -1,5 +1,7 @@
 # Gameplay reel verification — 2026-10-07
 
+The Ben 10 result below is historical: the user rejected its 8.10-second edit as too little gameplay. [The subsequent gameplay improvement report](ben10-gameplay-results.md) records longer exploration, simultaneous controls, transient-effect feedback, and the replacement reels. The zombie result remains a separate comparison.
+
 The user requested recognizable gaming absurdity and nostalgia, conversational captions, and a reel of several interesting parts of one game in at most 15 seconds. The earlier 21-video batch demonstrated functional capture/editing; it did not meet this new humor or montage brief.
 
 ## Selection
