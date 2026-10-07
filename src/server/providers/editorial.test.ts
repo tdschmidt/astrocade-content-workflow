@@ -257,11 +257,48 @@ test('a highlight joins overlapping transformation phases once and preserves rev
   const transformationCapture = { ...capture, analysis: { ...capture.analysis!, events: phases } };
   const original = structuredClone(transformationCapture);
   const result = await draftScript({ capture: transformationCapture, format: 'highlight', topic: '' }, googleFixture([
-    choiceFor([0, 2, 1]), review,
+    choiceFor([0]), review,
   ]));
   assert.deepEqual(result.cuts, [{ startSeconds: 1, endSeconds: 14 }], 'overlapping verified phases never repeat source frames');
   assert.equal(result.caption, `${review.caption}\n${capture.game.title} · Astrocade\nPlay: ${capture.game.url}`);
   assert.deepEqual(transformationCapture, original, 'selection must not reorder or merge the saved observations');
+});
+
+test('saved overlapping dense reviews expose one complete selection and settled result to the editor', async () => {
+  // Observed bounds and evidence from World Cup39: the earlier dense window
+  // ends just after the card moves; the overlapping review contains the hold.
+  const recorded = { ...capture, game: { ...capture.game, title: 'World Cup Squad' }, analysis: { ...capture.analysis!, events: [
+    { startSeconds: 45.019999999999996, endSeconds: 49.884, event: 'Compare four Germany 1975 candidates, then select Müller for the squad.', evidence: 'The settled market displays Müller 90 ST, Leno 85 GK, Tah 86 CB and Ter Stegen 91 GK. Müller enlarges and moves toward the pitch.', outcome: 'Müller is visibly added at striker.' },
+    { startSeconds: 48.001, endSeconds: 51.553, event: 'Müller is selected from the four-player transfer market and placed into the center striker slot.', evidence: 'Müller moves over the formation and settles in the ST slot beside Messi. OVR settles from 93 to 92.', outcome: 'The settled squad shows Müller beside Messi; the squad remains incomplete.' },
+  ] } };
+  const original = structuredClone(recorded);
+  const provider = googleFixture([choiceFor([0]), review]);
+  const json = provider.json.bind(provider);
+  let calls = 0;
+  provider.json = async (prompt, schema, media, signal) => {
+    if (++calls === 1) {
+      const events = JSON.parse(prompt.match(/Observed moments \(zero-based indexes\): (.*)\n/)![1]!);
+      assert.equal(events.length, 1, 'overlapping observations describe one selectable episode');
+      assert.equal(events[0].eventIndex, 0);
+      assert.equal(events[0].startSeconds, 45.019999999999996);
+      assert.equal(events[0].endSeconds, 51.553);
+      assert.match(events[0].evidence, /settled market[\s\S]*settles in the ST slot beside Messi/);
+      assert.match(events[0].outcome, /added at striker[\s\S]*squad remains incomplete/);
+    } else {
+      assert.deepEqual(media!.map(item => item.type === 'video' ? item.processing : null), [
+        { type: 'static', fps: 2, start_offset: '45.019999999999996s', end_offset: '51.553s' },
+      ], 'visual review sees the complete verified episode rather than the early window alone');
+    }
+    return json(prompt, schema, media, signal);
+  };
+  const result = await draftScript({ capture: recorded, format: 'highlight', topic: '' }, provider);
+  assert.deepEqual(result.cuts, [{ startSeconds: 45.019999999999996, endSeconds: 51.553 }]);
+  assert.equal(calls, 2, 'saved observations need no new analysis or provider call');
+  assert.deepEqual(recorded, original, 'normalization must not rewrite saved source evidence');
+  await assert.rejects(draftScript({ capture: recorded, format: 'highlight', topic: '' }, googleFixture([
+    { ...choiceFor([0]), cuts: [{ startSeconds: 45.019999999999996, endSeconds: 49.884 }] },
+    { ...review, tail: { settledAtSeconds: 49.53, essentialText: '', redundant: true, evidence: 'The omitted frames hold the settled squad.' } },
+  ])), /payoff reading time/, 'explicitly choosing the old early endpoint must still pass the complete episode tail guard');
 });
 
 test('a shortened ending audits the whole omitted tail and retains readable earned results', async () => {
@@ -338,13 +375,24 @@ test('a highlight orders separate verified phases without filling gaps or exceed
   const separated = { ...capture, analysis: { ...capture.analysis!, events: [
     { ...event, startSeconds: 1, endSeconds: 10 }, { ...event, startSeconds: 20, endSeconds: 25 },
   ] } };
-  const result = await draftScript({ capture: separated, format: 'highlight', topic: '' }, googleFixture([choice, review]));
+  const original = structuredClone(separated);
+  const provider = googleFixture([choice, review]);
+  const json = provider.json.bind(provider);
+  provider.json = async (prompt, schema, media, signal) => {
+    const observed = prompt.match(/Observed moments \(zero-based indexes\): (.*)\n/);
+    if (observed) assert.deepEqual(JSON.parse(observed[1]!).map(({ eventIndex, startSeconds, endSeconds }: { eventIndex: number; startSeconds: number; endSeconds: number }) => ({ eventIndex, startSeconds, endSeconds })), [
+      { eventIndex: 0, startSeconds: 1, endSeconds: 10 }, { eventIndex: 1, startSeconds: 20, endSeconds: 25 },
+    ], 'unverified gaps remain separate indexed episodes');
+    return json(prompt, schema, media, signal);
+  };
+  const result = await draftScript({ capture: separated, format: 'highlight', topic: '' }, provider);
   assert.deepEqual(result.cuts, [{ startSeconds: 1, endSeconds: 10 }, { startSeconds: 20, endSeconds: 25 }]);
+  assert.deepEqual(separated, original);
   await assert.rejects(draftScript({ capture: separated, format: 'highlight', topic: '' }, googleFixture([{ ...choice, cuts: [{ startSeconds: 1, endSeconds: 9 }] }])), /omits the last selected episode/, 'restoring a payoff must never bridge a gap in verified footage');
   const overlap = { ...capture, analysis: { ...capture.analysis!, events: [
     { ...event, startSeconds: 0, endSeconds: 30 }, { ...event, startSeconds: 20, endSeconds: 40 },
   ] } };
-  const forty = await draftScript({ capture: overlap, format: 'highlight', topic: '' }, googleFixture([choice, review]));
+  const forty = await draftScript({ capture: overlap, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), review]));
   assert.deepEqual(forty.cuts, [{ startSeconds: 0, endSeconds: 40 }], 'the duration budget counts overlapping frames only once');
   const tooLong = { ...capture, analysis: { ...capture.analysis!, events: [{ ...event, startSeconds: 0, endSeconds: 40.01 }] } };
   await assert.rejects(draftScript({ capture: tooLong, format: 'highlight', topic: '' }, googleFixture([{ ...choice, eventIndexes: [0] }])), /40-second edit target/);
