@@ -28,6 +28,7 @@ const attemptSchema = z.object({
   feedbackPath: z.string().optional(), controllerError: z.string().optional(),
   capture: captureSchema.optional(), sourceSha256: z.string().optional(),
   analysisModel: z.string().optional(), analysisProvider: z.enum(['gemini', 'codex']).optional(),
+  analysisEditingStyle: z.enum(['episode', 'reel']).optional(),
   unsupported: z.boolean().default(false), error: z.string().optional(),
 });
 export const coreRunSchema = z.object({
@@ -35,7 +36,8 @@ export const coreRunSchema = z.object({
   status: z.enum(['running', 'paused', 'failed', 'complete']),
   playMode: z.enum(['timed', 'feedback', 'auto']).default('timed'),
   captureSeconds: z.number().int().min(5).max(175).optional(),
-  contentBrief: contentBriefSchema.default(defaultContentBrief),
+  // Missing briefs belong to old runs. New runs explicitly save the current default.
+  contentBrief: contentBriefSchema.default({ ...defaultContentBrief, editingStyle: 'episode' }),
   provenance: z.object({ sourceRunId: z.string(), sourceRunPath: z.string(), discoveryPath: z.string() }).optional(),
   presenterPath: z.string().optional(), presenterSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   candidates: z.array(gameCandidateSchema).default([]),
@@ -107,7 +109,8 @@ async function report(directory: string, run: CoreRun) {
     '- [Full event trace](trace.jsonl)', '- [Run data](run.json)', '- [Editorial brief](content-brief.json)', `- [Discovery evidence](${run.provenance ? link(run.provenance.discoveryPath) : 'discovery.json'})`, '',
     ...(run.provenance ? [`Re-edit of [${run.provenance.sourceRunId}](${link(join(run.provenance.sourceRunPath, 'report.md'))}). Saved recordings and observations are referenced; the original run is unchanged.`, ''] : []),
     ...(run.presenterPath ? [`Fictional AI commentator: [generated asset supplied](${link(run.presenterPath)}). This is not a recording of a real person playing. Publishing is manual.`, ''] : []),
-    ...(run.captureSeconds === undefined ? [] : [`Capture budget: at most ${run.captureSeconds} seconds per attempt, including controller latency. Useful outcomes may stop earlier.`, '']),
+    `Edit style: **${run.contentBrief.editingStyle === 'reel' ? 'gameplay reel · up to 15 seconds · several distinct moments' : 'single episode'}**.`, '',
+    ...(run.captureSeconds === undefined ? [] : [`Capture budget: at most ${run.captureSeconds} seconds per attempt, including controller latency. Useful exploration may finish earlier.`, '']),
     '## Candidate decisions', '',
     'Content scores are editorial heuristics out of 30, not probabilities of audience performance. Zero clarity, payoff, or readability rejects a candidate regardless of visual appeal.', '',
   ];
@@ -177,7 +180,9 @@ export async function runPipeline(options: {
   try {
     const initial = options.fromRun
       ? await editFromRun(options.fromRun, directory, options.model, providerName, requestedBrief)
-      : coreRunSchema.parse({ version: 1, id: basename(directory), createdAt: new Date().toISOString(), model: options.model, status: 'running', captureSeconds: options.captureSeconds, contentBrief: requestedBrief ?? defaultContentBrief });
+      : coreRunSchema.parse({ version: 1, id: basename(directory), createdAt: new Date().toISOString(), model: options.model, status: 'running',
+        playMode: options.playMode ?? ((requestedBrief ?? defaultContentBrief).editingStyle === 'reel' ? 'auto' : 'timed'),
+        captureSeconds: options.captureSeconds, contentBrief: requestedBrief ?? defaultContentBrief });
     if (options.presenterPath) { initial.presenterPath = resolve(options.presenterPath); initial.presenterSha256 = await hashFile(initial.presenterPath); }
     const opened = await JsonStore.open(join(directory, 'run.json'), coreRunSchema, initial);
     if (requestedBrief && JSON.stringify(requestedBrief) !== JSON.stringify(opened.read().contentBrief)) throw new Error('A saved editorial brief cannot be changed while resuming. Start a new run for a different brief.');
@@ -236,7 +241,7 @@ export async function runPipeline(options: {
         candidates: [gameCandidateSchema.parse({ id: new URL(directUrl).pathname.split('/').at(-1), url: directUrl,
           title: decodeURIComponent(new URL(directUrl).pathname.split('/').at(-2)!).replaceAll('-', ' '), titleSource: 'url_slug', metrics: [], observations: [] })],
         sources: [], source: 'explicit_game_url',
-      } : await services.discoverGames({ signal: options.signal });
+      } : await services.discoverGames({ signal: options.signal, limit: store.read().contentBrief.editingStyle === 'reel' ? 100 : 60 });
       trace.artifact('discovery.json', result);
       if (!result.candidates.length) throw new Error('Astrocade returned no live game candidates. Check connectivity, then resume.');
       await save(run => { run.candidates = result.candidates; });
@@ -248,7 +253,12 @@ export async function runPipeline(options: {
       if (options.game) {
         const game = candidates.find(candidate => candidate.id === options.game || canonicalGameUrl(candidate.url) === canonicalGameUrl(options.game!) || new URL(candidate.url).pathname.split('/').at(-2) === options.game);
         if (!game) throw new Error('The requested game is not in this run’s discovered catalog. Use an exact ID, slug, or URL from discovery.json.');
-        shortlist = [{ gameId: game.id, hypothesis: 'Operator-selected candidate; suitability still requires actual play.', viewerQuestion: 'What visible decision and consequence does this game offer?', controlRisk: 'Inspect the actual controls before capturing.', captureGoal: 'Play competently toward one small complete challenge or distinctive consequence, with a readable setup and decisive action. A first input confirmation alone is not the goal; determine the angle from actual play.', rejectIf: 'No attainable, readable consequence or interesting viewer decision is observed.' }];
+        const reel = store.read().contentBrief.editingStyle === 'reel';
+        shortlist = [{ gameId: game.id, hypothesis: 'Operator-selected candidate; suitability still requires actual play.', viewerQuestion: 'What makes this game worth showing someone?', controlRisk: 'Inspect the actual controls before capturing.',
+          captureGoal: reel
+            ? 'Learn the controls, then explore different visible parts of this game. Seek three to six distinct recordable moments: different abilities, transformations, places, encounters or stages and their visible effects. Follow what actual play reveals. A first input, first ordinary reward, or repeated animation is not the whole goal. Collect real gameplay for a varied reel of at most 15 seconds; source exploration may be much longer. Stop when useful variety is captured, the game ends, progress stalls, or the capture budget expires.'
+            : 'Play competently toward one small complete challenge or distinctive consequence, with a readable setup and decisive action. A first input confirmation alone is not the goal; determine the angle from actual play.',
+          rejectIf: reel ? 'Only one trivial/repeated action, menus, idle travel or unreadable outcomes are available; no distinct playable moments for a reel.' : 'No attainable, readable consequence or interesting viewer decision is observed.' }];
       } else shortlist = await services.nominateGames(candidates, verifiedProfiles, getProvider(), limit, options.signal, store.read().playMode, store.read().contentBrief);
       await save(run => { run.shortlist = shortlist; run.attempts = shortlist.map(item => attemptSchema.parse({ gameId: item.gameId })); });
       trace.artifact('shortlist.json', shortlist);
@@ -259,7 +269,8 @@ export async function runPipeline(options: {
     for (const choice of store.read().shortlist) {
       options.signal?.throwIfAborted();
       const game = store.read().candidates.find(candidate => candidate.id === choice.gameId)!;
-      const intent = { captureGoal: choice.captureGoal, rejectIf: choice.rejectIf, maxDurationMs: store.read().captureSeconds === undefined ? undefined : store.read().captureSeconds! * 1000 };
+      const intent = { captureGoal: choice.captureGoal, rejectIf: choice.rejectIf, maxDurationMs: store.read().captureSeconds === undefined ? undefined : store.read().captureSeconds! * 1000,
+        ...(store.read().contentBrief.editingStyle ? { editingStyle: store.read().contentBrief.editingStyle } : {}) };
       let attempt = store.read().attempts.find(item => item.gameId === game.id)!;
       if (attempt.unsupported) continue;
       if (attempt.capture) {
@@ -273,26 +284,32 @@ export async function runPipeline(options: {
         if (!attempt.profile) {
           trace.event('inspect', 'started', `Inspecting ${game.title}'s visible controls.`);
           const inspectionDir = join(gameDir, `inspection-${randomUUID().slice(0, 8)}`);
-          const feedback = store.read().playMode === 'feedback';
+          const mode = store.read().playMode;
           const inspection = await services.inspectGame(game, inspectionDir, options.signal, getProvider());
           await updateAttempt(game.id, item => { item.inspectionPath = join(inspectionDir, 'inspection.json'); });
           // A new duration needs a new bounded plan, rather than truncating or looping a tested sequence.
-          const preset = !feedback && intent.maxDurationMs === undefined && verifiedProfiles.find(profile => canonicalGameUrl(profile.gameUrl) === canonicalGameUrl(game.url));
-          let learned = feedback ? await services.learnFeedbackProfile(inspection, game, getProvider(), options.signal, intent)
+          const preset = mode !== 'feedback' && intent.maxDurationMs === undefined && verifiedProfiles.find(profile => canonicalGameUrl(profile.gameUrl) === canonicalGameUrl(game.url));
+          const feedbackFirst = mode === 'feedback' || (mode === 'auto' && intent.editingStyle === 'reel' && !preset);
+          let learned = feedbackFirst ? await services.learnFeedbackProfile(inspection, game, getProvider(), options.signal, intent)
             : preset ? { profile: preset, evidence: [preset.verificationNotes ?? 'Previously tested native controls.'], limitations: ['A tested control sequence does not guarantee a win or a useful event in this attempt.'] } : await services.learnGameProfile(inspection, game, getProvider(), options.signal, intent);
-          if (store.read().playMode === 'auto' && !learned.profile) {
-            trace.artifact(`controls-timed-${game.id}.json`, learned);
-            trace.event('learn', 'fallback', `${game.title}: no repeatable timed plan; checking whether current screenshots support latency-tolerant feedback.`, learned);
+          if (mode === 'auto' && !learned.profile) {
+            const firstMode = feedbackFirst ? 'feedback' : 'timed';
+            const nextMode = feedbackFirst ? 'timed' : 'feedback';
+            const firstLabel = feedbackFirst ? 'Feedback' : 'Timed';
+            const nextLabel = feedbackFirst ? 'Timed' : 'Feedback';
+            trace.artifact(`controls-${firstMode}-${game.id}.json`, learned);
+            trace.event('learn', 'fallback', `${game.title}: no supported ${firstMode} plan; assessing ${nextMode} controls from the same inspection.`, learned);
             // Both learners write learning.json. Preserve their separate outputs
             // while sharing exactly the same observed screenshots and controls.
-            const feedbackDir = join(inspectionDir, 'feedback');
-            await mkdir(feedbackDir, { recursive: true });
-            const adaptive = await services.learnFeedbackProfile({ ...inspection, outputDir: feedbackDir }, game, getProvider(), options.signal, intent);
-            trace.artifact(`controls-feedback-${game.id}.json`, adaptive);
+            const nextDir = join(inspectionDir, nextMode);
+            await mkdir(nextDir, { recursive: true });
+            const learner = feedbackFirst ? services.learnGameProfile : services.learnFeedbackProfile;
+            const alternative = await learner({ ...inspection, outputDir: nextDir }, game, getProvider(), options.signal, intent);
+            trace.artifact(`controls-${nextMode}-${game.id}.json`, alternative);
             learned = {
-              profile: adaptive.profile,
-              evidence: [...learned.evidence.map(value => `Timed assessment: ${value}`), ...adaptive.evidence.map(value => `Feedback assessment: ${value}`)],
-              limitations: [...learned.limitations.map(value => `Timed mode only: ${value}`), ...adaptive.limitations.map(value => `Feedback mode: ${value}`)],
+              profile: alternative.profile,
+              evidence: [...learned.evidence.map(value => `${firstLabel} assessment: ${value}`), ...alternative.evidence.map(value => `${nextLabel} assessment: ${value}`)],
+              limitations: [...learned.limitations.map(value => `${firstLabel} mode only: ${value}`), ...alternative.limitations.map(value => `${nextLabel} mode: ${value}`)],
             };
           }
           await updateAttempt(game.id, item => { item.profile = learned.profile; item.evidence = learned.evidence; item.limitations = learned.limitations; item.unsupported = !learned.profile; delete item.error; });
@@ -334,13 +351,14 @@ export async function runPipeline(options: {
     if (!store.read().attempts.some(attempt => attempt.capture)) throw new Error('No candidate produced a recording. Inspect report.md and the saved control evidence; resume to retry failed attempts.');
     if (stage === 'capture') { await save(run => { run.status = 'paused'; }); return store.read(); }
 
+    const editingStyle = store.read().contentBrief.editingStyle ?? 'episode';
     for (const attempt of store.read().script ? [] : store.read().attempts) {
-      if (!attempt.capture || attempt.capture.analysis?.content) continue;
-      trace.event('analyze', 'started', `Finding a visible decision and consequence in ${attempt.capture.game.title}.`);
+      if (!attempt.capture || (attempt.capture.analysis?.content && (attempt.analysisEditingStyle ?? 'episode') === editingStyle)) continue;
+      trace.event('analyze', 'started', `Finding distinct playable moments in ${attempt.capture.game.title}.`);
       const provider = getProvider(); // Missing credentials are a run-level setup failure, not bad footage.
       let analysis: FootageAnalysis;
       try {
-        analysis = analysisSchema.required({ content: true }).parse(await services.analyzeFootage(attempt.capture, provider, options.signal));
+        analysis = analysisSchema.required({ content: true }).parse(await services.analyzeFootage(attempt.capture, provider, options.signal, store.read().contentBrief));
       } catch (error) {
         options.signal?.throwIfAborted();
         if (!(error instanceof z.ZodError || error instanceof NeedsAttention)) throw error;
@@ -349,22 +367,23 @@ export async function runPipeline(options: {
         trace.event('analyze', 'failed', `${attempt.capture.game.title}: ${detail}`, { gameId: attempt.gameId });
         continue;
       }
-      await updateAttempt(attempt.gameId, item => { item.capture!.analysis = analysis; item.analysisModel = options.model; item.analysisProvider = providerName; delete item.error; });
+      await updateAttempt(attempt.gameId, item => { item.capture!.analysis = analysis; item.analysisModel = options.model; item.analysisProvider = providerName; item.analysisEditingStyle = editingStyle; delete item.error; });
       trace.artifact(`analysis-${attempt.gameId}.json`, analysis);
       trace.event('analyze', analysis.usable && contentScore(analysis.content!) >= 0 ? 'completed' : 'rejected', analysis.reason, analysis);
     }
     if (!store.read().script) {
       const usable = store.read().attempts.filter(item => {
         const analysis = item.capture?.analysis;
-        return analysis?.usable && analysis.events.length && analysis.content && contentScore(analysis.content) >= 0;
+        return (item.analysisEditingStyle ?? 'episode') === editingStyle && analysis?.usable && analysis.events.length && analysis.content && contentScore(analysis.content) >= 0;
       }).sort((a, b) => contentScore(b.capture!.analysis!.content!) - contentScore(a.capture!.analysis!.content!));
       if (!usable.length) throw new Error('No recording contains a supported short-form moment. The rejected footage and reasons are saved; choose another game in a new run.');
       const selected = usable[0]!;
       await save(run => { run.selectedGameId = selected.gameId; });
       trace.event('select', 'completed', `Selected ${selected.capture!.game.title} from verified action windows and editorial evidence. Scores are heuristics out of 30, not audience probabilities.`, usable.map(item => ({ game: item.capture!.game.title, score: contentScore(item.capture!.analysis!.content!), content: item.capture!.analysis!.content, reason: item.capture!.analysis!.reason })));
       const presenterPath = store.read().presenterPath;
-      const maxDurationSeconds = presenterPath ? Math.min(40, await services.presenterVideoDuration(presenterPath, config.mediaTools, options.signal)) : undefined;
-      if (maxDurationSeconds !== undefined) trace.event('edit', 'observed', `Presenter footage limits the edit to ${maxDurationSeconds.toFixed(2)} seconds.`, { maxDurationSeconds });
+      const editLimit = store.read().contentBrief.editingStyle === 'reel' ? 15 : 40;
+      const maxDurationSeconds = presenterPath ? Math.min(editLimit, await services.presenterVideoDuration(presenterPath, config.mediaTools, options.signal)) : editLimit;
+      trace.event('edit', 'observed', `The edit is limited to ${maxDurationSeconds.toFixed(2)} seconds.`, { maxDurationSeconds, editingStyle: store.read().contentBrief.editingStyle ?? 'episode' });
       const script = await services.draftScript({ capture: selected.capture!, format: 'highlight', topic: '', brief: store.read().contentBrief, presenter: Boolean(presenterPath), maxDurationSeconds }, getProvider(), options.signal);
       await save(run => { run.script = script; run.scriptModel = options.model; run.scriptProvider = providerName; });
       trace.artifact('edit.json', script);

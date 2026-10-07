@@ -93,6 +93,35 @@ test('three consecutive no-progress observations stop instead of repeating indef
   assert.deepEqual(result.actions, []);
 });
 
+test('reel exploration remembers earlier mechanics beyond the recent four decisions without weakening action guards', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-exploration-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const provider = { json: async (prompt: string) => {
+    calls++;
+    assert.match(prompt, /One ordinary success is a milestone: report outcome=progress and continue/);
+    assert.match(prompt, /Stop on death or terminal game completion/);
+    if (calls === 6) {
+      assert.match(prompt, /Earlier exploration ledger[^\n]*"atSeconds":2[^\n]*SYNTHETIC initial ice form/);
+      assert.match(prompt, /Earlier exploration ledger[^\n]*SYNTHETIC ice control established/);
+    }
+    return { ...answer, observation: calls === 1 ? 'SYNTHETIC initial ice form is visible.' : `SYNTHETIC distinct later state ${calls}.`, lesson: calls === 1 ? 'SYNTHETIC ice control established.' : 'Compare the next observed effect.' };
+  } } as unknown as Pick<Inference, 'json'>;
+  const decide = createFeedbackController(profile, provider, directory, undefined, { editingStyle: 'reel' });
+  for (let i = 0; i < 6; i++) {
+    const result = await decide({ ...observation, observationId: `fixture:${i}`, elapsedMs: 2000 + i * 5000, previousActions: i ? [move] : [] });
+    assert.equal(result.stop, false, 'a subgoal can remain progress while exploration continues');
+    assert.deepEqual(result.actions, [move]);
+  }
+  assert.throws(() => validateFeedbackDecision({ ...answer, outcome: 'success' }, profile), /terminal outcome must stop/, 'reel guidance does not bypass terminal/action consistency');
+  const legacy = createFeedbackController(profile, { json: async (prompt: string) => {
+    assert.doesNotMatch(prompt, /REEL EXPLORATION|Earlier exploration ledger/);
+    assert.match(prompt, /Stop on death or completion/);
+    return { ...answer, outcome: 'success', stop: true, actions: [] };
+  } } as unknown as Pick<Inference, 'json'>, join(directory, 'legacy'));
+  assert.equal((await legacy(observation)).stop, true, 'saved episode runs keep their existing completion policy');
+});
+
 test('selection goals reach current-state feedback but are not treated as observed success', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'feedback-intent-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -136,6 +165,30 @@ test('feedback setup skips reflex games and never treats learned mechanics as ve
   const shorter = await learnFeedbackProfile(inspection, candidate, provider, undefined, { captureGoal: 'Fill one visible corner.', maxDurationMs: 60000 });
   assert.equal(shorter.profile?.maxDurationMs, 60000);
   if (shorter.profile?.controller.type === 'sparse') assert.equal(shorter.profile.controller.maxDecisions, 16, 'the call ceiling may increase without extending the requested wall-time cap');
+});
+
+test('reel setup scopes latency tolerance to observed safe exploration without expanding its budget', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-exploration-setup-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const imagePath = join(directory, 'fixture.png');
+  await writeFile(imagePath, 'SYNTHETIC quiet free-roam screenshot');
+  const inspection: GameInspection = { gameUrl: profile.gameUrl, observedAt: 'fixture', outputDir: directory, imagePath, beforeImagePath: imagePath,
+    text: 'F opens a transformation dial. WASD moves in the empty plaza.', readyToPlay: true, surface: profile.surface, ready: profile.ready, startTargets: [], viewport: profile.viewport, setup: [] };
+  const provider = { json: async (prompt: string) => {
+    assert.match(prompt, /Judge the CURRENT scene and proposed exploration/);
+    assert.match(prompt, /quiet free-roam area or input-paced transformation menu can qualify/);
+    assert.match(prompt, /when danger demands fast reactions, stop and report the limit/);
+    assert.match(prompt, /3–6 useful moments/);
+    return { supported: true, confidence: 'medium', latencyTolerant: true, objective: 'Compare visible forms and their effects in the safe plaza.', instructions: inspection.text,
+      allowedKeys: ['KeyF', 'KeyW', 'KeyA', 'KeyS', 'KeyD'], allowPointer: true, allowLook: false,
+      evidence: ['SYNTHETIC visible controls and empty plaza permit a bounded probe.'], limitations: ['Combat is not established as latency-tolerant.'] };
+  } } as unknown as Pick<Inference, 'json'>;
+  const learned = await learnFeedbackProfile(inspection, { id: 'fixture', url: profile.gameUrl, title: profile.name, titleSource: 'visible_text', metrics: [], observations: [] }, provider, undefined, { editingStyle: 'reel', maxDurationMs: 90000 });
+  assert.equal(learned.profile?.maxDurationMs, 90000);
+  assert.equal(learned.profile?.verification, 'unverified');
+  if (learned.profile?.controller.type === 'sparse') assert.equal(learned.profile.controller.maxDecisions, 16);
+  else assert.fail('Expected a bounded sparse hypothesis.');
+  assert.deepEqual(learned.limitations, ['Combat is not established as latency-tolerant.']);
 });
 
 test('an invalid stop proposal is saved before validation and returns no additional actions', async t => {

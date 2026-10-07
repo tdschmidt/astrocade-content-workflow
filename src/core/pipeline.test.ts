@@ -257,7 +257,7 @@ test('a rejected provider schema during learning stops the run without marking t
   const { directory, config, services, calls, candidate } = await fixture(t);
   candidate.url = 'https://www.astrocade.com/games/fixture-game/fixture';
   services.learnGameProfile = async () => { throw Object.assign(new Error('Provider rejected schema'), { status: 400 }); };
-  await assert.rejects(runPipeline({ directory, model: 'fixture-model', provider: 'codex', quiet: true }, config, services), /Provider rejected schema/);
+  await assert.rejects(runPipeline({ directory, model: 'fixture-model', provider: 'codex', playMode: 'timed', quiet: true }, config, services), /Provider rejected schema/);
   const run = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
   assert.equal(run.status, 'failed');
   assert.equal(run.attempts[0].unsupported, false);
@@ -271,7 +271,7 @@ test('feedback mode learns instead of using a timed preset and survives a stage 
   const original = services.runCaptureAttempt!;
   services.learnFeedbackProfile = async (_inspection, _candidate, _provider, _signal, intent) => {
     learns++;
-    assert.deepEqual(intent, { captureGoal: 'SYNTHETIC meaningful route choice.', rejectIf: 'SYNTHETIC route labels are unreadable.', maxDurationMs: 60000 });
+    assert.deepEqual(intent, { captureGoal: 'SYNTHETIC meaningful route choice.', rejectIf: 'SYNTHETIC route labels are unreadable.', maxDurationMs: 60000, editingStyle: 'reel' });
     return { profile: { ...verifiedProfiles[0]!, maxDurationMs: intent.maxDurationMs!, controller: { type: 'sparse', maxDecisions: 4, instructions: 'SYNTHETIC slow fixture controls', allowedKeys: [], allowPointer: true } }, evidence: ['Fixture mechanics'], limitations: [] };
   };
   services.createFeedbackController = (_profile, _provider, _directory, _onDecision, intent) => {
@@ -301,7 +301,7 @@ test('feedback mode learns instead of using a timed preset and survives a stage 
   await assert.rejects(runPipeline({ directory, model: 'fixture-model', playMode: 'timed', quiet: true }, config, services), /new run/);
 });
 
-test('auto mode reuses one inspection for feedback fallback, preserves both assessments and resumes without replay', async t => {
+test('legacy episode auto mode reuses one inspection for feedback fallback and resumes without replay', async t => {
   const { directory, config, services, calls } = await fixture(t);
   let timedInspection: Parameters<CoreServices['learnGameProfile']>[0] | undefined;
   let timedLearns = 0, feedbackLearns = 0;
@@ -330,7 +330,7 @@ test('auto mode reuses one inspection for feedback fallback, preserves both asse
     assert.ok(options.decide);
     return capture(options);
   };
-  const options = { directory, model: 'fixture-model', quiet: true };
+  const options = { directory, model: 'fixture-model', quiet: true, contentBrief: { ...defaultContentBrief, editingStyle: 'episode' as const } };
   const run = await runPipeline({ ...options, playMode: 'auto', captureSeconds: 80, stage: 'capture' }, config, services);
   assert.equal(run.playMode, 'auto');
   assert.equal(run.attempts[0]!.unsupported, false);
@@ -359,15 +359,19 @@ test('auto mode keeps tested timed controls without unnecessary feedback inferen
 });
 
 test('auto mode does not turn provider errors into feedback fallbacks or unsupported games', async t => {
-  for (const status of [401, 503, undefined]) {
+  for (const editingStyle of ['episode', 'reel'] as const) for (const status of [401, 503, undefined]) {
     const { directory, config, services, calls, candidate } = await fixture(t);
     candidate.url = 'https://www.astrocade.com/games/fixture-game/fixture';
-    services.learnGameProfile = async () => { throw Object.assign(new Error('SYNTHETIC provider failure'), status ? { status } : {}); };
-    services.learnFeedbackProfile = async () => assert.fail('Provider errors cannot prove that timed controls are unsupported.');
-    await assert.rejects(runPipeline({ directory, model: 'fixture-model', playMode: 'auto', stage: 'capture', quiet: true }, config, services));
+    let firstCalls = 0, fallbackCalls = 0;
+    const first = async () => { firstCalls++; throw Object.assign(new Error('SYNTHETIC provider failure'), status ? { status } : {}); };
+    const fallback = async () => { fallbackCalls++; assert.fail('Provider errors cannot establish unsupported controls.'); };
+    services.learnGameProfile = editingStyle === 'episode' ? first : fallback;
+    services.learnFeedbackProfile = editingStyle === 'reel' ? first : fallback;
+    await assert.rejects(runPipeline({ directory, model: 'fixture-model', playMode: 'auto', contentBrief: { ...defaultContentBrief, editingStyle }, stage: 'capture', quiet: true }, config, services));
     const run = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
     assert.equal(run.attempts[0].unsupported, false);
     assert.equal(calls.capture, 0);
+    assert.equal(firstCalls, 1); assert.equal(fallbackCalls, 0);
   }
 });
 
@@ -379,7 +383,7 @@ test('auto mode records both unsupported modes without attempting gameplay', asy
   await assert.rejects(runPipeline({ directory, model: 'fixture-model', playMode: 'auto', stage: 'capture', quiet: true }, config, services), /No candidate produced a recording/);
   const run = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
   assert.equal(run.attempts[0].unsupported, true);
-  assert.deepEqual(run.attempts[0].limitations, ['Timed mode only: No repeatable timed plan.', 'Feedback mode: Observed hazards require reflexes.']);
+  assert.deepEqual(run.attempts[0].limitations, ['Feedback mode only: Observed hazards require reflexes.', 'Timed mode: No repeatable timed plan.']);
   assert.equal(calls.capture, 0);
 });
 
@@ -388,7 +392,7 @@ test('an explicit timed duration replans instead of truncating a preset and cann
   let learns = 0;
   services.learnGameProfile = async (_inspection, _candidate, _provider, _signal, intent) => {
     learns++;
-    assert.deepEqual(intent, { captureGoal: 'SYNTHETIC meaningful route choice.', rejectIf: 'SYNTHETIC route labels are unreadable.', maxDurationMs: 30000 });
+    assert.deepEqual(intent, { captureGoal: 'SYNTHETIC meaningful route choice.', rejectIf: 'SYNTHETIC route labels are unreadable.', maxDurationMs: 30000, editingStyle: 'reel' });
     return { profile: { ...verifiedProfiles[0]!, verification: 'unverified', maxDurationMs: intent.maxDurationMs! }, evidence: ['SYNTHETIC replanned inputs.'], limitations: [] };
   };
   const capture = services.runCaptureAttempt!;
@@ -397,7 +401,7 @@ test('an explicit timed duration replans instead of truncating a preset and cann
     assert.equal(options.profile.verification, 'unverified');
     return capture(options);
   };
-  const options = { directory, model: 'fixture-model', stage: 'capture' as const, quiet: true };
+  const options = { directory, model: 'fixture-model', playMode: 'timed' as const, stage: 'capture' as const, quiet: true };
   const run = await runPipeline({ ...options, captureSeconds: 30 }, config, services);
   assert.equal(run.captureSeconds, 30);
   assert.equal(learns, 1);
@@ -489,7 +493,7 @@ test('an unfinished legacy analysis is refreshed once, while a finished legacy v
   delete legacy.contentBrief;
   await writeFile(join(directory, 'run.json'), JSON.stringify(legacy));
   const edited = await runPipeline({ ...options, stage: 'edit' }, config, services);
-  assert.deepEqual(edited.contentBrief, defaultContentBrief);
+  assert.deepEqual(edited.contentBrief, { ...defaultContentBrief, editingStyle: 'episode' });
   assert.equal(calls.analyze, 1);
   assert.equal(calls.capture, 1);
   const completedLegacy = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
@@ -513,6 +517,63 @@ test('new unassessed footage cannot bypass the content gates', async t => {
   await assert.rejects(runPipeline({ directory, model: 'fixture-model', quiet: true }, config, services), /No recording contains a supported short-form moment/);
   assert.equal(calls.draft, 0);
   assert.equal(calls.render, 0);
+});
+
+test('new reel runs pass exploration intent and the fifteen-second ceiling through every stage', async t => {
+  const { directory, config, services, candidate } = await fixture(t);
+  const inspect = services.inspectGame!, analyze = services.analyzeFootage!, draft = services.draftScript!;
+  services.inspectGame = async (...args) => inspect(...args);
+  let feedbackFirst = false;
+  services.learnFeedbackProfile = async () => {
+    feedbackFirst = true;
+    return { evidence: ['SYNTHETIC time-sensitive game'], limitations: ['Slow observations cannot support these hazards.'] };
+  };
+  services.learnGameProfile = async (_inspection, _candidate, _provider, _signal, intent) => {
+    assert.equal(feedbackFirst, true);
+    assert.equal(intent?.editingStyle, 'reel');
+    assert.match(intent!.captureGoal!, /three to six distinct/);
+    assert.match(intent!.captureGoal!, /source exploration may be much longer/i);
+    return { profile: { ...verifiedProfiles[0]!, maxDurationMs: 60000 }, evidence: ['SYNTHETIC bounded exploration'], limitations: [] };
+  };
+  services.analyzeFootage = async (...args) => {
+    assert.equal(args[3]?.editingStyle, 'reel');
+    return analyze(...args);
+  };
+  services.draftScript = async (...args) => {
+    assert.equal(args[0].brief?.editingStyle, 'reel');
+    assert.equal(args[0].maxDurationSeconds, 15);
+    return draft(...args);
+  };
+  const run = await runPipeline({ directory, model: 'fixture-model', game: candidate.url, captureSeconds: 60, quiet: true }, config, services);
+  assert.equal(run.playMode, 'auto');
+  assert.equal(run.attempts[0]!.analysisEditingStyle, 'reel');
+  assert.match(await readFile(join(directory, 'report.md'), 'utf8'), /gameplay reel · up to 15 seconds/);
+});
+
+test('changing an episode to a reel rescans saved footage once without changing or recapturing its source', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const legacyBrief = { ...defaultContentBrief, editingStyle: 'episode' as const };
+  const original = await runPipeline({ directory, model: 'fixture-model', contentBrief: legacyBrief, quiet: true }, config, services);
+  // Emulate evidence written before analysis style was recorded.
+  const legacy = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
+  delete legacy.attempts[0].analysisEditingStyle;
+  await writeFile(join(directory, 'run.json'), JSON.stringify(legacy));
+  const originalManifest = await readFile(join(directory, 'run.json'), 'utf8');
+  const reelDirectory = join(directory, 'reel');
+  const options = { directory: reelDirectory, fromRun: directory, model: 'fixture-model', contentBrief: defaultContentBrief, quiet: true };
+  const reel = await runPipeline(options, config, services);
+  assert.equal(calls.analyze, 2, 'the old single-episode selection cannot stand in for a reel scan');
+  assert.equal(calls.capture, 1);
+  assert.equal(reel.attempts[0]!.capture!.path, original.attempts[0]!.capture!.path);
+  assert.equal(reel.attempts[0]!.analysisEditingStyle, 'reel');
+  assert.equal(await readFile(join(directory, 'run.json'), 'utf8'), originalManifest);
+  await runPipeline({ directory: reelDirectory, model: 'fixture-model', quiet: true }, config, services);
+  assert.equal(calls.analyze, 2, 'resuming the finished reel reuses its checked output');
+  const failedDirectory = join(directory, 'failed-reel');
+  services.analyzeFootage = async () => { throw new NeedsAttention('SYNTHETIC no varied playable moments'); };
+  const beforeDraft = calls.draft;
+  await assert.rejects(runPipeline({ ...options, directory: failedDirectory }, config, services), /No recording contains/);
+  assert.equal(calls.draft, beforeDraft, 'failed reel analysis must not silently use stale episode evidence');
 });
 
 test('scheduled overlays reach the renderer and the report retains editorial alternatives and duration reasoning', async t => {
@@ -650,7 +711,7 @@ test('a longer presenter retains the edit ceiling and saved scripts resume witho
   services.presenterVideoDuration = async () => { probes++; return 55; };
   const draft = services.draftScript!, render = services.renderPortrait!;
   services.draftScript = async (...args) => {
-    assert.equal(args[0].maxDurationSeconds, 40);
+    assert.equal(args[0].maxDurationSeconds, 15);
     return draft(...args);
   };
   services.renderPortrait = async () => { throw new Error('SYNTHETIC render interruption'); };

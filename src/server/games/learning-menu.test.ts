@@ -70,6 +70,28 @@ test('inspection keeps HTML tools outside a small canvas in the full game-frame 
   assert.equal(await page.locator('body').getAttribute('data-outside-clicked'), null);
 });
 
+test('active gameplay question-mark help is opened once and closed before the current screenshot', browserTest, async t => {
+  const { outputDir, page } = await fixture(t, `<button id="start">Start</button><script>
+    document.querySelector('#start').onclick=event=>{document.querySelector('#start').remove();
+      document.body.insertAdjacentHTML('beforeend','<h1>Quiet plaza</h1><button id="legend">?</button><div id="help" hidden>CONTROLS: F opens the dial; SPACE transforms.</div>');
+      document.querySelector('#legend').onclick=e=>{const help=document.querySelector('#help');help.hidden=!help.hidden;e.target.textContent=help.hidden?'?':'✕';document.body.dataset.helpClicks=(document.body.dataset.helpClicks||'')+String(e.isTrusted)+','};
+    };
+    </script>`);
+  const inspection = await inspectGamePage(page, candidate.url, outputDir, undefined, { json: async () => playing } as unknown as Pick<Inference, 'json'>);
+  assert.equal(inspection.readyToPlay, true);
+  assert.deepEqual(inspection.help?.opened, { selector: '#legend', label: '?' });
+  assert.deepEqual(inspection.help?.returned, { selector: '#legend', label: '✕' });
+  assert.match(inspection.help!.text, /F opens the dial; SPACE transforms/);
+  assert.match(inspection.text, /Observed help panel/);
+  assert.equal(await page.frameLocator(frameSelector).locator('body').getAttribute('data-help-clicks'), 'true,true,');
+  assert.equal(await page.frameLocator(frameSelector).locator('#help').isVisible(), false);
+  assert.equal(await page.frameLocator(frameSelector).getByRole('heading', { name: 'Quiet plaza' }).isVisible(), true);
+  assert.equal(inspection.startTargets.some(target => target.label === '?'), true);
+  assert.deepEqual((inspection.performedMenuSteps ?? []).filter(step => step.type !== 'wait'), [{ type: 'click', target: { selector: '#start', frames: [frameSelector] } }], 'help inspection must not become captured gameplay or replay navigation');
+  assert.ok((await readFile(inspection.help!.imagePath)).length > 0);
+  assert.equal(await page.locator('body').getAttribute('data-outside-clicked'), null);
+});
+
 test('a custom DOM entry and canvas tutorial are freshly observed and replayed in order', browserTest, async t => {
   const body = `<button id="suitUp" style="position:absolute;left:100px;top:250px">SUIT UP</button><script>
     const record=(label,event)=>{const events=JSON.parse(document.body.dataset.events||'[]');events.push({label,trusted:event.isTrusted});document.body.dataset.events=JSON.stringify(events)};

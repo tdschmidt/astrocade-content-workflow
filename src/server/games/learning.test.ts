@@ -117,6 +117,21 @@ test('plans longer than the learning budget are skipped', async t => {
   assert.match(learned.limitations.join(' '), /45-second/);
 });
 
+test('reel timed learning asks for distinct supported moments while preserving the existing action budget', async t => {
+  const { candidate, inspection, proposal } = await fixture(t);
+  const google = { json: async (prompt: string) => {
+    assert.match(prompt, /gameplay REEL/);
+    assert.match(prompt, /3–6 useful moments/);
+    assert.match(prompt, /cannot choose unseen moving targets or pretend to adapt/);
+    assert.match(prompt, /up to the available 45 seconds/);
+    assert.doesNotMatch(prompt, /Prefer 10–25 seconds/);
+    return { ...proposal, actions: Array.from({ length: 10 }, () => ({ type: 'wait', durationMs: 5000 })) };
+  } } as unknown as Pick<GoogleServices, 'json'>;
+  const learned = await learnGameProfile(inspection, candidate, google, undefined, { editingStyle: 'reel' });
+  assert.equal(learned.profile, undefined);
+  assert.match(learned.limitations.join(' '), /45-second learning budget/, 'exploration never expands or fills a cap by bypassing the native plan guard');
+});
+
 test('a requested capture budget guides the selected goal and rejects an overlong plan without truncation', async t => {
   const { candidate, inspection, proposal } = await fixture(t);
   const intent = { captureGoal: 'SYNTHETIC reach the first flag.', rejectIf: 'SYNTHETIC no flag or progress is visible.', maxDurationMs: 10000 };
