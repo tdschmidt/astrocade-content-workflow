@@ -58,17 +58,25 @@ function googleFixture(responses: unknown[], sampled: number[] = []): GoogleServ
   } as unknown as GoogleServices;
 }
 
-test('a short recording gets one full 8 FPS review with absolute timestamps', async () => {
+test('a short recording gets one 8 FPS review and bounded context around the absolute impact', async () => {
   const shortCapture = { ...capture, durationSeconds: 12.948 };
-  const event = { ...capture.analysis!.events[0]!, startSeconds: 3.2, endSeconds: 7.4 };
+  const event = { ...capture.analysis!.events[0]!, startSeconds: 3.5, endSeconds: 5.6 };
+  const response = { ...capture.analysis!, events: [event], playableStartSeconds: 2, playableEndSeconds: 12 };
   const sampled: number[] = [];
-  const result = await analyzeFootage(shortCapture, googleFixture([{ ...capture.analysis!, events: [event] }], sampled));
+  const result = await analyzeFootage(shortCapture, googleFixture([response], sampled));
   assert.deepEqual(sampled, [8]);
-  assert.deepEqual(result.events, [{ ...event, evidence: `8 FPS review: ${event.evidence}` }]);
+  assert.equal(result.events[0]!.startSeconds, 2, 'context never includes the opening banner');
+  assert.equal(result.events[0]!.endSeconds, 6.6, 'the impact retains its visible aftermath');
+  assert.match(result.events[0]!.evidence, /Impact: 3.5–5.6s/);
+  const late = await analyzeFootage(shortCapture, googleFixture([{ ...response, events: [{ ...event, startSeconds: 10.5, endSeconds: 11.8 }] }]));
+  assert.deepEqual([late.events[0]!.startSeconds, late.events[0]!.endSeconds], [8.5, 12]);
   for (const invalid of [{ ...event, endSeconds: 12.949 }, { ...event, startSeconds: -1 }, { ...event, endSeconds: event.startSeconds }]) {
-    await assert.rejects(analyzeFootage(shortCapture, googleFixture([{ ...capture.analysis!, events: [invalid] }])), /outside the recording|greater than|Too small/);
+    await assert.rejects(analyzeFootage(shortCapture, googleFixture([{ ...response, events: [invalid] }])), /outside the recording|greater than|Too small/);
   }
-  const idle = await analyzeFootage(shortCapture, googleFixture([{ ...capture.analysis!, usable: false, reason: 'Opening banner obscures the only action', events: [event] }]));
+  for (const bounds of [{ playableStartSeconds: null }, { playableStartSeconds: 12, playableEndSeconds: 2 }, { playableEndSeconds: 12.949 }, { playableStartSeconds: 4 }, { playableEndSeconds: 5 }]) {
+    await assert.rejects(analyzeFootage(shortCapture, googleFixture([{ ...response, ...bounds }])), /playable span/);
+  }
+  const idle = await analyzeFootage(shortCapture, googleFixture([{ ...response, playableStartSeconds: null, playableEndSeconds: null, usable: false, reason: 'Opening banner obscures the only action', events: [] }]));
   assert.equal(idle.usable, false);
   assert.deepEqual(idle.events, []);
 });
@@ -94,11 +102,16 @@ test('coarse apparent action cannot survive a dense review that found only idle 
 
 const script = { hook: 'Watch the landing', narration: 'The tiny explorer found a way home.', caption: 'A short story.', cuts: [{ startSeconds: 0, endSeconds: 25 }], rationale: 'Visible jumps', claims: [] };
 
-test('a core highlight preserves one contiguous event instead of joining short contacts', async () => {
-  const single = { ...script, narration: '', cuts: [{ startSeconds: 3, endSeconds: 7 }] };
-  const result = await draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([single]));
-  assert.deepEqual(result.cuts, single.cuts);
-  await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([{ ...single, cuts: [{ startSeconds: 4.5, endSeconds: 5.625 }, { startSeconds: 9.5, endSeconds: 11.125 }] }])), /one contiguous/);
+test('a highlight selects an event and cannot discard its readable context or join contacts', async () => {
+  const shortCapture = { ...capture, durationSeconds: 12.948, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, startSeconds: 2, endSeconds: 6.6 }] } };
+  const choice = { eventIndex: 0, hook: script.hook, caption: script.caption, rationale: script.rationale };
+  const result = await draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([choice]));
+  assert.deepEqual(result.cuts, [{ startSeconds: 2, endSeconds: 6.6 }]);
+  assert.equal(result.narration, '');
+  await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, eventIndex: 1 }])), /unknown observed event/);
+  for (const cuts of [[{ startSeconds: 3.5, endSeconds: 5.6 }], [{ startSeconds: 4.5, endSeconds: 5.625 }, { startSeconds: 9.5, endSeconds: 11.125 }]]) {
+    await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, cuts }])), /Unrecognized key/);
+  }
 });
 
 test('fiction is labeled and a script cannot cut unobserved footage', async () => {
