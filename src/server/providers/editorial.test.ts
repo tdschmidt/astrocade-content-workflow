@@ -118,7 +118,7 @@ test('long analysis keeps a late high-priority payoff when earlier windows produ
 });
 
 const review = { approved: true, reason: 'The visible jump supports the question; sky is unobstructed.', hook: 'would you make that jump?', caption: 'Pick your landing before the jump.', position: 'upper' };
-const choiceFor = (eventIndexes: number[]) => ({ eventIndexes, alternatives: [
+const choiceFor = (eventIndexes: number[]) => ({ eventIndexes, cuts: null, alternatives: [
   { angle: 'prediction', hook: review.hook, caption: review.caption, evidence: 'A visible jump and landing.', tradeoff: 'Simple decision.' },
   { angle: 'escalation', hook: 'that landing is getting smaller', caption: 'The platforms leave little room.', evidence: 'Small platform is visible.', tradeoff: 'Needs scale to read.' },
   { angle: 'novelty', hook: 'this gap has trust issues', caption: 'A suspiciously narrow landing.', evidence: 'Gap and narrow landing.', tradeoff: 'Less direct participation.' },
@@ -141,8 +141,10 @@ test('a highlight preserves the whole context of a single selected event', async
   for (const eventIndexes of [[], [0, 1, 2, 3], [-1], [0.5]]) {
     await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, eventIndexes }])));
   }
-  for (const cuts of [[{ startSeconds: 3.5, endSeconds: 5.6 }], [{ startSeconds: 4.5, endSeconds: 5.625 }, { startSeconds: 9.5, endSeconds: 11.125 }]]) {
-    await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, cuts }])), /Unrecognized key/);
+  const trimmed = await draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, cuts: [{ startSeconds: 2.2, endSeconds: 6.4 }] }, review]));
+  assert.deepEqual(trimmed.cuts, [{ startSeconds: 2.2, endSeconds: 6.4 }]);
+  for (const cuts of [[{ startSeconds: 1, endSeconds: 6.6 }], [{ startSeconds: 2, endSeconds: 5 }, { startSeconds: 4, endSeconds: 6 }]]) {
+    await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, cuts }])), /outside the verified action|overlap/);
   }
 });
 
@@ -214,4 +216,17 @@ test('visual review can correct a hook and placement but cannot approve unsuppor
   await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), { ...review, caption: 'Visit https:\/\/unrelated.example' }])), /external link/);
   const tiny = { ...capture, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, endSeconds: 2 }] } };
   await assert.rejects(draftScript({ capture: tiny, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), review])), /too short to read/);
+});
+
+test('visual review maps caption anchors through the game crop instead of the browser viewport', async () => {
+  const cropped = { ...capture, width: 720, height: 1280, crop: { x: 29, y: 0, width: 661, height: 1176 } };
+  const provider = googleFixture([choiceFor([0]), review]);
+  const json = provider.json.bind(provider);
+  const prompts: string[] = [];
+  provider.json = async (prompt, ...args) => { prompts.push(prompt); return json(prompt, ...args); };
+  await draftScript({ capture: cropped, format: 'highlight', topic: '' }, provider);
+  assert.match(prompts[1]!, /"lowerBottomSourceY":940\.8/);
+  assert.match(prompts[1]!, /not 12\.5%\/80% of the entire uncropped viewport/);
+  const duplicate = choiceFor([0]); duplicate.alternatives[2] = duplicate.alternatives[0]!;
+  await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([duplicate])), /three distinct concepts/);
 });

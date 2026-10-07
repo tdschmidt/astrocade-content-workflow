@@ -335,7 +335,7 @@ export async function runPipeline(options: {
       const selected = usable[0]!;
       await save(run => { run.selectedGameId = selected.gameId; });
       trace.event('select', 'completed', `Selected ${selected.capture!.game.title} from verified action windows and editorial evidence. Scores are heuristics out of 30, not audience probabilities.`, usable.map(item => ({ game: item.capture!.game.title, score: contentScore(item.capture!.analysis!.content!), content: item.capture!.analysis!.content, reason: item.capture!.analysis!.reason })));
-      const script = await services.draftScript({ capture: selected.capture!, format: 'highlight', topic: '', brief: store.read().contentBrief }, getProvider(), options.signal);
+      const script = await services.draftScript({ capture: selected.capture!, format: 'highlight', topic: '', brief: store.read().contentBrief, presenter: Boolean(store.read().presenterPath) }, getProvider(), options.signal);
       await save(run => { run.script = script; run.scriptModel = options.model; run.scriptProvider = providerName; });
       trace.artifact('edit.json', script);
       trace.event('edit', 'completed', script.rationale, { hook: script.hook, cuts: script.cuts, editorial: script.editorial, overlays: script.overlays });
