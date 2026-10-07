@@ -8,6 +8,7 @@ import { coreRunSchema, runPipeline, type CoreStage } from './pipeline.js';
 const { values } = parseArgs({ options: {
   provider: { type: 'string' }, stage: { type: 'string', default: 'all' }, resume: { type: 'string' }, model: { type: 'string' },
   game: { type: 'string' }, candidates: { type: 'string', default: '3' }, help: { type: 'boolean', short: 'h' },
+  play: { type: 'string' },
 } });
 
 if (values.help) {
@@ -15,8 +16,10 @@ if (values.help) {
 
 npm run pipeline -- [--provider gemini|codex] [--stage discover|capture|edit|all] [--game ID_OR_SLUG] [--candidates 1-5]
 npm run pipeline -- --resume data/runs/RUN_DIRECTORY [--model MODEL]
+npm run pipeline -- --provider codex --play feedback --game PUBLIC_ASTROCADE_GAME_URL
 
 Default: inspect up to three provisional choices, record supported games, compare visible results, and render one highlight.
+Feedback mode: inspect slow/input-paced games, observe each action batch, adapt to current screenshots, and stop at a visible outcome or the bounded decision/time limit. Fast reflex games are skipped. --play timed is the default. An explicit game URL is inspected directly.
 Outputs: report.md, trace.jsonl, discovery/inspection/control evidence, original recordings, edit.json, highlight-*.mp4, caption.txt.
 The trace shows observable actions and concise decision summaries, not private internal reasoning. Publishing is manual.
 Gemini (default): configure GEMINI_API_KEY in .env; existing saved keys are also read.
@@ -24,6 +27,7 @@ Codex: install the Codex CLI, run codex login using ChatGPT, then pass --provide
 } else {
   if (!['discover', 'capture', 'edit', 'all'].includes(values.stage)) throw new Error('Stage must be discover, capture, edit, or all.');
   if (values.provider && !['gemini', 'codex'].includes(values.provider)) throw new Error('Provider must be gemini or codex.');
+  if (values.play && !['timed', 'feedback'].includes(values.play)) throw new Error('Play mode must be timed or feedback.');
   const abort = new AbortController();
   const stop = () => abort.abort(new Error('Stopped by the operator. Completed artifacts are preserved.'));
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
@@ -34,7 +38,7 @@ Codex: install the Codex CLI, run codex login using ChatGPT, then pass --provide
     const saved = values.resume ? coreRunSchema.parse(JSON.parse(await readFile(`${directory}/run.json`, 'utf8'))) : undefined;
     const provider = (values.provider ?? saved?.provider ?? 'gemini') as 'gemini' | 'codex';
     const model = values.model ?? (saved?.provider === provider ? saved.model : provider === 'codex' ? 'gpt-5.6-sol' : 'gemini-3.5-flash');
-    const run = await runPipeline({ directory, model, provider, stage: values.stage as CoreStage, game: values.game, shortlistSize: Number(values.candidates), signal: abort.signal }, config);
+    const run = await runPipeline({ directory, model, provider, stage: values.stage as CoreStage, game: values.game, playMode: values.play as 'timed' | 'feedback' | undefined, shortlistSize: Number(values.candidates), signal: abort.signal }, config);
     console.log(`\n${run.status === 'complete' ? 'Ready' : 'Stage complete'}: ${directory}/report.md`);
   } catch (error) {
     // Detailed sanitized stage errors are in the trace; never dump SDK request objects or credentials.

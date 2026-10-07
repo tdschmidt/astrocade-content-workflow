@@ -218,3 +218,43 @@ test('a rejected provider schema during learning stops the run without marking t
   assert.equal(run.attempts[0].error, undefined);
   assert.equal(calls.capture, 0);
 });
+
+test('feedback mode learns instead of using a timed preset and survives a stage resume', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  let learns = 0, controllers = 0;
+  const original = services.runCaptureAttempt!;
+  services.learnFeedbackProfile = async () => {
+    learns++;
+    return { profile: { ...verifiedProfiles[0]!, controller: { type: 'sparse', maxDecisions: 4, instructions: 'SYNTHETIC slow fixture controls', allowedKeys: [], allowPointer: true } }, evidence: ['Fixture mechanics'], limitations: [] };
+  };
+  services.createFeedbackController = () => {
+    controllers++;
+    return async () => ({ observation: 'Fixture complete', outcome: 'success', lesson: '', stop: true, reason: 'Done', actions: [] });
+  };
+  services.runCaptureAttempt = async options => {
+    assert.equal(options.profile.controller.type, 'sparse');
+    assert.ok(options.decide);
+    return { ...await original(options), stopReason: 'controller_error', controllerError: 'SYNTHETIC later provider outage' };
+  };
+  const run = await runPipeline({ directory, model: 'fixture-model', playMode: 'feedback', stage: 'capture', quiet: true }, config, services);
+  assert.equal(run.playMode, 'feedback');
+  assert.equal(learns, 1); assert.equal(controllers, 1);
+  assert.match(run.attempts[0]!.feedbackPath!, /feedback-.*report.md$/);
+  assert.match(await readFile(join(directory, 'report.md'), 'utf8'), /Partial footage is preserved/);
+  const resumed = await runPipeline({ directory, model: 'fixture-model', stage: 'edit', quiet: true }, config, services);
+  assert.equal(resumed.status, 'complete');
+  assert.equal(resumed.playMode, 'feedback');
+  assert.equal(calls.capture, 1);
+  await assert.rejects(runPipeline({ directory, model: 'fixture-model', playMode: 'timed', quiet: true }, config, services), /new run/);
+});
+
+test('an explicit Astrocade URL is inspected directly without inventing catalog metadata', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const game = verifiedProfiles[0]!.gameUrl;
+  const run = await runPipeline({ directory, model: 'fixture-model', game, stage: 'capture', quiet: true }, config, services);
+  assert.equal(calls.discover, 0);
+  assert.equal(calls.inspect, 1);
+  assert.equal(run.candidates[0]!.url, game);
+  assert.equal(run.candidates[0]!.titleSource, 'url_slug');
+  assert.deepEqual(run.candidates[0]!.observations, []);
+});

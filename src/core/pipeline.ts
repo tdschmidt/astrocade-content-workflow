@@ -7,6 +7,7 @@ import type { Configuration } from '../server/config.js';
 import { NeedsAttention } from '../server/jobs.js';
 import { canonicalGameUrl, discoverGames } from '../server/games/discovery.js';
 import { inspectGame, learnGameProfile } from '../server/games/learning.js';
+import { createFeedbackController, learnFeedbackProfile } from '../server/games/feedback.js';
 import { verifiedProfiles } from '../server/games/profiles.js';
 import { runCaptureAttempt } from '../server/games/runner.js';
 import { gameCandidateSchema, gameProfileSchema } from '../server/games/schema.js';
@@ -23,6 +24,7 @@ import { Trace } from './trace.js';
 const attemptSchema = z.object({
   gameId: z.string(), profile: gameProfileSchema.optional(),
   inspectionPath: z.string().optional(), evidence: z.array(z.string()).default([]), limitations: z.array(z.string()).default([]),
+  feedbackPath: z.string().optional(), controllerError: z.string().optional(),
   capture: captureSchema.optional(), sourceSha256: z.string().optional(),
   analysisModel: z.string().optional(), analysisProvider: z.enum(['gemini', 'codex']).optional(),
   unsupported: z.boolean().default(false), error: z.string().optional(),
@@ -30,6 +32,7 @@ const attemptSchema = z.object({
 export const coreRunSchema = z.object({
   version: z.literal(1), id: z.string(), createdAt: z.string(), model: z.string(), provider: z.enum(['gemini', 'codex']).default('gemini'),
   status: z.enum(['running', 'paused', 'failed', 'complete']),
+  playMode: z.enum(['timed', 'feedback']).default('timed'),
   candidates: z.array(gameCandidateSchema).default([]),
   shortlist: z.array(nominationSchema).default([]), attempts: z.array(attemptSchema).default([]),
   selectedGameId: z.string().optional(), script: scriptSchema.optional(),
@@ -39,7 +42,7 @@ export const coreRunSchema = z.object({
 export type CoreRun = z.infer<typeof coreRunSchema>;
 export type CoreStage = 'discover' | 'capture' | 'edit' | 'all';
 
-const defaults = { discoverGames, nominateGames, inspectGame, learnGameProfile, runCaptureAttempt, analyzeFootage, draftScript, renderPortrait, validateVideo };
+const defaults = { discoverGames, nominateGames, inspectGame, learnGameProfile, learnFeedbackProfile, createFeedbackController, runCaptureAttempt, analyzeFootage, draftScript, renderPortrait, validateVideo };
 export type CoreServices = typeof defaults;
 
 async function hashFile(path: string) { return createHash('sha256').update(await readFile(path)).digest('hex'); }
@@ -75,6 +78,8 @@ async function report(directory: string, run: CoreRun) {
     const attempt = run.attempts.find(item => item.gameId === choice.gameId);
     lines.push(`### ${game.title}`, '', `[Game](${game.url})`, '', `Hypothesis: ${choice.hypothesis}`, '', `Viewer question: ${choice.viewerQuestion}`, '', `Control risk: ${choice.controlRisk}`, '');
     if (attempt?.inspectionPath) lines.push(`[Inspection](${link(attempt.inspectionPath)})`, '');
+    if (attempt?.feedbackPath) lines.push(`[Gameplay feedback and screenshots](${link(attempt.feedbackPath)})`, '');
+    if (attempt?.controllerError) lines.push(`Controller stopped early: ${attempt.controllerError}. Partial footage is preserved.`, '');
     for (const evidence of attempt?.evidence ?? []) lines.push(`- ${evidence}`);
     for (const limitation of attempt?.limitations ?? []) lines.push(`- Limitation: ${limitation}`);
     if (attempt?.capture) {
@@ -90,7 +95,7 @@ async function report(directory: string, run: CoreRun) {
 }
 
 export async function runPipeline(options: {
-  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; signal?: AbortSignal; quiet?: boolean;
+  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; playMode?: 'timed' | 'feedback'; signal?: AbortSignal; quiet?: boolean;
 }, config: Configuration, overrides: Partial<CoreServices> = {}): Promise<CoreRun> {
   const directory = resolve(options.directory);
   const services = { ...defaults, ...overrides };
@@ -105,6 +110,8 @@ export async function runPipeline(options: {
   let store: JsonStore<CoreRun> | undefined;
   try {
     store = await JsonStore.open(join(directory, 'run.json'), coreRunSchema, coreRunSchema.parse({ version: 1, id: basename(directory), createdAt: new Date().toISOString(), model: options.model, status: 'running' }));
+    if (options.playMode && options.playMode !== store.read().playMode && store.read().attempts.length) throw new Error('Start a new run to change the gameplay mode.');
+    if (options.playMode) await store.update(run => { run.playMode = options.playMode!; });
     await store.update(run => { run.model = options.model; run.provider = providerName; run.status = 'running'; delete run.error; });
     let provider: Inference | undefined;
     const onProviderEvent = (event: InferenceProgressEvent) => trace.event(`provider.${event.stage}`, event.status, event.message ?? `${event.model ?? providerName} attempt ${event.attempt}`, { provider: providerName, ...event });
@@ -141,11 +148,18 @@ export async function runPipeline(options: {
 
     if (!store.read().candidates.length) {
       trace.event('discover', 'started', 'Reading current public Astrocade pages.');
-      const result = await services.discoverGames({ signal: options.signal });
+      const directUrl = options.game && canonicalGameUrl(options.game);
+      // An explicit public game URL need not remain on today's front page. Its
+      // URL-derived title is provisional; live inspection still gates capture.
+      const result = directUrl ? {
+        candidates: [gameCandidateSchema.parse({ id: new URL(directUrl).pathname.split('/').at(-1), url: directUrl,
+          title: decodeURIComponent(new URL(directUrl).pathname.split('/').at(-2)!).replaceAll('-', ' '), titleSource: 'url_slug', metrics: [], observations: [] })],
+        sources: [], source: 'explicit_game_url',
+      } : await services.discoverGames({ signal: options.signal });
       trace.artifact('discovery.json', result);
       if (!result.candidates.length) throw new Error('Astrocade returned no live game candidates. Check connectivity, then resume.');
       await save(run => { run.candidates = result.candidates; });
-      trace.event('discover', 'completed', `Found ${result.candidates.length} games. Unlabeled popularity counters remain unknown.`, { sources: result.sources });
+      trace.event('discover', 'completed', directUrl ? 'Explicit game URL saved for live inspection; title is derived from its URL.' : `Found ${result.candidates.length} games. Unlabeled popularity counters remain unknown.`, { sources: result.sources });
     }
     if (!store.read().shortlist.length) {
       const candidates = store.read().candidates;
@@ -177,10 +191,12 @@ export async function runPipeline(options: {
         if (!attempt.profile) {
           trace.event('inspect', 'started', `Inspecting ${game.title}'s visible controls.`);
           const inspectionDir = join(gameDir, `inspection-${randomUUID().slice(0, 8)}`);
-          const inspection = await services.inspectGame(game, inspectionDir, options.signal);
+          const feedback = store.read().playMode === 'feedback';
+          const inspection = await services.inspectGame(game, inspectionDir, options.signal, feedback ? getProvider() : undefined);
           await updateAttempt(game.id, item => { item.inspectionPath = join(inspectionDir, 'inspection.json'); });
-          const preset = verifiedProfiles.find(profile => canonicalGameUrl(profile.gameUrl) === canonicalGameUrl(game.url));
-          const learned = preset ? { profile: preset, evidence: [preset.verificationNotes ?? 'Previously tested native controls.'], limitations: ['A tested control sequence does not guarantee a win or a useful event in this attempt.'] } : await services.learnGameProfile(inspection, game, getProvider(), options.signal);
+          const preset = !feedback && verifiedProfiles.find(profile => canonicalGameUrl(profile.gameUrl) === canonicalGameUrl(game.url));
+          const learned = feedback ? await services.learnFeedbackProfile(inspection, game, getProvider(), options.signal)
+            : preset ? { profile: preset, evidence: [preset.verificationNotes ?? 'Previously tested native controls.'], limitations: ['A tested control sequence does not guarantee a win or a useful event in this attempt.'] } : await services.learnGameProfile(inspection, game, getProvider(), options.signal);
           await updateAttempt(game.id, item => { item.profile = learned.profile; item.evidence = learned.evidence; item.limitations = learned.limitations; item.unsupported = !learned.profile; delete item.error; });
           trace.artifact(`controls-${game.id}.json`, learned);
           trace.event('learn', learned.profile ? 'completed' : 'unsupported', `${game.title}: ${learned.profile ? 'bounded controls prepared' : 'no supported control plan'}.`, learned);
@@ -195,13 +211,18 @@ export async function runPipeline(options: {
           recorderOptions: { ffmpeg: config.mediaTools },
           onProgress: progress => trace.event('capture', progress.stage, progress.message),
           onAction: event => trace.event('input', event.status, `${event.phase}: ${event.action.type}`, event),
+          decide: profile.controller.type === 'sparse' ? services.createFeedbackController(profile, getProvider(), join(gameDir, `feedback-${id}`), decision => trace.event('feedback', 'observed', 'Current state, outcome and next action saved.', decision)) : undefined,
         });
         const bounds = result.surfaceBounds;
         const crop = { x: Math.floor(bounds.x), y: Math.floor(bounds.y), width: Math.floor(bounds.width), height: Math.floor(bounds.height) };
         const capture: Capture = { id, runId: store.read().id, profileId: profile.id, game, ...result.artifact, crop, createdAt: result.finishedAt };
         const sourceSha256 = await hashFile(capture.path);
         trace.artifact(`capture-${game.id}.json`, result);
-        await updateAttempt(game.id, item => { item.capture = capture; item.sourceSha256 = sourceSha256; delete item.error; });
+        await updateAttempt(game.id, item => {
+          item.capture = capture; item.sourceSha256 = sourceSha256; delete item.error;
+          if (profile.controller.type === 'sparse') item.feedbackPath = join(gameDir, `feedback-${id}`, 'report.md');
+          if (result.controllerError) item.controllerError = message(result.controllerError, settings.geminiApiKey);
+        });
         trace.event('capture', 'completed', `${game.title}: ${capture.durationSeconds.toFixed(2)} seconds saved.`, { actionsExecuted: result.actionsExecuted, stopReason: result.stopReason, sourceSha256, artifact: capture.path });
       } catch (error) {
         options.signal?.throwIfAborted();
