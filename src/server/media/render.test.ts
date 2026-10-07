@@ -11,6 +11,16 @@ test('narration overrun fails instead of looping footage or truncating speech', 
   assert.equal(validateTimeline(cuts, media, [], 4.9), 5);
 });
 
+test('short spoken phrases preserve their timing while visual hooks require reading time', () => {
+  const spoken = { startSeconds: 1, endSeconds: 1.35, text: 'Done.' };
+  assert.equal(validateTimeline(cuts, media, [spoken], 2), 5);
+  const ass = makeSubtitles('One spot left', undefined, [spoken], 5, 'Noto Sans');
+  assert.ok(ass.includes('0:00:01.00,0:00:01.35,Overlay'));
+  assert.throws(() => validateOverlayCues([spoken], 5), /0.8/u);
+  assert.throws(() => makeSubtitles('Unused', undefined, [], 5, 'Noto Sans', [spoken]), /0.8/u);
+  assert.throws(() => validateTimeline(cuts, media, [{ ...spoken, endSeconds: 1 }]), /timing/u);
+});
+
 test('cuts, crop rectangles, and captions must fit the actual media timeline', () => {
   assert.throws(() => validateTimeline([{ ...cuts[0]!, endSeconds: 11 }], media), /outside/u);
   assert.throws(() => validateTimeline([{ ...cuts[0]!, crop: { x: 1200, y: 0, width: 300, height: 200 } }], media), /Crop/u);

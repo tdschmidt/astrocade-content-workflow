@@ -23,7 +23,7 @@ test('portrait renderer produces validated video, captions, and complete audio',
       cuts: [{ path: source, startSeconds: 0, endSeconds: 2 }, { path: source, startSeconds: 2, endSeconds: 4 }],
       hook: 'Can this tiny runner survive?',
       attribution: 'SYNTHETIC TEST · not Astrocade gameplay',
-      subtitles: [{ startSeconds: 0.5, endSeconds: 1.8, text: 'Readable phrase captions' }, { startSeconds: 2.1, endSeconds: 3.5, text: 'Whole game frame preserved' }],
+      subtitles: [{ startSeconds: 1, endSeconds: 1.35, text: 'Done.' }, { startSeconds: 2.1, endSeconds: 3.5, text: 'Whole game frame preserved' }],
       narrationPath: audio,
       ffmpeg: tools,
     });

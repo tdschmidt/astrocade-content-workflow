@@ -50,7 +50,7 @@ export function validateTimeline(cuts: readonly VideoCut[], media: ReadonlyMap<s
   }
   if (narrationSeconds !== undefined && (!Number.isFinite(narrationSeconds) || narrationSeconds <= 0)) throw new Error('Narration has no usable duration');
   if (narrationSeconds !== undefined && narrationSeconds > duration) throw new NarrationOverrunError(narrationSeconds, duration);
-  validateOverlayCues(subtitles, duration);
+  validateCaptionTiming(subtitles, duration);
   return duration;
 }
 
@@ -84,16 +84,23 @@ function captionLines(text: string): string[] {
   return lines;
 }
 
-export function validateOverlayCues(cues: readonly CaptionCue[], duration: number): void {
+function validateCaptionTiming(cues: readonly CaptionCue[], duration: number): void {
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('Caption timeline needs a positive duration');
   let previousEnd = 0;
   for (const cue of cues) {
-    if (![cue.startSeconds, cue.endSeconds].every(Number.isFinite) || cue.startSeconds < previousEnd || cue.endSeconds - cue.startSeconds < 0.8 - 1e-9 || cue.endSeconds > duration || !cue.text.trim()) throw new Error('Caption timing is invalid, overlapping, outside the video, or shorter than 0.8 seconds');
+    if (![cue.startSeconds, cue.endSeconds].every(Number.isFinite) || cue.startSeconds < previousEnd || cue.endSeconds <= cue.startSeconds || cue.endSeconds > duration || !cue.text.trim()) throw new Error('Caption timing is invalid, overlapping, or outside the video');
     if (cue.position !== undefined && !['upper', 'lower'].includes(cue.position)) throw new Error('Caption position must be upper or lower');
+    previousEnd = cue.endSeconds;
+  }
+}
+
+export function validateOverlayCues(cues: readonly CaptionCue[], duration: number): void {
+  validateCaptionTiming(cues, duration);
+  for (const cue of cues) {
+    if (cue.endSeconds - cue.startSeconds < 0.8 - 1e-9) throw new Error('Visual overlays need at least 0.8 seconds of reading time');
     const words = cue.text.trim().split(/\s+/u);
     const lines = captionLines(cue.text);
     if (cue.text.length > 84 || words.length > 12 || words.some(word => word.length > 22) || lines.length > 3 || lines.some(line => textWidth(line, 64) > 760)) throw new Error('Shorten caption text: at most 12 words, 84 characters, and three short lines; no word over 22 characters');
-    previousEnd = cue.endSeconds;
   }
 }
 
@@ -101,7 +108,7 @@ export function makeSubtitles(hook: string, attribution: string | undefined, cue
   if (/[\r\n,]/u.test(fontFamily) || !fontFamily.trim()) throw new Error('Invalid caption font family');
   const legacyHook: CaptionCue = { startSeconds: 0, endSeconds: Math.min(4, duration), text: hook, position: 'upper' };
   validateOverlayCues(overlays ?? [legacyHook], duration);
-  if (overlays === undefined) validateOverlayCues(cues, duration);
+  if (overlays === undefined) validateCaptionTiming(cues, duration);
   const schedule = overlays ?? [legacyHook, ...cues];
   // The source fills its entire fitted canvas. These are text anchors only,
   // not reserved bands. The planner chooses a position away from live HUDs.
@@ -160,7 +167,8 @@ export async function renderPortrait(options: PortraitRender): Promise<RenderArt
   for (const cut of options.cuts) if (!sources.has(cut.path)) sources.set(cut.path, await probeMedia(cut.path, tools, options.signal));
   const narration = options.narrationPath ? await probeMedia(options.narrationPath, tools, options.signal) : undefined;
   if (narration && !narration.audio) throw new Error('Narration file contains no audio');
-  const duration = validateTimeline(options.cuts, sources, options.overlays ?? options.subtitles, narration?.durationSeconds);
+  const duration = validateTimeline(options.cuts, sources, options.overlays === undefined ? options.subtitles : [], narration?.durationSeconds);
+  if (options.overlays) validateOverlayCues(options.overlays, duration);
   if (options.presenter) await validatePresenter(options.presenter.path, duration, tools, options.signal);
   await mkdir(dirname(options.outputPath), { recursive: true });
   const directory = await mkdtemp(join(dirname(options.outputPath), '.render-'));
