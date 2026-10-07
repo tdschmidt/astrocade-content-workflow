@@ -92,6 +92,32 @@ test('active gameplay question-mark help is opened once and closed before the cu
   assert.equal(await page.locator('body').getAttribute('data-outside-clicked'), null);
 });
 
+test('a preparation scene is reobserved until actual gameplay controls appear', browserTest, async t => {
+  const { outputDir, page } = await fixture(t, '<canvas width="400" height="600"></canvas><script>const ctx=document.querySelector("canvas").getContext("2d");ctx.fillStyle="#234";ctx.fillRect(0,0,400,600);ctx.fillStyle="white";ctx.font="24px sans-serif";ctx.fillText("ASSEMBLING ARENA",40,200)</script>');
+  let calls = 0;
+  const inspection = await inspectGamePage(page, candidate.url, outputDir, undefined, { json: async (prompt: string) => {
+    calls++;
+    assert.match(prompt, /A rendered scene or moving characters alone do not establish that preparation has finished/);
+    assert.match(prompt, /Cite a visible playable affordance, instructions, or gameplay HUD\/objective/);
+    if (calls === 1) {
+      assert.match(prompt, /Visible in-frame buttons[^\n]*\[\]/);
+      // Fixture-only transition while the first screenshot is being assessed.
+      await page.frames()[1]!.evaluate(() => { document.body.innerHTML = '<h1>Choose a tool</h1><button>Sword 1</button><button>Freeze 2</button>'; });
+      return { phase: 'loading', buttonIndex: null, point: null, label: '', reason: 'The screenshot shows an assembling arena, without available controls.' };
+    }
+    assert.match(prompt, /Sword 1/);
+    assert.match(prompt, /Freeze 2/);
+    return playing;
+  } } as unknown as Pick<Inference, 'json'>);
+  assert.equal(calls, 2);
+  assert.equal(inspection.readyToPlay, true);
+  assert.deepEqual(inspection.performedMenuSteps, [], 'preparation requires no guessed gameplay input');
+  assert.deepEqual(inspection.startTargets.map(target => target.label), ['Sword 1', 'Freeze 2']);
+  assert.ok(inspection.setup.slice(2).some(step => step.type === 'wait'), 'fresh capture retains the observed preparation delay');
+  assert.match(await readFile(join(outputDir, 'inspection-menu-1.json'), 'utf8'), /"phase": "loading"/);
+  assert.match(await readFile(join(outputDir, 'inspection-menu-2.json'), 'utf8'), /"phase": "playing"/);
+});
+
 test('a custom DOM entry and canvas tutorial are freshly observed and replayed in order', browserTest, async t => {
   const body = `<button id="suitUp" style="position:absolute;left:100px;top:250px">SUIT UP</button><script>
     const record=(label,event)=>{const events=JSON.parse(document.body.dataset.events||'[]');events.push({label,trusted:event.isTrusted});document.body.dataset.events=JSON.stringify(events)};
