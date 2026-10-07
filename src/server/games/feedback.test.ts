@@ -70,6 +70,22 @@ test('three consecutive no-progress observations stop instead of repeating indef
   assert.deepEqual(result.actions, []);
 });
 
+test('selection goals reach current-state feedback but are not treated as observed success', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-intent-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const intent = { captureGoal: 'SYNTHETIC reveal the hidden picture.', rejectIf: 'SYNTHETIC the picture stays unreadable.' };
+  const provider = { json: async (prompt: string) => {
+    assert.match(prompt, /SYNTHETIC reveal the hidden picture/);
+    assert.match(prompt, /SYNTHETIC the picture stays unreadable/);
+    assert.match(prompt, /Uncertainty or an unmet goal alone does not prove rejection/);
+    assert.match(prompt, /success requires an explicit completed board\/result/);
+    return { ...answer, observation: 'The image remains covered and no outcome is visible.', outcome: 'uncertain', stop: true, actions: [] };
+  } } as unknown as Pick<Inference, 'json'>;
+  const result = await createFeedbackController(profile, provider, directory, undefined, intent)(observation);
+  assert.equal(result.outcome, 'uncertain');
+  assert.match(await readFile(join(directory, 'report.md'), 'utf8'), /Provisional capture goal: SYNTHETIC reveal the hidden picture/);
+});
+
 test('feedback setup skips reflex games and never treats learned mechanics as verified play', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'feedback-setup-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -91,4 +107,8 @@ test('feedback setup skips reflex games and never treats learned mechanics as ve
   assert.equal(learned.profile?.focus, 'focus');
   assert.equal(learned.profile?.controller.type, 'sparse');
   assert.equal(learned.profile?.maxDurationMs, 175000);
+  await rm(join(directory, 'learning.json'));
+  await rm(join(directory, 'feedback-assessment.json'));
+  const shorter = await learnFeedbackProfile(inspection, candidate, provider, undefined, { captureGoal: 'Fill one visible corner.', maxDurationMs: 60000 });
+  assert.equal(shorter.profile?.maxDurationMs, 60000);
 });

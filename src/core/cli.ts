@@ -9,19 +9,20 @@ import { contentBriefSchema } from '../shared/content.js';
 const { values } = parseArgs({ options: {
   provider: { type: 'string' }, stage: { type: 'string', default: 'all' }, resume: { type: 'string' }, model: { type: 'string' },
   game: { type: 'string' }, candidates: { type: 'string', default: '3' }, help: { type: 'boolean', short: 'h' },
-  play: { type: 'string' }, brief: { type: 'string' }, 'from-run': { type: 'string' }, presenter: { type: 'string' },
+  play: { type: 'string' }, 'capture-seconds': { type: 'string' }, brief: { type: 'string' }, 'from-run': { type: 'string' }, presenter: { type: 'string' },
 } });
 
 if (values.help) {
   console.log(`Astrocade: discover → inspect/learn → capture → edit
 
-npm run pipeline -- [--provider gemini|codex] [--stage discover|capture|edit|all] [--game ID_OR_SLUG] [--candidates 1-5] [--brief PATH.json]
+npm run pipeline -- [--provider gemini|codex] [--stage discover|capture|edit|all] [--game ID_OR_SLUG] [--candidates 1-5] [--capture-seconds 5-175] [--brief PATH.json]
 npm run pipeline -- --resume data/runs/RUN_DIRECTORY [--model MODEL]
 npm run pipeline -- --from-run data/runs/RUN_DIRECTORY [--brief PATH.json] [--presenter GENERATED_VIDEO.mp4]
 npm run pipeline -- --provider codex --play feedback --game PUBLIC_ASTROCADE_GAME_URL
 
 Default: inspect up to three provisional choices, record supported games, compare visible results, and render one highlight.
 Feedback mode: inspect slow/input-paced games, observe each action batch, adapt to current screenshots, and stop at a visible outcome or the bounded decision/time limit. Fast reflex games are skipped. --play timed is the default. An explicit game URL is inspected directly.
+Capture budget: --capture-seconds bounds active capture and guides a new control plan. It is a ceiling, not a target runtime; useful episodes may finish sooner.
 Editorial brief: optional JSON with audience, voice, hookExamples, format sources, and dated trend evidence. A default brief is saved on new runs. Resumes reuse that brief; start a new run to change it.
 Re-edit: --from-run creates a new run referencing saved gameplay and observations, with a new edit and no recapture. It inherits the original brief unless --brief is supplied. --from-run and --resume cannot be combined.
 Presenter: --presenter adds a supplied fictional AI commentator video; generation is separate. It is saved with a file hash and cannot change on resume. New edits are faceless unless --presenter is supplied.
@@ -47,7 +48,7 @@ Codex: install the Codex CLI, run codex login using ChatGPT, then pass --provide
     const contentBrief = values.brief ? contentBriefSchema.parse(JSON.parse(await readFile(resolve(values.brief), 'utf8'))) : undefined;
     const provider = (values.provider ?? saved?.provider ?? 'gemini') as 'gemini' | 'codex';
     const model = values.model ?? (saved?.provider === provider ? saved.model : provider === 'codex' ? 'gpt-5.6-sol' : 'gemini-3.5-flash');
-    const run = await runPipeline({ directory, model, provider, stage: values.stage as CoreStage, game: values.game, playMode: values.play as 'timed' | 'feedback' | undefined, contentBrief, fromRun: values['from-run'], presenterPath: values.presenter, shortlistSize: Number(values.candidates), signal: abort.signal }, config);
+    const run = await runPipeline({ directory, model, provider, stage: values.stage as CoreStage, game: values.game, playMode: values.play as 'timed' | 'feedback' | undefined, contentBrief, captureSeconds: values['capture-seconds'] === undefined ? undefined : Number(values['capture-seconds']), fromRun: values['from-run'], presenterPath: values.presenter, shortlistSize: Number(values.candidates), signal: abort.signal }, config);
     console.log(`\n${run.status === 'complete' ? 'Ready' : 'Stage complete'}: ${directory}/report.md`);
   } catch (error) {
     // Detailed sanitized stage errors are in the trace; never dump SDK request objects or credentials.

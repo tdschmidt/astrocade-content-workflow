@@ -48,6 +48,8 @@ npm run pipeline -- --stage capture --game crowd-pier-run
 
 # Play an untimed game with screenshot feedback instead of replayed coordinates
 npm run pipeline -- --provider codex --play feedback --game https://www.astrocade.com/games/sort-it-out/01M2RV0JGG7W601TBGTK614CR9
+# Bound a fresh timed plan to 30 seconds (an upper limit, not a required runtime).
+npm run pipeline -- --provider codex --game PUBLIC_ASTROCADE_GAME_URL --capture-seconds 30
 
 # Continue a saved run; edit requires an existing recording
 npm run pipeline -- --resume data/runs/RUN_DIRECTORY --stage edit

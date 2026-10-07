@@ -236,29 +236,72 @@ test('feedback mode learns instead of using a timed preset and survives a stage 
   const { directory, config, services, calls } = await fixture(t);
   let learns = 0, controllers = 0;
   const original = services.runCaptureAttempt!;
-  services.learnFeedbackProfile = async () => {
+  services.learnFeedbackProfile = async (_inspection, _candidate, _provider, _signal, intent) => {
     learns++;
-    return { profile: { ...verifiedProfiles[0]!, controller: { type: 'sparse', maxDecisions: 4, instructions: 'SYNTHETIC slow fixture controls', allowedKeys: [], allowPointer: true } }, evidence: ['Fixture mechanics'], limitations: [] };
+    assert.deepEqual(intent, { captureGoal: 'SYNTHETIC meaningful route choice.', rejectIf: 'SYNTHETIC route labels are unreadable.', maxDurationMs: 60000 });
+    return { profile: { ...verifiedProfiles[0]!, maxDurationMs: intent.maxDurationMs!, controller: { type: 'sparse', maxDecisions: 4, instructions: 'SYNTHETIC slow fixture controls', allowedKeys: [], allowPointer: true } }, evidence: ['Fixture mechanics'], limitations: [] };
   };
-  services.createFeedbackController = () => {
+  services.createFeedbackController = (_profile, _provider, _directory, _onDecision, intent) => {
     controllers++;
+    assert.equal(intent?.captureGoal, 'SYNTHETIC meaningful route choice.');
+    assert.equal(intent?.rejectIf, 'SYNTHETIC route labels are unreadable.');
+    assert.equal(intent?.maxDurationMs, 60000);
     return async () => ({ observation: 'Fixture complete', outcome: 'success', lesson: '', stop: true, reason: 'Done', actions: [] });
   };
   services.runCaptureAttempt = async options => {
     assert.equal(options.profile.controller.type, 'sparse');
+    assert.equal(options.profile.maxDurationMs, 60000);
     assert.ok(options.decide);
     return { ...await original(options), stopReason: 'controller_error', controllerError: 'SYNTHETIC later provider outage' };
   };
-  const run = await runPipeline({ directory, model: 'fixture-model', playMode: 'feedback', stage: 'capture', quiet: true }, config, services);
+  const run = await runPipeline({ directory, model: 'fixture-model', playMode: 'feedback', captureSeconds: 60, stage: 'capture', quiet: true }, config, services);
   assert.equal(run.playMode, 'feedback');
+  assert.equal(run.captureSeconds, 60);
   assert.equal(learns, 1); assert.equal(controllers, 1);
   assert.match(run.attempts[0]!.feedbackPath!, /feedback-.*report.md$/);
   assert.match(await readFile(join(directory, 'report.md'), 'utf8'), /Partial footage is preserved/);
   const resumed = await runPipeline({ directory, model: 'fixture-model', stage: 'edit', quiet: true }, config, services);
   assert.equal(resumed.status, 'complete');
   assert.equal(resumed.playMode, 'feedback');
+  assert.equal(resumed.captureSeconds, 60);
   assert.equal(calls.capture, 1);
   await assert.rejects(runPipeline({ directory, model: 'fixture-model', playMode: 'timed', quiet: true }, config, services), /new run/);
+});
+
+test('an explicit timed duration replans instead of truncating a preset and cannot change on resume', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  let learns = 0;
+  services.learnGameProfile = async (_inspection, _candidate, _provider, _signal, intent) => {
+    learns++;
+    assert.deepEqual(intent, { captureGoal: 'SYNTHETIC meaningful route choice.', rejectIf: 'SYNTHETIC route labels are unreadable.', maxDurationMs: 30000 });
+    return { profile: { ...verifiedProfiles[0]!, verification: 'unverified', maxDurationMs: intent.maxDurationMs! }, evidence: ['SYNTHETIC replanned inputs.'], limitations: [] };
+  };
+  const capture = services.runCaptureAttempt!;
+  services.runCaptureAttempt = async options => {
+    assert.equal(options.profile.maxDurationMs, 30000);
+    assert.equal(options.profile.verification, 'unverified');
+    return capture(options);
+  };
+  const options = { directory, model: 'fixture-model', stage: 'capture' as const, quiet: true };
+  const run = await runPipeline({ ...options, captureSeconds: 30 }, config, services);
+  assert.equal(run.captureSeconds, 30);
+  assert.equal(learns, 1);
+  const manifest = await readFile(join(directory, 'run.json'), 'utf8');
+  await assert.rejects(runPipeline({ ...options, captureSeconds: 45 }, config, services), /saved capture budget cannot be changed/);
+  assert.equal(await readFile(join(directory, 'run.json'), 'utf8'), manifest);
+  await runPipeline(options, config, services);
+  assert.equal(calls.capture, 1);
+  assert.equal(learns, 1);
+  assert.match(await readFile(join(directory, 'report.md'), 'utf8'), /at most 30 seconds per attempt/);
+});
+
+test('invalid capture budgets fail before any provider or browser work', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  for (const captureSeconds of [0, 4, 175.1, 176, Number.NaN, Number.POSITIVE_INFINITY]) {
+    await assert.rejects(runPipeline({ directory, model: 'fixture-model', captureSeconds, quiet: true }, config, services), /integer from 5 to 175/);
+  }
+  assert.equal(calls.discover, 0);
+  assert.equal(calls.inspect, 0);
 });
 
 test('an explicit Astrocade URL is inspected directly without inventing catalog metadata', async t => {

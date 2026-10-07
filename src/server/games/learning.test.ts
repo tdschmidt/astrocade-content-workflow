@@ -6,6 +6,7 @@ import test, { type TestContext } from 'node:test';
 import { chromium } from 'playwright';
 import type { GoogleServices } from '../providers/google.js';
 import { inspectGamePage, isObservedStartLabel, learnGameProfile, type GameInspection } from './learning.js';
+import { InputExecutor } from './input.js';
 import type { GameCandidate } from './schema.js';
 
 async function fixture(t: TestContext) {
@@ -97,6 +98,32 @@ test('plans longer than the learning budget are skipped', async t => {
   assert.match(learned.limitations.join(' '), /45-second/);
 });
 
+test('a requested capture budget guides the selected goal and rejects an overlong plan without truncation', async t => {
+  const { candidate, inspection, proposal } = await fixture(t);
+  const intent = { captureGoal: 'SYNTHETIC reach the first flag.', rejectIf: 'SYNTHETIC no flag or progress is visible.', maxDurationMs: 10000 };
+  const google = { json: async (prompt: string) => {
+    assert.match(prompt, /SYNTHETIC reach the first flag/);
+    assert.match(prompt, /SYNTHETIC no flag or progress/);
+    assert.match(prompt, /upper budget, not a target to fill/);
+    assert.match(prompt, /must fit 7.5 seconds/);
+    return { ...proposal, actions: Array.from({ length: 4 }, () => ({ type: 'key', key: 'ArrowRight', durationMs: 2000 })) };
+  } } as unknown as Pick<GoogleServices, 'json'>;
+  const learned = await learnGameProfile(inspection, candidate, google, undefined, intent);
+  assert.equal(learned.profile, undefined);
+  assert.match(learned.limitations.join(' '), /7.5-second learning budget/);
+});
+
+test('a longer bounded capture permits a longer action sequence and records its actual cap', async t => {
+  const { candidate, inspection, proposal } = await fixture(t);
+  const actions = Array.from({ length: 40 }, () => ({ type: 'key', key: 'ArrowRight', durationMs: 2000 }));
+  const google = { json: async () => ({ ...proposal, actions }) } as unknown as Pick<GoogleServices, 'json'>;
+  const learned = await learnGameProfile(inspection, candidate, google, undefined, { maxDurationMs: 90000 });
+  assert.equal(learned.profile?.maxDurationMs, 90000);
+  assert.equal(learned.profile?.controller.type, 'timed');
+  if (learned.profile?.controller.type === 'timed') assert.equal(learned.profile.controller.actions.length, 40);
+  assert.equal(learned.profile?.verification, 'unverified');
+});
+
 test('inspection provenance mismatch fails before any provider call', async t => {
   const { candidate, inspection } = await fixture(t);
   const google = { json: async () => { assert.fail('unrelated inspection must not be uploaded'); } } as unknown as Pick<GoogleServices, 'json'>;
@@ -175,8 +202,8 @@ for (const scenario of ['play', 'skip then play', 'skip then DOM start', 'game b
     assert.match(prompt, /point=null if this is already a game board/);
     observedImages.push(media[0]!.data);
     assert.ok(observedImages.length <= (scenario === 'skip then play' ? 2 : 1), 'menu discovery must remain bounded');
-    if (scenario === 'game board') return { point: null, label: '', reason: 'Active game board, no menu control.' };
-    return { point: { x: 0.5, y: 0.55 }, label: scenario === 'unrelated label' ? 'Buy upgrade' : scenario.startsWith('skip') && observedImages.length === 1 ? 'Tap to skip' : 'PLAY', reason: 'Visible menu label.' };
+    if (scenario === 'game board') return { loading: false, point: null, label: '', reason: 'Active game board, no menu control.' };
+    return { loading: false, point: { x: 0.5, y: 0.55 }, label: scenario === 'unrelated label' ? 'Buy upgrade' : scenario.startsWith('skip') && observedImages.length === 1 ? 'Tap to skip' : 'PLAY', reason: 'Visible menu label.' };
   } } as unknown as Pick<GoogleServices, 'json'>;
   const inspection = await inspectGamePage(page, candidate.url, outputDir, undefined, provider);
   const expectedTaps = scenario === 'skip then play' ? 2 : scenario === 'play' || scenario === 'skip then DOM start' ? 1 : 0;
@@ -210,7 +237,7 @@ test('visual menu inspection rejects a replacement canvas even when its selector
       event.currentTarget.replaceWith(replacement);
     };
   </script>`);
-  const provider = { json: async () => ({ point: { x: 0.5, y: 0.55 }, label: 'PLAY', reason: 'Visible menu Play control.' }) } as unknown as Pick<GoogleServices, 'json'>;
+  const provider = { json: async () => ({ loading: false, point: { x: 0.5, y: 0.55 }, label: 'PLAY', reason: 'Visible menu Play control.' }) } as unknown as Pick<GoogleServices, 'json'>;
   await assert.rejects(inspectGamePage(page, candidate.url, outputDir, undefined, provider), /replaced or changed its canvas/);
   assert.equal(await frame.locator('body').getAttribute('data-trusted'), 'true');
   const unsupported = JSON.parse(await readFile(join(outputDir, 'inspection-unsupported.json'), 'utf8'));
@@ -218,5 +245,66 @@ test('visual menu inspection rejects a replacement canvas even when its selector
   assert.equal(unsupported.inspection.surface.selector, ':nth-match(canvas, 1)');
   assert.equal(unsupported.inspection.performedVisualStart.filter((action: { type: string }) => action.type === 'tap').length, 1);
   assert.notDeepEqual(await readFile(unsupported.inspection.beforeImagePath), await readFile(unsupported.inspection.imagePath));
+  await assert.rejects(readFile(join(outputDir, 'inspection.json')), { code: 'ENOENT' });
+});
+
+test('an observed native loader waits without taps and replays its delay before a canvas Start', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 30000 }, async t => {
+  const { outputDir, candidate, proposal } = await fixture(t);
+  const browser = await chromium.launch({ channel: 'chromium', headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 720, height: 1280 } });
+  const loadFixture = async () => {
+    await page.setContent('<style>body{margin:0}iframe{width:600px;height:1100px;border:0}button{position:absolute;z-index:2;top:0;left:0}</style><button aria-label="Start playing" onclick="this.remove()">Open game</button><iframe title="Astrocade Game"></iframe>');
+    await page.frames()[1]!.setContent(`<style>body{margin:0}</style><canvas width="600" height="1100"></canvas><script>
+      const canvas=document.querySelector('canvas'),context=canvas.getContext('2d');let ready=false;
+      function draw(label){context.fillStyle='#123';context.fillRect(0,0,600,1100);context.fillStyle='white';context.font='32px sans-serif';context.fillText(label,150,600)}
+      draw('PREPARING ARENA 38%');
+      setTimeout(()=>{ready=true;draw('PLAY')},2200);
+      canvas.onclick=event=>{document.body.dataset.clickedWhileLoading=String(!ready);document.body.dataset.trusted=String(event.isTrusted);if(ready){document.body.dataset.started='true';draw('BOARD')}};
+    </script>`);
+  };
+  await loadFixture();
+  const observedImages: string[] = [];
+  const provider = { json: async (_prompt: string, _schema: unknown, media: { data: string }[]) => {
+    observedImages.push(media[0]!.data);
+    return observedImages.length === 1
+      ? { loading: true, point: null, label: 'PREPARING ARENA 38%', reason: 'A loading percentage is visible.' }
+      : { loading: false, point: { x: 0.5, y: 0.55 }, label: 'PLAY', reason: 'Loading completed; Play is now visible.' };
+  } } as unknown as Pick<GoogleServices, 'json'>;
+  const inspection = await inspectGamePage(page, candidate.url, outputDir, undefined, provider);
+  assert.equal(observedImages.length, 2);
+  assert.notEqual(observedImages[0], observedImages[1], 'the second decision must see a freshly observed menu');
+  assert.equal((await readFile(inspection.beforeImagePath)).toString('base64'), observedImages[1], 'the learner receives the actual menu, not the earlier loader');
+  assert.equal(inspection.performedVisualStart?.filter(action => action.type === 'tap').length, 1);
+  const extraWait = inspection.setup.slice(2).reduce((sum, step) => sum + (step.type === 'wait' ? step.durationMs : 0), 0);
+  assert.ok(extraWait >= 5000 && extraWait <= 10000, 'observed loading time is saved outside gameplay, including inference elapsed time');
+  assert.equal(await page.frames()[1]!.locator('body').getAttribute('data-clicked-while-loading'), 'false');
+  const { start: _start, ...withoutStart } = proposal;
+  const learned = await learnGameProfile(inspection, candidate, { json: async () => withoutStart } as unknown as Pick<GoogleServices, 'json'>);
+  assert.ok(learned.profile);
+  await loadFixture();
+  const executor = new InputExecutor(page, learned.profile.surface);
+  for (const step of [...learned.profile.setup, ...learned.profile.start]) await executor.step(step);
+  const body = page.frames()[1]!.locator('body');
+  assert.equal(await body.getAttribute('data-clicked-while-loading'), 'false', 'a fresh page must finish the same native load before the replayed Start');
+  assert.equal(await body.getAttribute('data-trusted'), 'true');
+  assert.equal(await body.getAttribute('data-started'), 'true');
+});
+
+test('a persistent native loader exhausts its observation budget without fabricated taps', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 25000 }, async t => {
+  const { outputDir, candidate } = await fixture(t);
+  const browser = await chromium.launch({ channel: 'chromium', headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 720, height: 1280 } });
+  await page.setContent('<style>body{margin:0}iframe{width:600px;height:1100px;border:0}button{position:absolute;z-index:2;top:0;left:0}</style><button aria-label="Start playing" onclick="this.remove()">Open game</button><iframe title="Astrocade Game"></iframe>');
+  const frame = page.frames()[1]!;
+  await frame.setContent('<style>body{margin:0}</style><canvas width="600" height="1100" onclick="document.body.dataset.clicked=String(event.isTrusted)"></canvas><script>const c=document.querySelector("canvas").getContext("2d");c.fillText("Loading 38%",150,600)</script>');
+  let calls = 0;
+  const provider = { json: async () => { calls++; return { loading: true, point: null, label: 'Loading 38%', reason: 'The same loading progress remains visible.' }; } } as unknown as Pick<GoogleServices, 'json'>;
+  await assert.rejects(inspectGamePage(page, candidate.url, outputDir, undefined, provider), /still visibly loading after the bounded menu inspection/);
+  assert.equal(calls, 4);
+  assert.equal(await frame.locator('body').getAttribute('data-clicked'), null);
+  const evidence = JSON.parse(await readFile(join(outputDir, 'inspection-menu-4.json'), 'utf8'));
+  assert.equal(evidence.loading, true);
   await assert.rejects(readFile(join(outputDir, 'inspection.json')), { code: 'ENOENT' });
 });

@@ -34,6 +34,7 @@ export const coreRunSchema = z.object({
   version: z.literal(1), id: z.string(), createdAt: z.string(), model: z.string(), provider: z.enum(['gemini', 'codex']).default('gemini'),
   status: z.enum(['running', 'paused', 'failed', 'complete']),
   playMode: z.enum(['timed', 'feedback']).default('timed'),
+  captureSeconds: z.number().int().min(5).max(175).optional(),
   contentBrief: contentBriefSchema.default(defaultContentBrief),
   provenance: z.object({ sourceRunId: z.string(), sourceRunPath: z.string(), discoveryPath: z.string() }).optional(),
   presenterPath: z.string().optional(), presenterSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
@@ -68,7 +69,7 @@ async function editFromRun(sourceDirectory: string, directory: string, model: st
   if (!source.shortlist.length || source.shortlist.some(choice => !ids.has(choice.gameId) || !source.attempts.some(attempt => attempt.gameId === choice.gameId))) throw new Error('The source run has incomplete candidate or shortlist evidence.');
   return coreRunSchema.parse({
     version: 1, id: basename(directory), createdAt: new Date().toISOString(), model, provider, status: 'running',
-    playMode: source.playMode, contentBrief: brief ?? source.contentBrief, candidates: source.candidates, shortlist: source.shortlist,
+    playMode: source.playMode, captureSeconds: source.captureSeconds, contentBrief: brief ?? source.contentBrief, candidates: source.candidates, shortlist: source.shortlist,
     attempts: source.attempts.map(attempt => {
       if (attempt.inspectionPath) attempt.inspectionPath = resolve(attempt.inspectionPath);
       if (attempt.feedbackPath) attempt.feedbackPath = resolve(attempt.feedbackPath);
@@ -106,6 +107,7 @@ async function report(directory: string, run: CoreRun) {
     '- [Full event trace](trace.jsonl)', '- [Run data](run.json)', '- [Editorial brief](content-brief.json)', `- [Discovery evidence](${run.provenance ? link(run.provenance.discoveryPath) : 'discovery.json'})`, '',
     ...(run.provenance ? [`Re-edit of [${run.provenance.sourceRunId}](${link(join(run.provenance.sourceRunPath, 'report.md'))}). Saved recordings and observations are referenced; the original run is unchanged.`, ''] : []),
     ...(run.presenterPath ? [`Fictional AI commentator: [generated asset supplied](${link(run.presenterPath)}). This is not a recording of a real person playing. Publishing is manual.`, ''] : []),
+    ...(run.captureSeconds === undefined ? [] : [`Capture budget: at most ${run.captureSeconds} seconds per attempt, including controller latency. Useful outcomes may stop earlier.`, '']),
     '## Candidate decisions', '',
     'Content scores are editorial heuristics out of 30, not probabilities of audience performance. Zero clarity, payoff, or readability rejects a candidate regardless of visual appeal.', '',
   ];
@@ -114,6 +116,9 @@ async function report(directory: string, run: CoreRun) {
     const attempt = run.attempts.find(item => item.gameId === choice.gameId);
     lines.push(`### ${game.title}`, '', `[Game](${game.url})`, '', `Hypothesis: ${choice.hypothesis}`, '', `Viewer question: ${choice.viewerQuestion}`, '', `Control risk: ${choice.controlRisk}`, '');
     if (choice.angle) lines.push(`Proposed angle: ${choice.angle}`, '');
+    if (choice.gameplayFamily) lines.push(`Gameplay family: ${choice.gameplayFamily}`, '');
+    if (choice.socialPremise) lines.push(`Social premise: ${choice.socialPremise}`, '');
+    if (choice.trendTopic) lines.push(`Relevant dated trend: ${choice.trendTopic}`, '');
     if (choice.captureGoal) lines.push(`Capture goal: ${choice.captureGoal}`, '');
     if (choice.rejectIf) lines.push(`Reject if: ${choice.rejectIf}`, '');
     if (attempt?.inspectionPath) lines.push(`[Inspection](${link(attempt.inspectionPath)})`, '');
@@ -150,7 +155,7 @@ async function report(directory: string, run: CoreRun) {
 }
 
 export async function runPipeline(options: {
-  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; playMode?: 'timed' | 'feedback'; contentBrief?: ContentBrief; fromRun?: string; presenterPath?: string; signal?: AbortSignal; quiet?: boolean;
+  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; playMode?: 'timed' | 'feedback'; captureSeconds?: number; contentBrief?: ContentBrief; fromRun?: string; presenterPath?: string; signal?: AbortSignal; quiet?: boolean;
 }, config: Configuration, overrides: Partial<CoreServices> = {}): Promise<CoreRun> {
   const directory = resolve(options.directory);
   if (options.fromRun && resolve(options.fromRun) === directory) throw new Error('--from-run needs a new output directory; use --resume to continue an existing run.');
@@ -161,6 +166,8 @@ export async function runPipeline(options: {
   const providerName = options.provider ?? 'gemini';
   const requestedBrief = options.contentBrief ? contentBriefSchema.parse(options.contentBrief) : undefined;
   if (!Number.isInteger(limit) || limit < 1 || limit > 5) throw new Error('Shortlist size must be 1–5.');
+  if (options.captureSeconds !== undefined && (!Number.isInteger(options.captureSeconds) || options.captureSeconds < 5 || options.captureSeconds > 175)) throw new Error('Capture seconds must be an integer from 5 to 175.');
+  if (options.fromRun && options.captureSeconds !== undefined) throw new Error('--from-run reuses saved footage; capture seconds only applies to new captures.');
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const release = await lockRun(directory);
   const trace = new Trace(directory, options.quiet);
@@ -169,11 +176,12 @@ export async function runPipeline(options: {
   try {
     const initial = options.fromRun
       ? await editFromRun(options.fromRun, directory, options.model, providerName, requestedBrief)
-      : coreRunSchema.parse({ version: 1, id: basename(directory), createdAt: new Date().toISOString(), model: options.model, status: 'running', contentBrief: requestedBrief ?? defaultContentBrief });
+      : coreRunSchema.parse({ version: 1, id: basename(directory), createdAt: new Date().toISOString(), model: options.model, status: 'running', captureSeconds: options.captureSeconds, contentBrief: requestedBrief ?? defaultContentBrief });
     if (options.presenterPath) { initial.presenterPath = resolve(options.presenterPath); initial.presenterSha256 = await hashFile(initial.presenterPath); }
     const opened = await JsonStore.open(join(directory, 'run.json'), coreRunSchema, initial);
     if (requestedBrief && JSON.stringify(requestedBrief) !== JSON.stringify(opened.read().contentBrief)) throw new Error('A saved editorial brief cannot be changed while resuming. Start a new run for a different brief.');
     if (options.presenterPath && resolve(options.presenterPath) !== opened.read().presenterPath) throw new Error('A saved presenter cannot be changed while resuming. Use --from-run to make a new edit.');
+    if (options.captureSeconds !== undefined && options.captureSeconds !== opened.read().captureSeconds) throw new Error('A saved capture budget cannot be changed while resuming. Start a new run for a different duration.');
     const verifyPresenter = async () => {
       const saved = opened.read();
       if (saved.presenterPath && await hashFile(saved.presenterPath) !== saved.presenterSha256) throw new Error('The saved presenter asset changed. Use --from-run to make a new edit.');
@@ -249,6 +257,7 @@ export async function runPipeline(options: {
     for (const choice of store.read().shortlist) {
       options.signal?.throwIfAborted();
       const game = store.read().candidates.find(candidate => candidate.id === choice.gameId)!;
+      const intent = { captureGoal: choice.captureGoal, rejectIf: choice.rejectIf, maxDurationMs: store.read().captureSeconds === undefined ? undefined : store.read().captureSeconds! * 1000 };
       let attempt = store.read().attempts.find(item => item.gameId === game.id)!;
       if (attempt.unsupported) continue;
       if (attempt.capture) {
@@ -263,11 +272,12 @@ export async function runPipeline(options: {
           trace.event('inspect', 'started', `Inspecting ${game.title}'s visible controls.`);
           const inspectionDir = join(gameDir, `inspection-${randomUUID().slice(0, 8)}`);
           const feedback = store.read().playMode === 'feedback';
-          const inspection = await services.inspectGame(game, inspectionDir, options.signal, feedback ? getProvider() : undefined);
+          const inspection = await services.inspectGame(game, inspectionDir, options.signal, getProvider());
           await updateAttempt(game.id, item => { item.inspectionPath = join(inspectionDir, 'inspection.json'); });
-          const preset = !feedback && verifiedProfiles.find(profile => canonicalGameUrl(profile.gameUrl) === canonicalGameUrl(game.url));
-          const learned = feedback ? await services.learnFeedbackProfile(inspection, game, getProvider(), options.signal)
-            : preset ? { profile: preset, evidence: [preset.verificationNotes ?? 'Previously tested native controls.'], limitations: ['A tested control sequence does not guarantee a win or a useful event in this attempt.'] } : await services.learnGameProfile(inspection, game, getProvider(), options.signal);
+          // A new duration needs a new bounded plan, rather than truncating or looping a tested sequence.
+          const preset = !feedback && intent.maxDurationMs === undefined && verifiedProfiles.find(profile => canonicalGameUrl(profile.gameUrl) === canonicalGameUrl(game.url));
+          const learned = feedback ? await services.learnFeedbackProfile(inspection, game, getProvider(), options.signal, intent)
+            : preset ? { profile: preset, evidence: [preset.verificationNotes ?? 'Previously tested native controls.'], limitations: ['A tested control sequence does not guarantee a win or a useful event in this attempt.'] } : await services.learnGameProfile(inspection, game, getProvider(), options.signal, intent);
           await updateAttempt(game.id, item => { item.profile = learned.profile; item.evidence = learned.evidence; item.limitations = learned.limitations; item.unsupported = !learned.profile; delete item.error; });
           trace.artifact(`controls-${game.id}.json`, learned);
           trace.event('learn', learned.profile ? 'completed' : 'unsupported', `${game.title}: ${learned.profile ? 'bounded controls prepared' : 'no supported control plan'}.`, learned);
@@ -282,7 +292,7 @@ export async function runPipeline(options: {
           recorderOptions: { ffmpeg: config.mediaTools },
           onProgress: progress => trace.event('capture', progress.stage, progress.message),
           onAction: event => trace.event('input', event.status, `${event.phase}: ${event.action.type}`, event),
-          decide: profile.controller.type === 'sparse' ? services.createFeedbackController(profile, getProvider(), join(gameDir, `feedback-${id}`), decision => trace.event('feedback', 'observed', 'Current state, outcome and next action saved.', decision)) : undefined,
+          decide: profile.controller.type === 'sparse' ? services.createFeedbackController(profile, getProvider(), join(gameDir, `feedback-${id}`), decision => trace.event('feedback', 'observed', 'Current state, outcome and next action saved.', decision), intent) : undefined,
         });
         const bounds = result.surfaceBounds;
         const crop = { x: Math.floor(bounds.x), y: Math.floor(bounds.y), width: Math.floor(bounds.width), height: Math.floor(bounds.height) };
