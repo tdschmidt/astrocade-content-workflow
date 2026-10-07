@@ -19,7 +19,7 @@ npm run pipeline -- --resume data/runs/RUN_DIRECTORY [--model MODEL]
 Default: inspect up to three provisional choices, record supported games, compare visible results, and render one highlight.
 Outputs: report.md, trace.jsonl, discovery/inspection/control evidence, original recordings, edit.json, highlight-*.mp4, caption.txt.
 The trace shows observable actions and concise decision summaries, not private internal reasoning. Publishing is manual.
-Configure GEMINI_API_KEY or the existing local Setup key. FFmpeg with libass and Playwright Chromium are required.`);
+Configure GEMINI_API_KEY in .env. Existing saved keys are also read. FFmpeg with libass and Playwright Chromium are required.`);
 } else {
   if (!['discover', 'capture', 'edit', 'all'].includes(values.stage)) throw new Error('Stage must be discover, capture, edit, or all.');
   const abort = new AbortController();
