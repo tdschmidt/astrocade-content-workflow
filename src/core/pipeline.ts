@@ -357,6 +357,7 @@ export async function runPipeline(options: {
         const result = await services.runCaptureAttempt({
           profile, outputPath: join(gameDir, `${id}.webm`), allowUnverified: true, signal: options.signal,
           observeActionFrames: intent.editingStyle === 'reel',
+          retryDecisionTimeout: intent.editingStyle === 'reel',
           recorderOptions: { ffmpeg: config.mediaTools },
           onProgress: progress => trace.event('capture', progress.stage, progress.message),
           onAction: event => trace.event('input', event.status, `${event.phase}: ${event.action.type}`, event),

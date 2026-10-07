@@ -448,7 +448,7 @@ test('during-action frames survive a landed NOW image and carry working mechanic
     if (calls === 2) {
       assert.deepEqual(media.map(item => Buffer.from(item.data, 'base64').toString()), ['GROUNDED_BEFORE', 'AIRBORNE_DURING', 'ASCENDING_DURING', 'LANDED_NOW']);
       const manifest = JSON.parse(prompt.match(/Image order and recording timestamps: (\[.*\])\. BEFORE/)![1]!);
-      assert.deepEqual(manifest.map((item: { elapsedMs: number }) => item.elapsedMs), [2000, 3000, 5000, 10000]);
+      assert.deepEqual(manifest.map((item: { elapsedMs: number }) => item.elapsedMs), [2500, 3000, 5000, 10000]);
       assert.match(prompt, /Absence from a late screenshot alone is not a failed control/);
       return proposal;
     }
@@ -459,15 +459,62 @@ test('during-action frames survive a landed NOW image and carry working mechanic
   } } as unknown as Pick<Inference, 'json'>;
   const decide = createFeedbackController(movement, provider, directory, undefined, { editingStyle: 'reel' });
   await decide(observation);
-  const observed = await decide({ ...observation, elapsedMs: 10000, previousActions: [probe], previousImage: Buffer.from('GROUNDED_BEFORE'), image: Buffer.from('LANDED_NOW'),
+  const observed = await decide({ ...observation, elapsedMs: 10000, previousActions: [probe], previousImage: Buffer.from('GROUNDED_BEFORE'), previousImageElapsedMs: 2500, image: Buffer.from('LANDED_NOW'),
     recentFrames: [{ image: Buffer.from('AIRBORNE_DURING'), elapsedMs: 3000 }, { image: Buffer.from('ASCENDING_DURING'), elapsedMs: 5000 }] });
   assert.equal(observed.mechanics?.[0]?.status, 'working');
   const saved = JSON.parse(await readFile(join(directory, 'decision-02.json'), 'utf8'));
   assert.equal(await readFile(saved.sampledFrames[0].imagePath, 'utf8'), 'AIRBORNE_DURING');
   assert.equal(await readFile(saved.sampledFrames[1].imagePath, 'utf8'), 'ASCENDING_DURING');
   assert.deepEqual(saved.mechanics, checklist);
+  assert.equal(saved.previousImageElapsedMs, 2500, 'BEFORE uses its actual pre-input time, not the prior 2000ms request time');
+  assert.equal(await readFile(saved.previousImagePath, 'utf8'), 'GROUNDED_BEFORE');
+  assert.equal(await readFile(saved.imagePath, 'utf8'), 'LANDED_NOW');
+  assert.equal(await readFile(join(directory, 'decision-01.jpg'), 'utf8'), 'CURRENT_SYNTHETIC_IMAGE', 'the original request screenshot remains separate');
   const next = await decide({ ...observation, elapsedMs: 20000, previousActions: [probe], previousImage: Buffer.from('LANDED_NOW') });
   assert.equal(next.actions[0]?.type, 'keys');
+});
+
+test('aborted feedback consumes a unique artifact slot and late proposals cannot enter accepted memory', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'feedback-expired-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const abort = new AbortController(), accepted: unknown[] = [];
+  const timeout = new DOMException('Decision deadline reached', 'TimeoutError');
+  let completeLate!: (value: unknown) => void, providerEntered!: () => void, calls = 0;
+  const entered = new Promise<void>(resolve => { providerEntered = resolve; });
+  const provider = { json: async (prompt: string) => {
+    calls++;
+    if (calls === 1) {
+      providerEntered();
+      return new Promise(resolve => { completeLate = resolve; });
+    }
+    assert.match(prompt, /equivalent failed shot or an autonomous phase banner is not new progress/);
+    assert.match(prompt, /Free exploration can progress through real new areas without a score/);
+    assert.doesNotMatch(prompt, /LATE FALSE SUCCESS/);
+    assert.match(prompt, new RegExp(`${profile.controller.type === 'sparse' ? profile.controller.maxDecisions - calls : -1} action batches remain`));
+    const history = JSON.parse(prompt.match(/Recent observations\/lessons.*?: (\[.*\])\./)![1]!);
+    assert.equal(history.length, calls - 2, 'failed and late calls are absent from accepted memory');
+    return { ...answer, pivotTo: null, mechanics: [] };
+  } } as unknown as Pick<Inference, 'json'>;
+  const decide = createFeedbackController(profile, provider, directory, value => accepted.push(value), { editingStyle: 'reel' });
+  const failed = decide({ ...observation, signal: abort.signal });
+  const rejected = assert.rejects(failed, error => error === timeout);
+  await entered;
+  abort.abort(timeout);
+  await rejected;
+  const failure = JSON.parse(await readFile(join(directory, 'decision-01-failure.json'), 'utf8'));
+  assert.equal(failure.aborted, true);
+  assert.equal(failure.error.name, 'TimeoutError');
+  assert.equal(failure.observationId, observation.observationId);
+  assert.equal(await readFile(failure.imagePath, 'utf8'), 'CURRENT_SYNTHETIC_IMAGE');
+  await decide({ ...observation, observationId: 'fixture:1' });
+  completeLate({ ...answer, observation: 'LATE FALSE SUCCESS', outcome: 'success', stop: true, actions: [], pivotTo: null, mechanics: [] });
+  await new Promise(resolve => setImmediate(resolve));
+  await decide({ ...observation, observationId: 'fixture:2', previousActions: [move] });
+  assert.equal(accepted.length, 2);
+  for (const suffix of ['.json', '-proposal.json']) await assert.rejects(readFile(join(directory, `decision-01${suffix}`)), { code: 'ENOENT' });
+  assert.equal(JSON.parse(await readFile(join(directory, 'decision-02.json'), 'utf8')).observationId, 'fixture:1');
+  assert.equal(JSON.parse(await readFile(join(directory, 'decision-03.json'), 'utf8')).observationId, 'fixture:2');
+  assert.doesNotMatch(await readFile(join(directory, 'report.md'), 'utf8'), /LATE FALSE SUCCESS|decision-01/);
 });
 
 test('frame ordering and checklist size are bounded before actions can be dispatched', async t => {

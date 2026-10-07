@@ -78,6 +78,112 @@ test('sparse feedback observes actual input effects and reserves its last call f
   assert.equal(lifecycle.close, 1);
 });
 
+test('the causal BEFORE frame is refreshed after changes during inference and before native input', browserTest, async t => {
+  const { page, options, actions } = await fixture(t);
+  let request: GameplayObservation | undefined, preActionImage: Buffer | undefined;
+  const result = await runCaptureAttempt({ ...options, decide: async current => {
+    if (!request) {
+      request = current;
+      // Fixture-only autonomous game change while the provider is still waiting.
+      await page.frameLocator('#game').locator('canvas').evaluate(async () => {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        const canvas = document.querySelector('canvas')!;
+        const context = canvas.getContext('2d')!;
+        context.fillStyle = '#ee2200'; context.fillRect(0, 0, 320, 320);
+        document.querySelector('#hud')!.textContent = 'Autonomous change before input';
+      });
+      preActionImage = await page.screenshot({ clip: { x: 8, y: 8, width: 320, height: 320 }, type: 'jpeg', quality: 70 });
+      return { stop: false, reason: 'Now move right.', actions: [{ type: 'key', key: 'ArrowRight', durationMs: 40 }] };
+    }
+    assert.notDeepEqual(current.previousImage, request.image, 'inference-time state must not be attributed to the action');
+    assert.deepEqual(current.previousImage, preActionImage, 'BEFORE shows the autonomous change, before the key changes it again');
+    assert.notDeepEqual(current.image, current.previousImage);
+    assert.ok(current.previousImageElapsedMs! >= request.elapsedMs + 200);
+    assert.ok(current.previousImageElapsedMs! <= actions.find(action => action.status === 'started')!.recordingElapsedMs!);
+    assert.match(current.text, /Position: 1; held: false; trusted: true/);
+    return { stop: true, reason: 'The native key caused the later position change only.', actions: [] };
+  } });
+  assert.equal(result.stopReason, 'model_stop', result.controllerError ?? 'Expected normal controller completion.');
+  assert.equal(result.actionsExecuted, 1);
+});
+
+test('one decision timeout consumes its slot, takes a fresh frame, and ignores the late answer', browserTest, async t => {
+  const { page, options, actions, lifecycle } = await fixture(t);
+  const timeout = AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal, 'timeout', () => timeout(250));
+  const observations: GameplayObservation[] = [], warnings: string[] = [];
+  let completeLate!: (value: unknown) => void;
+  const result = await runCaptureAttempt({ ...options, retryDecisionTimeout: true,
+    onProgress: event => { if (event.stage === 'warning') warnings.push(event.message); },
+    decide: async current => {
+      observations.push(current);
+      if (observations.length === 1) {
+        await page.frameLocator('#game').locator('canvas').evaluate(() => {
+          const context = document.querySelector('canvas')!.getContext('2d')!;
+          context.fillStyle = '#ee2200'; context.fillRect(0, 0, 320, 320);
+          document.querySelector('#hud')!.textContent = 'Changed while waiting';
+        });
+        return new Promise(resolve => { completeLate = resolve; });
+      }
+      if (observations.length === 2) {
+        assert.notDeepEqual(current.image, observations[0]!.image);
+        assert.equal(current.text, 'Changed while waiting');
+        assert.deepEqual(current.previousActions, [], 'the expired proposal executed no input');
+        assert.equal(current.previousImage, undefined);
+        return { stop: false, reason: 'Fresh control probe.', actions: [{ type: 'key', key: 'ArrowRight', durationMs: 40 }] };
+      }
+      assert.equal(current.isFinal, true, 'the failed call still consumed a decision slot');
+      return { stop: true, reason: 'Evaluate the one executed batch.', actions: [] };
+    },
+  });
+  assert.equal(result.stopReason, 'model_stop', result.controllerError ?? 'Expected normal controller completion.');
+  assert.equal(result.actionsExecuted, 1);
+  assert.deepEqual(observations.map(item => item.observationId.split(':').at(-1)), ['0', '1', '2']);
+  assert.deepEqual(result.decisions.map(item => item.observationId), observations.slice(1).map(item => item.observationId));
+  assert.equal(observations[0]!.signal.aborted, true);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!, /slot is consumed.*unchanged capture budget/);
+  completeLate({ stop: false, reason: 'Expired batch must never run.', actions: [{ type: 'key', key: 'ArrowRight', durationMs: 40 }] });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(actions.filter(action => action.status === 'started').length, 1);
+  assert.match(lifecycle.finalText, /Position: 1; held: false; trusted: true/);
+});
+
+for (const scenario of ['second timeout', 'final timeout', 'schema error', 'disabled recovery', 'operator cancellation'] as const) {
+  test(`decision recovery does not retry ${scenario}`, browserTest, async t => {
+    const { options, lifecycle, actions } = await fixture(t);
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    t.mock.method(AbortSignal, 'timeout', () => timeout(100));
+    options.profile.controller = { type: 'sparse', maxDecisions: scenario === 'final timeout' ? 2 : 4, instructions: '', allowedKeys: [], allowPointer: false };
+    const abort = new AbortController(), warnings: string[] = [];
+    let calls = 0;
+    const run = runCaptureAttempt({ ...options, signal: abort.signal, retryDecisionTimeout: scenario !== 'disabled recovery',
+      onProgress: event => { if (event.stage === 'warning') warnings.push(event.message); },
+      decide: async () => {
+        calls++;
+        if (calls === 1) return { stop: false, reason: 'Initial native input.', actions: [{ type: 'key', key: 'ArrowRight', durationMs: 40 }] };
+        if (scenario === 'schema error') return { stop: false, reason: 'Malformed controls.', actions: [{ type: 'unknown' }] };
+        if (scenario === 'operator cancellation') abort.abort(new Error('Operator canceled'));
+        return new Promise(() => {});
+      },
+    });
+    if (scenario === 'operator cancellation') {
+      await assert.rejects(run, /canceled/i);
+      assert.equal(lifecycle.cancel, 1);
+    } else {
+      const result = await run;
+      assert.equal(result.stopReason, 'controller_error');
+      assert.equal(result.actionsExecuted, 1);
+      assert.ok(result.controllerError);
+      assert.equal(lifecycle.finish, 1);
+    }
+    assert.equal(calls, scenario === 'second timeout' ? 3 : 2);
+    assert.equal(warnings.length, scenario === 'second timeout' ? 1 : 0);
+    assert.equal(actions.filter(action => action.status === 'started').length, 1);
+    assert.match(lifecycle.finalText, /Position: 1; held: false; trusted: true/);
+  });
+}
+
 const transientFrame = `<!doctype html><style>body{margin:0}canvas{display:block}</style>
 <canvas width="320" height="320" tabindex="0"></canvas><p id="hud"></p>
 <script>
@@ -127,7 +233,7 @@ test('canceling sampled native input drains its screenshot before closing and re
     screenshots++; pending++;
     try {
       const result = await screenshot(...args);
-      if (screenshots === 2) {
+      if (screenshots === 3) {
         abort.abort(new Error('Cancel during a held chord and screenshot'));
         await new Promise(resolve => setTimeout(resolve, 150));
       }
@@ -142,7 +248,7 @@ test('canceling sampled native input drains its screenshot before closing and re
     },
     decide: async () => ({ stop: false, reason: 'Hold movement and flight.', actions: [{ type: 'keys', keys: ['KeyW', 'Space'], durationMs: 6000 }] }),
   }), /canceled/i);
-  assert.equal(screenshots, 2, 'no additional scheduled sample runs after cancellation');
+  assert.equal(screenshots, 3, 'no additional scheduled sample runs after cancellation');
   assert.equal(pending, 0);
   assert.equal(closedWhilePending, false);
   assert.equal(lifecycle.finalText, 'held: 0; trusted: true');
@@ -159,7 +265,7 @@ test('an optional mid-action screenshot failure preserves native footage and rep
   page.screenshot = async (...args: Parameters<typeof page.screenshot>) => {
     screenshots++; pending++;
     try {
-      if (screenshots === 3) throw new Error('Synthetic optional screenshot timeout');
+      if (screenshots === 4) throw new Error('Synthetic optional screenshot timeout');
       return await screenshot(...args);
     } finally { pending--; }
   };
@@ -183,7 +289,7 @@ test('an optional mid-action screenshot failure preserves native footage and rep
   assert.ok(controls[1]!.recordingElapsedMs! - controls[0]!.recordingElapsedMs! >= 2200);
   assert.equal(warnings.length, 1);
   assert.match(warnings[0]!, /after 1 sample.*source recording continues/);
-  assert.equal(screenshots, 4, 'initial, one captured sample, failed sample, then current; no trailing sampler operations');
+  assert.equal(screenshots, 5, 'request, fresh pre-action baseline, one captured sample, failed sample, then current; no trailing sampler operations');
   assert.equal(pending, 0);
   assert.equal(closedWhilePending, false);
   assert.equal(lifecycle.finish, 1);
@@ -206,12 +312,13 @@ test('a pointer-only plan reaches visible HTML controls over its canvas without 
 test('a later controller failure preserves recorded gameplay with an explicit error', browserTest, async t => {
   const { options, lifecycle } = await fixture(t);
   let calls = 0;
-  const result = await runCaptureAttempt({ ...options, decide: async () => {
+  const result = await runCaptureAttempt({ ...options, retryDecisionTimeout: true, decide: async () => {
     if (calls++) throw new Error('Provider unavailable');
     return { stop: false, reason: 'Move right.', actions: [{ type: 'key', key: 'ArrowRight', durationMs: 40 }] };
   } });
   assert.equal(result.stopReason, 'controller_error');
   assert.equal(result.controllerError, 'Provider unavailable');
+  assert.equal(calls, 2, 'generic provider errors never use timeout recovery');
   assert.equal(result.actionsExecuted, 1);
   assert.equal(lifecycle.finalText, 'Position: 1; held: false; trusted: true; clicks: 0');
   assert.equal(lifecycle.finish, 1);
@@ -224,7 +331,7 @@ test('a decision that returns after the capture deadline never executes its acti
   let complete: ((value: unknown) => void) | undefined;
   let observedSignal: AbortSignal | undefined;
   const started = performance.now();
-  const result = await runCaptureAttempt({ ...options, decide: observation => {
+  const result = await runCaptureAttempt({ ...options, retryDecisionTimeout: true, decide: observation => {
     observedSignal = observation.signal;
     return new Promise(resolve => { complete = resolve; });
   } });

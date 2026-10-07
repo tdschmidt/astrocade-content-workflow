@@ -24,6 +24,8 @@ export type GameplayObservation = {
   remainingMs: number;
   previousActions: InputAction[];
   previousImage?: Buffer;
+  /** Recording timestamp of the fresh frame immediately before native input. */
+  previousImageElapsedMs?: number;
   /** Fresh, timestamped screenshots taken during the preceding native batch. */
   recentFrames?: Array<{ image: Buffer; elapsedMs: number }>;
   previousReason?: string;
@@ -68,6 +70,8 @@ export async function runCaptureAttempt(options: {
   allowLocalGame?: boolean;
   /** Observe transient effects during native actions; legacy captures use only settled frames. */
   observeActionFrames?: boolean;
+  /** Reel captures may recover once from a decision deadline, within the same budget. */
+  retryDecisionTimeout?: boolean;
   recorderOptions?: Pick<CaptureOptions, 'headless' | 'ffmpeg'>;
   /** Test seam; production uses the native recorder. */
   createCapture?: (options: CaptureOptions) => Promise<GameCapture>;
@@ -139,8 +143,10 @@ export async function runCaptureAttempt(options: {
         stopReason = 'decision_limit';
         let previousActions: InputAction[] = [];
         let previousImage: Buffer | undefined;
+        let previousImageElapsedMs: number | undefined;
         let previousReason: string | undefined;
         let recentFrames: GameplayObservation['recentFrames'];
+        let retriedDecisionTimeout = false;
         for (let index = 0; index < profile.controller.maxDecisions; index++) {
           controlSignal.throwIfAborted();
           if (profile.maxDurationMs - (performance.now() - recordingStarted) < 2000) { stopReason = 'duration_limit'; break; }
@@ -156,13 +162,19 @@ export async function runCaptureAttempt(options: {
           const remainingMs = Math.max(0, profile.maxDurationMs - elapsedMs);
           if (remainingMs < 2000) { stopReason = 'duration_limit'; break; }
           const isFinal = index === profile.controller.maxDecisions - 1;
-          const decisionSignal = AbortSignal.any([controlSignal, AbortSignal.timeout(Math.min(30000, remainingMs))]);
+          const decisionTimeout = AbortSignal.timeout(Math.min(30000, remainingMs));
+          const decisionSignal = AbortSignal.any([controlSignal, decisionTimeout]);
           options.onProgress?.({ stage: 'deciding', message: `Visual decision ${index + 1} of ${profile.controller.maxDecisions}.` });
           let decision;
           try {
-            decision = controlDecisionSchema.parse(await withAbort(options.decide!({ observationId, image, mimeType: 'image/jpeg', text, pointerLocked, gameName: profile.name, objective: profile.objective, elapsedMs, remainingMs, previousActions, previousImage, previousReason, recentFrames, isFinal, signal: decisionSignal }), decisionSignal));
+            decision = controlDecisionSchema.parse(await withAbort(options.decide!({ observationId, image, mimeType: 'image/jpeg', text, pointerLocked, gameName: profile.name, objective: profile.objective, elapsedMs, remainingMs, previousActions, previousImage, previousImageElapsedMs, previousReason, recentFrames, isFinal, signal: decisionSignal }), decisionSignal));
             if (!decision.stop && !isFinal && !decision.actions.length) throw new GameCaptureError('missing_controls', 'The controller supplied neither an action nor a stop decision.');
           } catch (error) {
+            if (options.retryDecisionTimeout && !retriedDecisionTimeout && !isFinal && !controlSignal.aborted && decisionTimeout.aborted && error === decisionTimeout.reason) {
+              retriedDecisionTimeout = true;
+              options.onProgress?.({ stage: 'warning', message: `Decision ${observationId} timed out; its slot is consumed. Taking one fresh observation within the unchanged capture budget.` });
+              continue;
+            }
             if (controlSignal.aborted || !previousActions.length) throw error;
             // Preserve footage already played when a later inference fails.
             controllerError = error instanceof Error ? error.message.slice(0, 1000) : 'The gameplay controller failed.';
@@ -173,13 +185,18 @@ export async function runCaptureAttempt(options: {
           decisions.push({ observationId, elapsedMs, reason: decision.reason });
           if (decision.stop) { stopReason = 'model_stop'; break; }
           if (isFinal) break;
+          // The game continues during inference. Its request-time image cannot
+          // establish which changes were caused by the upcoming native actions.
+          const actionClip = await withAbort(gameBounds(page, profile.surface), controlSignal);
+          previousImageElapsedMs = Math.round(performance.now() - recordingStarted);
+          previousImage = await withAbort(page.screenshot({ clip: actionClip, type: 'jpeg', quality: 70, timeout: 5000 }), controlSignal);
+          controlSignal.throwIfAborted();
           previousActions = decision.actions;
-          previousImage = image;
           previousReason = decision.reason;
           const executeBatch = async () => {
             for (const action of decision.actions) await perform('control', action, () => executor.execute(action));
           };
-          recentFrames = options.observeActionFrames ? await observeActionBatch(page, clip, decision.actions, recordingStarted, controlSignal, executeBatch,
+          recentFrames = options.observeActionFrames ? await observeActionBatch(page, actionClip, decision.actions, recordingStarted, controlSignal, executeBatch,
             message => options.onProgress?.({ stage: 'warning', message })) : undefined;
           if (!options.observeActionFrames) await executeBatch();
           // Rejected puzzle pieces can animate back for longer than one frame.
