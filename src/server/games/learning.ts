@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { chromium, type Page } from 'playwright';
+import { chromium, type ElementHandle, type Page } from 'playwright';
 import { z } from 'zod';
 import type { Inference } from '../providers/inference.js';
 import { canonicalGameUrl } from './discovery.js';
@@ -71,6 +71,7 @@ export async function inspectGamePage(page: Page, gameUrl: string, directory: st
   await writeFile(beforeImagePath, await page.screenshot({ clip: await gameBounds(page, beforeSurface) }), { flag: 'wx' });
   let performedStart = startTargets.find(target => isObservedStartLabel(target.label));
   const performedVisualStart: InputAction[] = [];
+  let visualStartCanvas: ElementHandle | null = null;
   if (performedStart) {
     await executor.step({ type: 'click', target: { selector: performedStart.selector, frames: gameFrames } });
     await delay(700, undefined, { signal });
@@ -78,6 +79,7 @@ export async function inspectGamePage(page: Page, gameUrl: string, directory: st
     // Canvas menus have no DOM button. Only an explicit visible menu label can
     // authorize a native tap; a current game board is never a start target.
     const visualExecutor = new InputExecutor(page, beforeSurface, signal);
+    visualStartCanvas = await frame.locator(beforeCanvas.selector).elementHandle();
     for (let index = 0; index < 2; index++) {
       const image = await page.screenshot({ clip: await gameBounds(page, beforeSurface) });
       const decision = visualStartSchema.parse(await provider.json(
@@ -120,7 +122,17 @@ If a qualifying control is visible, return its exact label and its center as nor
     surface, ready: performedVisualStart.length ? beforeSurface : performedStart ? { selector: performedStart.selector, frames: gameFrames } : surface,
     startTargets, performedStart, ...(performedVisualStart.length ? { performedVisualStart } : {}), viewport, setup,
   };
+  const sameStartSurface = !performedVisualStart.length || (
+    beforeSurface.selector === surface.selector && JSON.stringify(beforeSurface.frames) === JSON.stringify(surface.frames) && visualStartCanvas !== null &&
+    await frame.locator(surface.selector).evaluate((current, original) => current === original, visualStartCanvas).catch(() => false)
+  );
+  await visualStartCanvas?.dispose();
   signal?.throwIfAborted();
+  if (!sameStartSurface) {
+    const reason = 'The visual menu replaced or changed its canvas. Replaying its taps against the gameplay surface is unsupported.';
+    await writeFile(join(directory, 'inspection-unsupported.json'), JSON.stringify({ reason, inspection }, null, 2) + '\n', { flag: 'wx' });
+    throw new Error(reason);
+  }
   await writeFile(join(directory, 'inspection.json'), JSON.stringify(inspection, null, 2) + '\n', { flag: 'wx' });
   return inspection;
 }

@@ -195,3 +195,28 @@ for (const scenario of ['play', 'skip then play', 'skip then DOM start', 'game b
   if (expectedTaps === 2) assert.notEqual(observedImages[0], observedImages[1], 'each visual menu decision must see the updated screen');
   assert.equal(JSON.parse(await readFile(join(outputDir, 'inspection-menu-1.json'), 'utf8')).reason, scenario === 'game board' ? 'Active game board, no menu control.' : 'Visible menu label.');
 });
+
+test('visual menu inspection rejects a replacement canvas even when its selector is unchanged', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
+  const { outputDir, candidate } = await fixture(t);
+  const browser = await chromium.launch({ channel: 'chromium', headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 720, height: 1280 } });
+  await page.setContent('<style>body{margin:0}iframe{width:600px;height:1100px;border:0}button{position:absolute;z-index:2;top:0;left:0}</style><button aria-label="Start playing" onclick="this.remove()">Open game</button><iframe title="Astrocade Game"></iframe>');
+  const frame = page.frames()[1]!;
+  await frame.setContent(`<style>body{margin:0}canvas{background:#123}</style><canvas width="600" height="1100"></canvas><script>
+    document.querySelector('canvas').onclick=event=>{
+      document.body.dataset.trusted=String(event.isTrusted);
+      const replacement=document.createElement('canvas');replacement.width=600;replacement.height=1100;replacement.style.background='#27b';
+      event.currentTarget.replaceWith(replacement);
+    };
+  </script>`);
+  const provider = { json: async () => ({ point: { x: 0.5, y: 0.55 }, label: 'PLAY', reason: 'Visible menu Play control.' }) } as unknown as Pick<GoogleServices, 'json'>;
+  await assert.rejects(inspectGamePage(page, candidate.url, outputDir, undefined, provider), /replaced or changed its canvas/);
+  assert.equal(await frame.locator('body').getAttribute('data-trusted'), 'true');
+  const unsupported = JSON.parse(await readFile(join(outputDir, 'inspection-unsupported.json'), 'utf8'));
+  assert.equal(unsupported.inspection.ready.selector, ':nth-match(canvas, 1)');
+  assert.equal(unsupported.inspection.surface.selector, ':nth-match(canvas, 1)');
+  assert.equal(unsupported.inspection.performedVisualStart.filter((action: { type: string }) => action.type === 'tap').length, 1);
+  assert.notDeepEqual(await readFile(unsupported.inspection.beforeImagePath), await readFile(unsupported.inspection.imagePath));
+  await assert.rejects(readFile(join(outputDir, 'inspection.json')), { code: 'ENOENT' });
+});
