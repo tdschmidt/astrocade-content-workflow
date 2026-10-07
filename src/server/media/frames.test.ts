@@ -47,6 +47,22 @@ test('8 FPS windows retain actual frame times, nonzero offsets, and an exclusive
   await assert.rejects(extractVideoFrames(source, join(directory, 'outside'), { fps: 8, end_offset: '3s' }), /inside the source/);
 });
 
+test('computed window bounds use the same microsecond clock as FFmpeg and exclude the end frame', integration, async t => {
+  const { directory, source } = await fixture(t, 10);
+  const start = 0.1 + 0.2, end = 0.1 + 0.2 + 0.3;
+  assert.notEqual(start, 0.3, 'the fixture must exercise binary floating point drift');
+  assert.notEqual(end, 0.6);
+  const sampled = await extractVideoFrames(source, join(directory, 'computed'), { fps: 8, start_offset: String(start), end_offset: String(end) });
+  assert.equal(sampled.startSeconds, 0.3);
+  assert.equal(sampled.endSeconds, 0.6);
+  assert.deepEqual(sampled.frames.map(frame => frame.sourceSeconds), [0.3, 0.5]);
+  assert.equal(sampled.frames[0]!.windowSeconds, 0);
+  assert.ok(sampled.frames.every(frame => frame.sourceSeconds < 0.6), 'a frame exactly at the rounded end is still excluded');
+  const collapsed = join(directory, 'collapsed');
+  await assert.rejects(extractVideoFrames(source, collapsed, { fps: 2, start_offset: '0.3000001', end_offset: '0.3000002' }), /nonempty/);
+  await assert.rejects(stat(collapsed), { code: 'ENOENT' });
+});
+
 test('sampling does not pad low-FPS footage, and rejects over 360 requested frames', integration, async t => {
   const { directory, source } = await fixture(t, 1, 46);
   const sampled = await extractVideoFrames(source, join(directory, 'sparse'), { fps: 8, start_offset: '0', end_offset: '2' });

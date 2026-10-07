@@ -14,6 +14,8 @@ export interface VideoFrames {
 }
 
 const MAX_FRAMES = 360;
+const MICROSECONDS = 1_000_000;
+const sourceTime = (seconds: number) => Math.round(seconds * MICROSECONDS) / MICROSECONDS;
 function offset(value: string | undefined, fallback: number): number {
   if (value === undefined) return fallback;
   if (!/^\d+(?:\.\d+)?s?$/.test(value)) throw new Error('Frame offsets must be nonnegative seconds, optionally suffixed with s.');
@@ -30,12 +32,15 @@ export async function extractVideoFrames(
   const fps = processing.fps;
   if (fps !== 1 && fps !== 2 && fps !== 8) throw new Error('Frame sampling supports only 1, 2 or 8 FPS.');
   const sourcePath = resolve(path), directory = resolve(outputDir);
-  const startSeconds = offset(processing.start_offset, 0);
+  // Trim operates on AVTB microseconds. Normalize the requested window once so
+  // floating point sums use the same bounds in FFmpeg, validation, and output.
+  const startSeconds = sourceTime(offset(processing.start_offset, 0));
   const requestedEnd = offset(processing.end_offset, Number.NaN);
   const info = await probeMedia(sourcePath, tools, signal);
   if (!info.video) throw new Error('Frame extraction requires a video stream.');
-  const endSeconds = Number.isNaN(requestedEnd) ? info.durationSeconds : requestedEnd;
-  if (startSeconds >= endSeconds || endSeconds > info.durationSeconds) throw new Error('Frame window must be nonempty and lie inside the source video.');
+  const sourceEnd = sourceTime(info.durationSeconds);
+  const endSeconds = Number.isNaN(requestedEnd) ? sourceEnd : sourceTime(requestedEnd);
+  if (startSeconds >= endSeconds || endSeconds > sourceEnd) throw new Error('Frame window must be nonempty and lie inside the source video.');
   if (Math.ceil((endSeconds - startSeconds) * fps - 1e-9) > MAX_FRAMES) throw new Error(`Requested sampling exceeds the ${MAX_FRAMES}-frame limit; select a shorter window.`);
   await mkdir(dirname(directory), { recursive: true });
   // An exclusive directory means failed extraction can clean up only its own files.
@@ -53,7 +58,7 @@ export async function extractVideoFrames(
     // AVTB represents actual decoded timestamps in integer microseconds. Keeping
     // the source clock through trim avoids relabeling a late first frame as t=0.
     const metadata = await readFile(join(directory, 'timings.txt'), 'utf8');
-    const timestamps = [...metadata.matchAll(/^frame:\d+\s+pts:\s*(-?\d+)\s+pts_time:/gm)].map(match => Number(match[1]) / 1_000_000);
+    const timestamps = [...metadata.matchAll(/^frame:\d+\s+pts:\s*(-?\d+)\s+pts_time:/gm)].map(match => Number(match[1]) / MICROSECONDS);
     const files = (await readdir(directory)).filter(name => /^frame-\d{4}\.jpg$/.test(name)).sort();
     if (!timestamps.length || timestamps.length !== files.length || timestamps.length > MAX_FRAMES) throw new Error('Frame extraction did not produce a complete bounded timestamp map.');
     if (timestamps.some((time, index) => !Number.isFinite(time) || time < startSeconds || time >= endSeconds || (index > 0 && time <= timestamps[index - 1]!))) throw new Error('Extracted frames have invalid presentation timestamps.');
