@@ -1,3 +1,4 @@
+import { sourceSeekArgs, sourceWindowVideoFilter } from '../../src/server/media/source-window.js';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -10,7 +11,7 @@ const source=resolve(c.sourcePath),sourceHash=sha(await readFile(source));if(sou
 const {ffmpeg}=mediaExecutables(),clips:any[]=[],chapters:any[]=[];let offset=0;
 for(const chapter of selection.chapters){const module=c.modules.find((m:any)=>m.id===chapter.id),allowedStart=offset;
  for(const shot of chapter.shots){const allowed=module.shots.find((s:any)=>s.id===shot.id);if(!allowed||shot.start<allowed.start||shot.end>allowed.end)throw new Error('Out-of-bounds selection');const count=Math.round((shot.end-shot.start)*30),duration=count/30,path=resolve(output,`${clips.length}-${shot.id}.mp4`);
-  const args=['-hide_banner','-loglevel','error','-nostdin','-n','-ss',String(shot.start),'-i',source,'-an','-vf','fps=30,setsar=1','-frames:v',String(count),'-c:v','libx264','-preset','fast','-crf','16','-pix_fmt','yuv420p',path];
+  const args=['-hide_banner','-loglevel','error','-nostdin','-n',...sourceSeekArgs(shot.start),'-i',source,'-an','-vf',`${sourceWindowVideoFilter(duration)},setsar=1`,'-frames:v',String(count),'-c:v','libx264','-preset','fast','-crf','16','-pix_fmt','yuv420p',path];
   await runProcess(ffmpeg,args,{timeoutMs:120000});clips.push({chapterId:chapter.id,id:shot.id,kind:allowed.kind,originalPath:source,originalSha256:sourceHash,originalStart:shot.start,originalEnd:shot.start+duration,derivedStart:offset,derivedEnd:offset+duration,frameCount:count,path,sha256:sha(await readFile(path)),command:[ffmpeg,...args]});offset+=duration;
  }
  const hasMenu=chapter.shots.some((s:any)=>module.shots.find((a:any)=>a.id===s.id).kind==='menu');

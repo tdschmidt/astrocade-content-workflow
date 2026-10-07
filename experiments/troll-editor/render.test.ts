@@ -54,7 +54,7 @@ test('source audio uses legal chained tempo filters for 3x speed', () => {
   const { plan, timeline } = validateEditPlan({ ...validPlan(), segments: [{ kind: 'clip', start: 0, end: 10, speed: 3 }], stickers: [], captions: [], punches: [], soundCues: [] }, 10);
   const filter = segmentFilter(plan.segments[0]!, timeline[0]!, true);
   assert.ok(filter.includes('atempo=2,atempo=1.5'));
-  assert.ok(filter.includes('setpts=(PTS-STARTPTS)/3'));
+  assert.ok(filter.includes('setpts=PTS/3'));
 });
 
 test('revised face attachments cannot drift over moving footage or become floating stickers', () => {

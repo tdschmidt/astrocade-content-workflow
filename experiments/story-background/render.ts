@@ -1,3 +1,4 @@
+import { sourceSeekArgs, sourceWindowVideoFilter } from '../../src/server/media/source-window.js';
 import { existsSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, join, resolve } from 'node:path';
@@ -75,7 +76,7 @@ export function validateSourceCrop(crop:StoryPlan['source']['crop'], width:numbe
 export function sourceWindowFilter(window: WindowMapping, crop?:StoryPlan['source']['crop']): string {
   const duration = window.outputEnd - window.outputStart;
   const cropFilter=crop?`,crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}`:'';
-  return `[0:v]trim=duration=${number(window.sourceEnd - window.sourceStart)},setpts=(PTS-STARTPTS)/${number(window.speed)},fps=30,trim=duration=${number(duration)},setsar=1${cropFilter},split[background][foreground];[background]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},gblur=sigma=22,eq=brightness=-0.18:saturation=0.6[blur];[foreground]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease[sharp];[blur][sharp]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p[video]`;
+  return `[0:v]${sourceWindowVideoFilter(window.sourceEnd - window.sourceStart, window.speed)},trim=duration=${number(duration)},setsar=1${cropFilter},split[background][foreground];[background]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},gblur=sigma=22,eq=brightness=-0.18:saturation=0.6[blur];[foreground]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease[sharp];[blur][sharp]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p[video]`;
 }
 
 interface Loudness { input_i: string; input_tp: string; input_lra: string; input_thresh: string; target_offset: string; [key: string]: string }
@@ -116,7 +117,7 @@ export async function renderStory(options: { planPath: string; outputPath: strin
     await copyFile(preflight.fontPath!, join(work, 'fonts', `caption${extname(preflight.fontPath!)}`));
     await writeFile(join(work, 'captions.ass'), captions);
     for (const [index, window] of timeline.entries()) {
-      await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-ss', number(window.sourceStart), '-reinit_filter', '0', '-i', plan.source.path,
+      await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', ...sourceSeekArgs(window.sourceStart), '-reinit_filter', '0', '-i', plan.source.path,
         '-filter_complex_threads', '1', '-filter_complex', sourceWindowFilter(window,plan.source.crop), '-map', '[video]', '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
         '-pix_fmt', 'yuv420p', '-r', '30', '-fps_mode', 'cfr', '-t', number(window.outputEnd - window.outputStart), join(work, `window-${index}.mp4`)], { cwd: work, timeoutMs: 240_000,signal });
     }

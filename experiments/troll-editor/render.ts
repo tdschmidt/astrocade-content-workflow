@@ -7,6 +7,7 @@ import { runProcess } from '../../src/server/media/process.js';
 import { ensureNewOutput, mediaExecutables, preflightMediaTools, probeMedia, promoteMedia, requireLocalFile, validateVideo, type MediaInfo, type MediaTools } from '../../src/server/media/probe.js';
 import { buildTimeline, musicWindow, validateEditPlan, type EditPlan, type Segment, type SegmentMapping } from './schema.js';
 import { enforceEncodedAudioPeak } from './audio-peak.js';
+import { sourceFreezeVideoFilter, sourceSeekArgs, sourceWindowVideoFilter } from '../../src/server/media/source-window.js';
 
 const experimentRoot = dirname(fileURLToPath(import.meta.url));
 const num = (value: number) => Number(value.toFixed(6)).toString();
@@ -63,14 +64,14 @@ function visualFilter(segment: Segment): string {
 export function segmentFilter(segment: Segment, mapping: SegmentMapping, sourceHasAudio: boolean, sourceCrop?: EditPlan['sourceCrop']): string {
   const duration = mapping.outputEnd - mapping.outputStart;
   const trim = segment.kind === 'clip'
-    ? `trim=duration=${num(segment.end - segment.start)},setpts=(PTS-STARTPTS)/${num(segment.speed)}`
-    : `trim=end_frame=1,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${num(duration)}`;
+    ? sourceWindowVideoFilter(segment.end - segment.start, segment.speed)
+    : sourceFreezeVideoFilter(duration);
   const enlargedW = Math.ceil(WIDTH * segment.zoom / 2) * 2, enlargedH = Math.ceil(HEIGHT * segment.zoom / 2) * 2;
   const zoom = segment.zoom > 1 ? `,scale=${enlargedW}:${enlargedH},crop=${WIDTH}:${HEIGHT}` : '';
   const crop = sourceCrop ? `,crop=${sourceCrop.width}:${sourceCrop.height}:${sourceCrop.x}:${sourceCrop.y}` : '';
   const video = `[0:v]${trim}${crop},fps=${FPS},tpad=stop_mode=clone:stop_duration=0.1,trim=duration=${num(duration)},setsar=1,split[background][foreground];[background]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},gblur=sigma=22,eq=brightness=-0.18:saturation=0.6[blur];[foreground]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease[sharp];[blur][sharp]overlay=(W-w)/2:(H-h)/2:shortest=1${zoom}${visualFilter(segment)},format=yuv420p[video]`;
   const audio = sourceHasAudio && segment.kind === 'clip'
-    ? `[0:a]atrim=duration=${num(segment.end - segment.start)},asetpts=PTS-STARTPTS,${tempo(segment.speed)},aresample=48000,aformat=channel_layouts=stereo,volume=-15dB,apad,atrim=duration=${num(duration)}[audio]`
+    ? `[0:a]atrim=start=0:end=${num(segment.end - segment.start)},aresample=48000:async=1:first_pts=0,asetpts=N/SR/TB,${tempo(segment.speed)},aformat=channel_layouts=stereo,volume=-15dB,apad,atrim=duration=${num(duration)}[audio]`
     : `anullsrc=r=48000:cl=stereo,atrim=duration=${num(duration)}[audio]`;
   return `${video};${audio}`;
 }
@@ -193,7 +194,7 @@ export async function renderEdit(options: RenderOptions): Promise<Record<string,
     await writeFile(join(work, 'captions.ass'), makeCaptions(plan, tools.fontFamily));
     for (const [index, segment] of plan.segments.entries()) {
       const mapping = timeline[index]!;
-      const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-ss', num(mapping.sourceStart), '-reinit_filter', '0', '-i', plan.sourcePath,
+      const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', ...sourceSeekArgs(mapping.sourceStart), '-reinit_filter', '0', '-i', plan.sourcePath,
         '-filter_complex_threads', '1', '-filter_complex', segmentFilter(segment, mapping, !!source.audio, plan.sourceCrop),
         '-map', '[video]', '-map', '[audio]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-fps_mode', 'cfr',
         '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2', '-t', num(mapping.outputEnd - mapping.outputStart), join(work, `segment-${index}.mp4`)];

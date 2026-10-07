@@ -1,6 +1,7 @@
+import { sourceSeekArgs, sourceWindowVideoFilter } from '../../src/server/media/source-window.js';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { runProcess } from '../../src/server/media/process.js';
 import { mediaExecutables, probeMedia } from '../../src/server/media/probe.js';
@@ -75,8 +76,8 @@ export async function prepareOverviewChapters(options: {
   for (const [index, shot] of mapping.entries()) {
     const filename = `clip-${String(index).padStart(2, '0')}.mp4`, path = join(output, filename);
     const args = [
-      '-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-ss', String(shot.originalStart), '-i', sourcePath,
-      '-an', '-vf', 'setpts=PTS-STARTPTS,fps=30,setsar=1', '-frames:v', String(shot.frames),
+      '-hide_banner', '-loglevel', 'error', '-nostdin', '-n', ...sourceSeekArgs(shot.originalStart), '-i', sourcePath,
+      '-an', '-vf', `${sourceWindowVideoFilter(shot.originalEnd - shot.originalStart)},setsar=1`, '-frames:v', String(shot.frames),
       '-c:v', 'libx264', '-preset', 'fast', '-crf', '16', '-pix_fmt', 'yuv420p', filename,
     ];
     await runProcess(ffmpeg, args, { cwd: output, timeoutMs: 120_000, signal: options.signal });
@@ -95,8 +96,9 @@ export async function prepareOverviewChapters(options: {
     throw new Error(`Derived overview source timing ${media.durationSeconds}s differs from its original-source map ${duration}s.`);
   }
   const provenancePath = join(output, 'provenance.json');
+  const timingHelperSha256 = createHash('sha256').update(await readFile(resolve('src/server/media/source-window.ts'))).digest('hex');
   await writeFile(provenancePath, JSON.stringify({
-    version: 1,
+    version: 2, timingHelperSha256,
     originalSourcePath: sourcePath,
     originalSourceSha256: options.sourceSha256,
     sourcePath: path,
@@ -107,5 +109,5 @@ export async function prepareOverviewChapters(options: {
     selection: options.chapters,
     policy: 'Fresh editorial-agent choices, deterministic forward hard cuts; no loop, frozen frame, reordering or generated gameplay. Original-source provenance remains attached to every derived frame interval. Each shot is rounded down to whole 30fps frames, removing less than one frame at its end.',
   }, null, 2) + '\n', { flag: 'wx' });
-  return { path, sourceSha256, durationSeconds: media.durationSeconds, mapping, provenancePath };
+  return { path, sourceSha256, durationSeconds: media.durationSeconds, mapping, provenancePath, timingHelperSha256 };
 }

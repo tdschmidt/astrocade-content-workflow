@@ -2,6 +2,7 @@ import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 import { abortError, runProcess } from './process.js';
 import { ensureNewOutput, mediaExecutables, preflightMediaTools, probeMedia, promoteMedia, validateVideo, type MediaInfo, type MediaTools } from './probe.js';
+import { sourceSeekArgs, sourceWindowVideoFilter } from './source-window.js';
 
 export interface VideoCut {
   path: string;
@@ -131,7 +132,7 @@ function makeFilter(cuts: readonly VideoCut[], narration: boolean, duration: num
   const gameHeight = presenter ? 1440 : 1920;
   const filters = cuts.map((cut, index) => {
     const crop = cut.crop ? `,crop=${cut.crop.width}:${cut.crop.height}:${cut.crop.x}:${cut.crop.y}` : '';
-    return `[${index}:v]trim=start=${cut.startSeconds}:end=${cut.endSeconds},setpts=PTS-STARTPTS${crop},setsar=1,fps=30,split[bg${index}][fg${index}];\n[bg${index}]scale=1080:${gameHeight}:force_original_aspect_ratio=increase,crop=1080:${gameHeight},gblur=sigma=24,eq=brightness=-0.16:saturation=0.65[blur${index}];\n[fg${index}]scale=1080:${gameHeight}:force_original_aspect_ratio=decrease[sharp${index}];\n[blur${index}][sharp${index}]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1[cut${index}]`;
+    return `[${index}:v]${sourceWindowVideoFilter(cut.endSeconds - cut.startSeconds)}${crop},setsar=1,split[bg${index}][fg${index}];\n[bg${index}]scale=1080:${gameHeight}:force_original_aspect_ratio=increase,crop=1080:${gameHeight},gblur=sigma=24,eq=brightness=-0.16:saturation=0.65[blur${index}];\n[fg${index}]scale=1080:${gameHeight}:force_original_aspect_ratio=decrease[sharp${index}];\n[blur${index}][sharp${index}]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1[cut${index}]`;
   });
   filters.push(`${cuts.map((_, index) => `[cut${index}]`).join('')}concat=n=${cuts.length}:v=1:a=0[gameplay]`);
   if (presenter) {
@@ -184,7 +185,7 @@ export async function renderPortrait(options: PortraitRender): Promise<RenderArt
     const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n'];
     // Native recordings can resize. Keep trim/concat state intact when a later
     // input frame changes dimensions instead of resetting the entire graph.
-    for (const cut of options.cuts) args.push('-reinit_filter', '0', '-i', cut.path);
+    for (const cut of options.cuts) args.push(...sourceSeekArgs(cut.startSeconds), '-reinit_filter', '0', '-i', cut.path);
     if (options.presenter) args.push('-reinit_filter', '0', '-i', options.presenter.path);
     if (options.narrationPath) args.push('-i', options.narrationPath);
     args.push('-filter_complex_threads', '1', '-filter_complex', makeFilter(options.cuts, !!narration, duration, !!options.presenter), '-map', '[video]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', '30', '-fps_mode', 'cfr');

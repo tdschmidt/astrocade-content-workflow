@@ -13,6 +13,13 @@ function plan() { return {
 }; }
 const options = { id: 'sample', title: 'Sample', sourcePath: '/tmp/source.webm', duration: 60, windows };
 
+test('a velocity edit cannot use its style to start the main music drop just before the ending', () => {
+  assert.equal(validateObservedPlan(plan(), { ...options, requirePayoff: true }).duration, 10);
+  const late = { ...plan(), music: { ...plan().music, dropAt: 9 } };
+  assert.throws(() => validateObservedPlan(late, { ...options, requirePayoff: true }), /at least 4s/);
+  assert.equal(validateObservedPlan(late, options).duration, 10, 'Historical plans remain reproducible outside the fresh-job gate');
+});
+
 test('audited windows preserve exact reviewed ranges and remain source-review evidence', () => {
   const hash = 'a'.repeat(64);
   const input = { sourceSha256: hash, sourceReview: '/tmp/source-review.md', windows: [

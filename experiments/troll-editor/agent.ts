@@ -102,7 +102,7 @@ async function main() {
           previousSource = end;
         }
         const validation = validateEditPlan(generated, info.durationSeconds);
-        if(job.audioCatalogPath&&job.style!=='velocity'){const endingIssues=payoffEndingIssues(validation.plan);if(endingIssues.length)throw new Error(endingIssues.join('; '));}
+        if(job.audioCatalogPath){const endingIssues=payoffEndingIssues(validation.plan);if(endingIssues.length)throw new Error(endingIssues.join('; '));}
         if(validation.duration<(job.minDuration??3)||validation.duration>(job.maxDuration??45))throw new Error('Agent did not meet the requested meaningful duration range');
         if(job.audioCatalogPath&&generated.audioCatalogPath!==resolve(job.audioCatalogPath))throw new Error('Agent changed the reviewed audio catalog');
         await writeFile(resolve(output, 'plan.json'), `${JSON.stringify(validation.plan, null, 2)}\n`);

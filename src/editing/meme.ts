@@ -25,7 +25,7 @@ const catalogSchema = z.object({ assets: z.array(z.object({ id: z.string(), kind
 async function rendererSnapshot(catalogPath: string, audioPaths: string[]) {
   const root = resolve(lab, 'troll-editor');
   const files = ['schema.ts', 'revised-agent.schema.json', 'climax-agent.schema.json', 'payoff-ending.ts', 'render.ts', 'audio-peak.ts', ...(await readdir(join(root, 'assets'), { withFileTypes: true })).filter(entry => entry.isFile()).map(entry => `assets/${entry.name}`)].map(name => join(root, name));
-  return Promise.all([...files, catalogPath, ...audioPaths].sort().map(async path => ({ path, sha256: await fileHash(path) })));
+  return Promise.all([...files, resolve(here, '../server/media/source-window.ts'), catalogPath, ...audioPaths].sort().map(async path => ({ path, sha256: await fileHash(path) })));
 }
 
 export interface MemeEditOptions {
@@ -76,7 +76,7 @@ export async function renderMeme(options: MemeEditOptions) {
     if (suppliedWindows) await writeFile(join(output, 'source-review-windows.json'), suppliedWindows.text, { flag: 'wx' });
     const rendererFiles = await rendererSnapshot(audioCatalogPath, catalog.assets.map(asset => asset.path));
     const codeSnapshot = await Promise.all([
-      ...rendererFiles.filter(file => /\/(?:schema\.ts|(?:revised|climax)-agent\.schema\.json|payoff-ending\.ts|render\.ts|audio-peak\.ts)$/u.test(file.path)),
+      ...rendererFiles.filter(file => /\/(?:schema\.ts|(?:revised|climax)-agent\.schema\.json|payoff-ending\.ts|render\.ts|audio-peak\.ts|source-window\.ts)$/u.test(file.path)),
       ...await Promise.all(['meme.ts', 'windows.ts', 'prompts/meme.md'].map(async name => ({ path: join(here, name), sha256: await fileHash(join(here, name)) }))),
     ].map(async file => {
       const source = await readFile(file.path, 'utf8');

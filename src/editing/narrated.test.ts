@@ -130,3 +130,35 @@ test('dense story review splits long selections without gaps, repeats or source-
   assert.equal(chunks.reduce((duration, chunk) => duration + chunk.end - chunk.start, 0), 60.5);
   assert.ok(chunks.every(chunk => (chunk.end - chunk.start) * 8 <= 360));
 });
+
+test('a concise story can use35seconds of proven progress but cannot pad34seconds', () => {
+  const candidates: EvidenceWindow[] = [{ id: 'route', start: 0, end: 40, basis: 'source-review', observation: 'Actual complete progressing route' }];
+  assert.equal(assertNarratedSelection([{ start: 1, end: 36 }], candidates, 35, 60), 35);
+  assert.throws(() => assertNarratedSelection([{ start: 1, end: 35 }], candidates, 35, 60), /Do not pad or loop/);
+});
+
+test('chapter preparation retains the frame actually displayed across a sparse source seek', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'overview-sparse-'));
+  try {
+    const sourcePath = join(folder, 'sparse.mp4');
+    await runProcess(mediaExecutables().ffmpeg, [
+      '-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-f', 'lavfi', '-i',
+      'color=red:size=160x240:rate=1:duration=3', '-vf',
+      "drawbox=color=blue:t=fill:enable='gte(t,1)'", '-c:v', 'libx264', '-g', '1', '-pix_fmt', 'yuv420p', sourcePath,
+    ], { timeoutMs: 30_000 });
+    const sourceSha256 = createHash('sha256').update(await readFile(sourcePath)).digest('hex');
+    const prepared = await prepareOverviewChapters({ sourcePath, sourceSha256, output: join(folder, 'prepared'), chapters: [
+      { id: 'red', shots: [{ start: 0.2, end: 0.8 }] },
+      { id: 'blue', shots: [{ start: 1.2, end: 1.8 }] },
+    ] });
+    const pixels = join(folder, 'pixels.rgb');
+    await runProcess(mediaExecutables().ffmpeg, ['-hide_banner', '-loglevel', 'error', '-i', prepared.path,
+      '-vf', 'scale=1:1', '-pix_fmt', 'rgb24', '-f', 'rawvideo', pixels], { timeoutMs: 30_000 });
+    const bytes = await readFile(pixels);
+    assert.equal(bytes.length, 36 * 3);
+    for (let frame = 0; frame < 36; frame++) {
+      const red = bytes[frame * 3]!, blue = bytes[frame * 3 + 2]!;
+      assert.ok(frame < 18 ? red > 200 && blue < 30 : blue > 200 && red < 30, `Unexpected held source frame at ${frame}`);
+    }
+  } finally { await rm(folder, { recursive: true, force: true }); }
+});

@@ -83,8 +83,8 @@ export function validateObservedPlan(input: unknown, options: { id: string; titl
   if (JSON.stringify(plan.sourceCrop) !== JSON.stringify(options.sourceCrop)) throw new Error('Edit changed the recorded gameplay crop.');
   if (plan.audioCatalogPath !== options.audioCatalogPath) throw new Error('Edit changed the reviewed audio catalog.');
   if (checked.duration > (options.maxDuration ?? 15) || checked.duration < (options.minDuration ?? 3)) throw new Error(`Meme edit must be ${options.minDuration ?? 3}–${options.maxDuration ?? 15} seconds including freezes.`);
-  if (options.requirePayoff && plan.style !== 'velocity') {
-    if (!plan.narrativeBeats) throw new Error('A fresh phonk edit must identify and synchronize its primary observed climax.');
+  if (options.requirePayoff) {
+    if (plan.style !== 'velocity' && !plan.narrativeBeats) throw new Error('A fresh phonk edit must identify and synchronize its primary observed climax.');
     const issues = payoffEndingIssues(plan);
     if (issues.length) throw new Error(issues.join('; '));
   }

@@ -16,7 +16,14 @@ from faster_whisper import WhisperModel
 parser = argparse.ArgumentParser()
 parser.add_argument("audio", type=Path)
 parser.add_argument("output", type=Path)
+parser.add_argument("--vocabulary", type=Path, help="JSON array of proper names only; never a full script")
 args = parser.parse_args()
+vocabulary = json.loads(args.vocabulary.read_text()) if args.vocabulary else []
+if not isinstance(vocabulary, list) or len(vocabulary) > 12 or any(
+    not isinstance(name, str) or not name.strip() or len(name) > 60 or len(name.split()) > 5
+    for name in vocabulary
+):
+    raise ValueError("Vocabulary must contain at most12 short proper names")
 args.output.mkdir(parents=True, exist_ok=False)
 model = WhisperModel("small.en", device="cpu", compute_type="int8", cpu_threads=4,
                      download_root="data/experiments/local-speech/models/whisper")
@@ -24,12 +31,14 @@ ffmpeg = os.environ.get("FFMPEG_PATH", "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg
 pcm = subprocess.run([ffmpeg, "-v", "error", "-i", str(args.audio), "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "pipe:1"], check=True, capture_output=True).stdout
 waveform = np.frombuffer(pcm, dtype=np.float32)
 segments, info = model.transcribe(waveform, beam_size=5, language="en", word_timestamps=True,
-                                  condition_on_previous_text=False, vad_filter=False)
+                                  condition_on_previous_text=False, vad_filter=False,
+                                  initial_prompt=", ".join(vocabulary) if vocabulary else None)
 segments = list(segments)
 record = {"provider": "Local faster-whisper / small.en", "audioSha256": hashlib.sha256(args.audio.read_bytes()).hexdigest(),
           "audioPath": str(args.audio.resolve()), "packageVersion": importlib.metadata.version("faster-whisper"),
           "model": "Systran/faster-whisper-small.en", "modelSource": "https://huggingface.co/Systran/faster-whisper-small.en",
           "language": info.language, "durationSeconds": info.duration, "scriptProvidedToRecognizer": False,
+          "properNameVocabulary": vocabulary, "vocabularyPath": str(args.vocabulary.resolve()) if args.vocabulary else None,
           "text": " ".join(s.text.strip() for s in segments),
           "words": [{"text": w.word.strip(), "startSeconds": w.start, "endSeconds": w.end, "probability": w.probability}
                     for s in segments for w in (s.words or [])]}

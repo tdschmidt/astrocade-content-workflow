@@ -1,6 +1,8 @@
 # Deterministic troll editor renderer
 
-The editorial agent chooses the story, clips, timing, captions, real audio, and an observed character head. The renderer executes a closed JSON edit plan with FFmpeg. It does not execute agent-supplied shell/filter expressions or publish anything. The main pipeline is unchanged.
+The editorial agent chooses the story, clips, timing, captions, real audio, and an observed character head. The renderer executes a closed JSON edit plan with FFmpeg. It does not execute agent-supplied shell/filter expressions or publish anything. The main CLI invokes this renderer through `--format meme`.
+
+Native recordings may have sparse, variable-rate frames. The shared `source-window.ts` helper retains keyframe pre-roll and samples the unchanged source clock before trimming. A cut inside an existing held frame keeps that displayed frame until its actual transition; it never pulls the next packet forward or admits frames beyond the exclusive cut end. Source timing stays within the final 30fps quantization, including speed changes and freezes. Synthetic red/green/blue fixtures and a real quiz reveal cover this boundary.
 
 ```sh
 node --import tsx experiments/troll-editor/agent.ts --job experiments/troll-editor/examples/golem-troll-v2.job.json --out NEW_AGENT_DIRECTORY --feedback experiments/troll-editor/examples/golem-v2-review.txt
