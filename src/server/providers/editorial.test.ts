@@ -90,17 +90,41 @@ test('a short recording gets one 8 FPS review and bounded context around the abs
 test('analysis uses one coarse and at most three dense calls, mapping only verified events', async () => {
   const event = capture.analysis!.events[0]!;
   const coarse = { ...capture.analysis!, events: [0, 20, 40, 60].map(start => ({ ...event, startSeconds: start, endSeconds: start + 10 })) };
-  const dense = { timebase: 'window_relative', analysis: { ...capture.analysis!, events: [{ ...event, startSeconds: 1, endSeconds: 8 }] } };
+  const dense = { timebase: 'window_relative', analysis: { ...capture.analysis!, playableStartSeconds: 0, playableEndSeconds: 11, events: [{ ...event, startSeconds: 1, endSeconds: 8 }] } };
   const sampled: number[] = [];
   const result = await analyzeFootage(capture, googleFixture([coarse, dense, dense, dense], sampled));
   assert.deepEqual(sampled, [1, 8, 8, 8]);
-  assert.deepEqual(result.events.map(event => event.startSeconds), [1, 20, 40]);
+  assert.deepEqual(result.events.map(event => event.startSeconds), [0, 19, 39]);
   assert.ok(result.events.every(event => event.evidence.startsWith('8 FPS review:')));
+});
+
+test('dense reviews retain failure aftermath only inside their observed playable span and source window', async () => {
+  const longCapture = { ...capture, durationSeconds: 140 };
+  const event = capture.analysis!.events[0]!;
+  const coarse = { ...capture.analysis!, events: [{ ...event, startSeconds: 88, endSeconds: 94 }] };
+  // The dense source window is 87–95s; all response timestamps are relative to it.
+  const analysis = { ...capture.analysis!, playableStartSeconds: 0.5, playableEndSeconds: 7.5, events: [{ ...event, startSeconds: 4.5, endSeconds: 5.5, outcome: 'Wrong drop; the item returns to the tray.' }] };
+  const analyze = (changes = {}) => analyzeFootage(longCapture, googleFixture([coarse, { timebase: 'window_relative', analysis: { ...analysis, ...changes } }]));
+  const result = await analyze();
+  assert.deepEqual(result.events.map(({ startSeconds, endSeconds }) => ({ startSeconds, endSeconds })), [{ startSeconds: 89.5, endSeconds: 93.5 }]);
+  assert.match(result.events[0]!.evidence, /Impact: 91.5–92.5s/);
+  assert.match(result.events[0]!.evidence, /playable span 87.5–94.5s \(source time\)/);
+  const clamped = await analyze({ playableStartSeconds: 4, playableEndSeconds: 6 });
+  assert.deepEqual([clamped.events[0]!.startSeconds, clamped.events[0]!.endSeconds], [91, 93], 'context cannot enter a banner or idle region outside the observed span');
+  const windowEnd = await analyze({ playableEndSeconds: 8, events: [{ ...event, startSeconds: 7.4, endSeconds: 7.8 }] });
+  assert.equal(windowEnd.events[0]!.endSeconds, 95, 'remaining source footage outside the dense window is not observed context');
+  for (const bounds of [{ playableStartSeconds: null }, { playableStartSeconds: 7, playableEndSeconds: 1 }, { playableEndSeconds: 8.1 }, { playableStartSeconds: 5 }, { playableEndSeconds: 5 }]) {
+    await assert.rejects(analyze(bounds), /playable span/);
+  }
+  await assert.rejects(analyze({ events: [{ ...event, startSeconds: 7, endSeconds: 8.1 }] }), /outside the recording or review window/);
+  const empty = await analyze({ events: [], playableStartSeconds: null, playableEndSeconds: null });
+  assert.equal(empty.usable, false);
+  assert.deepEqual(empty.events, []);
 });
 
 test('coarse apparent action cannot survive a dense review that found only idle footage', async () => {
   const coarse = { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, endSeconds: 10 }] };
-  const idle = { timebase: 'window_relative', analysis: { ...capture.analysis!, usable: false, reason: 'Static menu', events: [] } };
+  const idle = { timebase: 'window_relative', analysis: { ...capture.analysis!, playableStartSeconds: null, playableEndSeconds: null, usable: false, reason: 'Static menu', events: [] } };
   const result = await analyzeFootage(capture, googleFixture([coarse, idle]));
   assert.equal(result.usable, false);
   assert.deepEqual(result.events, []);
@@ -110,11 +134,12 @@ test('long analysis keeps a late high-priority payoff when earlier windows produ
   const event = capture.analysis!.events[0]!;
   const coarse = { ...capture.analysis!, events: [60, 0, 20].map(start => ({ ...event, startSeconds: start, endSeconds: start + 10 })) };
   const payoff = { ...event, startSeconds: 7, endSeconds: 10, event: 'Board completed', evidence: 'All items are sorted and the completion panel appears', outcome: 'The board is complete.' };
-  const densePayoff = { timebase: 'window_relative', analysis: { ...capture.analysis!, events: [payoff] } };
-  const denseEarly = { timebase: 'window_relative', analysis: { ...capture.analysis!, events: [1, 3, 5, 7].map(start => ({ ...event, startSeconds: start, endSeconds: start + 1 })) } };
+  const densePayoff = { timebase: 'window_relative', analysis: { ...capture.analysis!, playableStartSeconds: 0, playableEndSeconds: 12, events: [payoff] } };
+  const denseEarly = { timebase: 'window_relative', analysis: { ...capture.analysis!, playableStartSeconds: 0, playableEndSeconds: 11, events: [1, 3, 5, 7].map(start => ({ ...event, startSeconds: start, endSeconds: start + 1 })) } };
   const result = await analyzeFootage(capture, googleFixture([coarse, densePayoff, denseEarly, denseEarly]));
-  assert.deepEqual(result.events.map(event => event.startSeconds), [1, 3, 5, 7, 20, 66], 'retain the six highest-priority verified events, then present them chronologically');
+  assert.deepEqual(result.events.map(event => event.startSeconds), [0, 1, 3, 5, 19, 64], 'retain the six highest-priority verified events, then present them chronologically');
   assert.equal(result.events.at(-1)!.outcome, payoff.outcome, 'early actions must not evict the verified completion');
+  assert.equal(result.events.at(-1)!.endSeconds, 70, 'the late payoff keeps its observed reading time');
 });
 
 const review = { approved: true, reason: 'The visible jump supports the question; sky is unobstructed.', hook: 'would you make that jump?', caption: 'Pick your landing before the jump.', position: 'upper' };
@@ -162,6 +187,20 @@ test('a highlight joins overlapping transformation phases once and preserves rev
   assert.deepEqual(result.cuts, [{ startSeconds: 1, endSeconds: 14 }], 'overlapping verified phases never repeat source frames');
   assert.equal(result.caption, `${review.caption}\n${capture.game.title} · Astrocade\nPlay: ${capture.game.url}`);
   assert.deepEqual(transformationCapture, original, 'selection must not reorder or merge the saved observations');
+});
+
+test('a presenter duration ceiling accepts an exact fit and rejects longer edits before visual review', async () => {
+  const input = { capture, format: 'highlight' as const, topic: '', presenter: true, maxDurationSeconds: 5 };
+  const fiveSeconds = { ...choiceFor([0]), cuts: [{ startSeconds: 2, endSeconds: 7 }] };
+  const result = await draftScript(input, googleFixture([fiveSeconds, review]));
+  assert.deepEqual(result.cuts, fiveSeconds.cuts);
+  // The fixture has no review response; an oversized edit must stop before that call.
+  await assert.rejects(draftScript(input, googleFixture([{ ...fiveSeconds, cuts: [{ startSeconds: 2, endSeconds: 7.01 }] }])), /5-second edit target/);
+  for (const maxDurationSeconds of [0, -1, NaN, Infinity]) {
+    await assert.rejects(draftScript({ ...input, maxDurationSeconds }, googleFixture([])), /positive finite/);
+  }
+  const tooLong = { ...capture, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, endSeconds: 41 }] } };
+  await assert.rejects(draftScript({ ...input, capture: tooLong, maxDurationSeconds: 50 }, googleFixture([choiceFor([0])])), /40-second edit target/);
 });
 
 test('a highlight orders separate verified phases without filling gaps or exceeding 40 seconds', async () => {
