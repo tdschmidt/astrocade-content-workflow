@@ -88,7 +88,14 @@ The first updated Car Wash clip showed a truthful rinse reward in 5.1s but omitt
 
 Puzzle editing revealed two independent bugs. The native stream briefly changed resolution, resetting FFmpeg's filter state and overwriting its timestamp sidecar. Disabling filter reinitialization preserved real frame timestamps; a resizing-VP9 regression and the actual failed source both pass. Long-form analysis also sorted dense observations chronologically before taking six, discarding the later completed-case event. It now retains coarse-window priority through the limit, then sorts the selected evidence chronologically. The final edit is rechecked against actual source frames.
 
-Before the final editorial changes, the full browser/media/frame/render integration suite passed **115 tests, zero failures or skips**. Subsequent editorial tests cover whole-event selection, chronological captions, overlapping phases without repeated frames, gaps left unfilled, bounds, and retention of the late payoff. Typechecking and the default suite pass. [CI for gameplay/documentation commit 8d5755e](https://github.com/tdschmidt/astrocade-content-workflow/actions/runs/37581281668) passed.
+Before the final editorial changes, the full browser/media/frame/render integration suite passed **115 tests, zero failures or skips**. After those changes, typechecking passed; the default suite passed **90 tests, with 24 opt-in tests skipped and zero failures**, and the focused editorial suite passed **14 tests**. These are overlapping suites, not additive totals. Coverage includes whole-event selection, chronological captions, overlapping phases without repeated frames, gaps left unfilled, bounds, and retention of the late payoff. [CI for code and repeated-gameplay documentation at 514af8d](https://github.com/tdschmidt/astrocade-content-workflow/actions/runs/37581764639) passed.
+
+Final outputs reuse the unmodified successful recordings; each editorial run retains its source provenance and independent visual audit under `qa/`:
+
+| Game | Final artifact | Verified content |
+| --- | --- | --- |
+| Car Wash Simulator | `data/runs/2026-10-07-carwash-editorial-v3/highlight-77d430e9.mp4` (24.333s) | Muddy SUV → foam → scrub → rinse → Perfect, three stars, 168 coins. The settled result panel remains visible for about 1.33s. Source cut 0.281–24.629s. |
+| Sort It Out | `data/runs/2026-10-07-sort-editorial-v2/highlight-f97f615b.mp4` (5.000s) | Three final placements reach combos 18, 19 and 20, then CASE COMPLETE / PERFECTLY SORTED. Source cut 122.398–127.398s ends on the earned result before the next board. |
 
 The feedback mode is deliberately for slow/input-paced games. These results do not establish reflex-game performance or general puzzle mastery. Failures, partial progress and full success are retained together.
 
