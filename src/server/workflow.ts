@@ -61,7 +61,7 @@ export class Workflow {
     await this.store.update(state => {
       const index = state.profiles.findIndex(item => item.id === profile.id);
       // Editing controls invalidates the previous proof, regardless of a supplied label.
-      const fresh = { ...profile, verification: 'unverified' as const, verificationNotes: 'Awaiting two successful capture probes.' };
+      const fresh = { ...profile, verification: 'unverified' as const, verificationNotes: 'Awaiting two successful capture checks.' };
       if (index < 0) state.profiles.push(fresh); else state.profiles[index] = fresh;
     });
   }
@@ -105,16 +105,14 @@ export class Workflow {
   async probeProfile(id: string, context: JobContext) {
     const profile = this.store.read().profiles.find(item => item.id === id);
     if (!profile) throw new Error('Game profile not found.');
-    new GoogleServices(this.config.get());
     for (let attempt = 0; attempt < 2; attempt++) {
       await context.progress(`Testing ${profile.name}, attempt ${attempt + 1} of 2`);
-      const capture = await this.analyze(await this.capture(profile, `profile-proof:${id}`, context, true), context);
-      if (!capture.analysis?.usable) throw new NeedsAttention(capture.analysis?.reason ?? 'The profile did not produce useful play.');
+      await this.capture(profile, `profile-proof:${id}`, context, true);
     }
     await this.store.update(state => {
       const saved = state.profiles.find(item => item.id === id)!;
       saved.verification = 'verified';
-      saved.verificationNotes = `Two independent useful captures completed on ${new Date().toISOString()}.`;
+      saved.verificationNotes = `Two independent capture checks passed on ${new Date().toISOString()}. Content quality is assessed during video generation.`;
     });
   }
 

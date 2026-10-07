@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import type { Draft } from '../shared/domain.js';
 import { Configuration, settingsSchema } from './config.js';
+import { unverifiedProfileTemplate } from './games/profiles.js';
 import { fileSha256 } from './instagram/index.js';
 import type { JobContext } from './jobs.js';
 import { Workflow } from './workflow.js';
@@ -135,4 +136,31 @@ test('reopening a workspace parks interrupted work while preserving completed ar
   assert.equal(reopened.store.read().signup.checkpoint?.phase, 'submitted');
   assert.deepEqual(reopened.store.read().runs[0]?.captureIds, ['capture']);
   await reopened.close();
+});
+
+test('timed profile verification needs two successful captures, without a Google key or content analysis', async t => {
+  for (const failAt of [0, 1, 2]) await t.test(failAt ? `capture ${failAt} fails` : 'both captures pass', async t => {
+    const { workflow, config } = await fixture(t);
+    assert.equal(config.get().geminiApiKey, '');
+    const profile = unverifiedProfileTemplate({ id: 'probe', title: 'Timed fixture', url: 'https://www.astrocade.com/games/timed-fixture/fixture-id' });
+    profile.controller = { type: 'timed', actions: [{ type: 'wait', durationMs: 20 }], repetitions: 1 };
+    await workflow.saveProfile(profile);
+    let calls = 0;
+    const captureFailure = new Error('Fixture capture validation failed');
+    // Stub only the capture boundary: browser/media validity has separate integration tests.
+    Object.defineProperty(workflow, 'capture', { value: async (saved: typeof profile, runId: string, _context: JobContext, allowUnverified: boolean) => {
+      calls++;
+      assert.ok(calls <= 2, 'probe must be bounded to two captures');
+      assert.equal(saved.controller.type, 'timed');
+      assert.equal(runId, `profile-proof:${profile.id}`);
+      assert.equal(allowUnverified, true);
+      assert.equal(workflow.store.read().profiles.find(item => item.id === profile.id)?.verification, 'unverified');
+      if (calls === failAt) throw captureFailure;
+    } });
+    Object.defineProperty(workflow, 'analyze', { value: async () => assert.fail('Content analysis belongs to generation, not profile verification') });
+    if (failAt) await assert.rejects(workflow.probeProfile(profile.id, context()), error => error === captureFailure);
+    else await workflow.probeProfile(profile.id, context());
+    assert.equal(calls, failAt || 2);
+    assert.equal(workflow.store.read().profiles.find(item => item.id === profile.id)?.verification, failAt ? 'unverified' : 'verified');
+  });
 });
