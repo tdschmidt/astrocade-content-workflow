@@ -30,8 +30,8 @@ export function Studio(props: ScreenProps) {
   const { workspace, jobs } = state;
   const [options, setOptions] = useState<RunOptions>({
     mode: "balanced",
-    formats: ["highlight", "recommendation"],
-    comparison: "best-fit",
+    formats: ["highlight"],
+    comparison: "same-game",
     profileIds: [],
     topic: "An original short fictional story",
   });
@@ -146,109 +146,13 @@ export function Studio(props: ScreenProps) {
         <section className="panel compose-panel">
           <SectionHeading
             eyebrow="01 / CREATIVE DIRECTION"
-            title="Make a new batch"
+            title="Make a video"
           />
           <form onSubmit={createRun} className="form-stack">
-            <div className="field">
-              <span>Choose your angle</span>
-              <div
-                className="segmented"
-                role="group"
-                aria-label="Game selection mode"
-              >
-                {(Object.keys(modeLabels) as Array<RunOptions["mode"]>).map(
-                  (mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      className={options.mode === mode ? "selected" : ""}
-                      aria-pressed={options.mode === mode}
-                      onClick={() =>
-                        setOptions((value) => ({ ...value, mode }))
-                      }
-                    >
-                      {modeLabels[mode]}
-                    </button>
-                  ),
-                )}
-              </div>
-              <small>
-                {options.mode === "trend"
-                  ? "Use the latest saved research. If no game fits, the studio will say so."
-                  : options.mode === "popular"
-                    ? "Prioritize observed public counters. Missing numbers stay unknown."
-                    : options.mode === "visual"
-                      ? "Prioritize visual evidence and footage that reads clearly on a phone."
-                      : "Balance the available evidence, visual fit, and creative potential."}
-              </small>
-            </div>
-            <fieldset className="plain-fieldset">
-              <legend>Video formats</legend>
-              <div className="format-options">
-                {(Object.keys(formatLabels) as VideoFormat[]).map((format) => (
-                  <label
-                    key={format}
-                    className={`check-card ${options.formats.includes(format) ? "chosen" : ""}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={options.formats.includes(format)}
-                      onChange={() => toggleFormat(format)}
-                    />
-                    <span>{formatLabels[format]}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <Field label="Game comparison">
-              <select
-                value={options.comparison}
-                onChange={(e) =>
-                  setOptions((value) => ({
-                    ...value,
-                    comparison: e.target.value as RunOptions["comparison"],
-                  }))
-                }
-              >
-                <option value="best-fit">Best game for each format</option>
-                <option value="same-game">Same game across formats</option>
-              </select>
-            </Field>
-            {options.formats.includes("story") && (
-              <Field
-                label="Story direction"
-                hint="Ask for original fiction or a factual explainer. Claims need sources."
-              >
-                <textarea
-                  rows={3}
-                  maxLength={500}
-                  value={options.topic}
-                  onChange={(e) =>
-                    setOptions((value) => ({ ...value, topic: e.target.value }))
-                  }
-                />
-              </Field>
-            )}
-            {readyProfiles.length > 0 && (
-              <fieldset className="plain-fieldset">
-                <legend>Capture-ready games</legend>
-                <p className="field-hint">
-                  Leave all unchecked to let the studio choose.
-                </p>
-                <div className="profile-choices">
-                  {readyProfiles.map((profile) => (
-                    <label key={profile.id} className="checkbox-row">
-                      <input
-                        type="checkbox"
-                        checked={options.profileIds.includes(profile.id)}
-                        onChange={() => selectProfile(profile.id)}
-                      />
-                      {profile.name}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            )}
+            <p className="field-hint">
+              Capture a game and make a short gameplay highlight. Review the
+              video and caption before publishing.
+            </p>
             <button
               className="button primary full-width"
               disabled={
@@ -256,14 +160,127 @@ export function Studio(props: ScreenProps) {
               }
             >
               <Icon name="star" />
-              Create video drafts <Icon name="arrow" />
+              {options.formats.length > 1
+                ? "Create videos"
+                : "Create video"}{" "}
+              <Icon name="arrow" />
             </button>
             {!readyProfiles.length && (
               <p className="field-hint">
-                First discover games and verify a capture profile below. No live
-                games have been assumed to work.
+                No game is ready to capture yet. Discover games and check their
+                capture status below.
               </p>
             )}
+            <details className="advanced-panel">
+              <summary>Options</summary>
+              <div className="advanced-body form-stack">
+                <div className="field">
+                  <span>Choose your angle</span>
+                  <div
+                    className="segmented"
+                    role="group"
+                    aria-label="Game selection mode"
+                  >
+                    {(Object.keys(modeLabels) as Array<RunOptions["mode"]>).map(
+                      (mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          className={options.mode === mode ? "selected" : ""}
+                          aria-pressed={options.mode === mode}
+                          onClick={() =>
+                            setOptions((value) => ({ ...value, mode }))
+                          }
+                        >
+                          {modeLabels[mode]}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                  <small>
+                    {options.mode === "trend"
+                      ? "Use the latest saved research. If no game fits, the studio will say so."
+                      : options.mode === "popular"
+                        ? "Prioritize observed public counters. Missing numbers stay unknown."
+                        : options.mode === "visual"
+                          ? "Prioritize visual evidence and footage that reads clearly on a phone."
+                          : "Balance the available evidence, visual fit, and creative potential."}
+                  </small>
+                </div>
+                <fieldset className="plain-fieldset">
+                  <legend>Video formats</legend>
+                  <div className="format-options">
+                    {(Object.keys(formatLabels) as VideoFormat[]).map(
+                      (format) => (
+                        <label
+                          key={format}
+                          className={`check-card ${options.formats.includes(format) ? "chosen" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={options.formats.includes(format)}
+                            onChange={() => toggleFormat(format)}
+                          />
+                          <span>{formatLabels[format]}</span>
+                        </label>
+                      ),
+                    )}
+                  </div>
+                </fieldset>
+                <Field label="Game comparison">
+                  <select
+                    value={options.comparison}
+                    onChange={(e) =>
+                      setOptions((value) => ({
+                        ...value,
+                        comparison: e.target.value as RunOptions["comparison"],
+                      }))
+                    }
+                  >
+                    <option value="best-fit">Best game for each format</option>
+                    <option value="same-game">Same game across formats</option>
+                  </select>
+                </Field>
+                {options.formats.includes("story") && (
+                  <Field
+                    label="Story direction"
+                    hint="Ask for original fiction or a factual explainer. Claims need sources."
+                  >
+                    <textarea
+                      rows={3}
+                      maxLength={500}
+                      value={options.topic}
+                      onChange={(e) =>
+                        setOptions((value) => ({
+                          ...value,
+                          topic: e.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                )}
+                {readyProfiles.length > 0 && (
+                  <fieldset className="plain-fieldset">
+                    <legend>Capture-ready games</legend>
+                    <p className="field-hint">
+                      Leave all unchecked to let the studio choose.
+                    </p>
+                    <div className="profile-choices">
+                      {readyProfiles.map((profile) => (
+                        <label key={profile.id} className="checkbox-row">
+                          <input
+                            type="checkbox"
+                            checked={options.profileIds.includes(profile.id)}
+                            onChange={() => selectProfile(profile.id)}
+                          />
+                          {profile.name}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                )}
+              </div>
+            </details>
           </form>
         </section>
         <section className="panel session-panel">

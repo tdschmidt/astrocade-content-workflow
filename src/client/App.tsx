@@ -104,27 +104,15 @@ export function App() {
           </span>
         </a>
         <nav aria-label="Main navigation">
-          {(["studio", "research", "setup"] as const).map((item) => (
+          {(["studio", "setup"] as const).map((item) => (
             <button
               key={item}
               className={`nav-item ${screen === item ? "active" : ""}`}
               aria-current={screen === item ? "page" : undefined}
               onClick={() => setScreen(item)}
             >
-              <Icon
-                name={
-                  item === "studio"
-                    ? "play"
-                    : item === "research"
-                      ? "search"
-                      : "settings"
-                }
-              />
-              {item === "studio"
-                ? "Studio"
-                : item === "research"
-                  ? "Research"
-                  : "Setup"}
+              <Icon name={item === "studio" ? "play" : "settings"} />
+              {item === "studio" ? "Studio" : "Setup"}
             </button>
           ))}
         </nav>
