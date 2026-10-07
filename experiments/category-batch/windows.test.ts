@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { collectWindows, feedbackWindow, samplingFps, validateObservedPlan, type EvidenceWindow } from './windows.js';
+import { collectWindows, feedbackWindow, reviewedWindows, samplingFps, validateObservedPlan, type EvidenceWindow } from './windows.js';
 
 const windows: EvidenceWindow[] = [
   { id: 'dial', start: 10, end: 13, basis: 'feedback-search-lead', observation: 'Dial opened.' },
@@ -12,6 +12,34 @@ function plan() { return {
   captions: [], stickers: [], punches: [], soundCues: [], music: { asset: 'velocity', dropAt: 2, gainDb: -9 }, rationale: 'Observed dial then flight.',
 }; }
 const options = { id: 'sample', title: 'Sample', sourcePath: '/tmp/source.webm', duration: 60, windows };
+
+test('audited windows preserve exact reviewed ranges and remain source-review evidence', () => {
+  const hash = 'a'.repeat(64);
+  const input = { sourceSha256: hash, sourceReview: '/tmp/source-review.md', windows: [
+    { start: 30, end: 38, observation: 'Later answer and score.' }, { start: 10, end: 13, observation: 'Earlier readable question and answer.' },
+  ] };
+  const original = structuredClone(input);
+  const selected = reviewedWindows(input, hash, 60);
+  assert.deepEqual(input, original);
+  assert.deepEqual(selected.map(window => [window.start, window.end, window.basis]), [[10, 13, 'source-review'], [30, 38, 'source-review']]);
+  assert.ok(selected.every(window => !window.analyzedBounds && (window.end - window.start) * samplingFps(window) <= 30));
+  assert.equal(validateObservedPlan(plan(), { ...options, windows: selected }).duration, 10);
+  const unseen = plan(); unseen.segments[0]!.end = 14;
+  assert.throws(() => validateObservedPlan(unseen, { ...options, windows: selected }), /unobserved/);
+});
+
+test('audited windows reject wrong sources, invalid ranges and excessive evidence', () => {
+  const hash = 'a'.repeat(64);
+  const input = { sourceSha256: hash, sourceReview: '/tmp/source-review.md', windows: [{ start: 10, end: 13, observation: 'Question and reveal.' }] };
+  assert.throws(() => reviewedWindows(input, 'b'.repeat(64), 60), /different source hash/);
+  for (const range of [{ start: 10, end: 10 }, { start: 10, end: 9 }, { start: 59, end: 61 }, { start: 0, end: 30.01 }]) {
+    assert.throws(() => reviewedWindows({ ...input, windows: [{ ...input.windows[0], ...range }] }, hash, 60), /nonempty|within|30 seconds/);
+  }
+  assert.throws(() => reviewedWindows({ ...input, windows: Array.from({ length: 11 }, () => input.windows[0]) }, hash, 60));
+  assert.throws(() => reviewedWindows({ ...input, windows: [] }, hash, 60));
+  assert.throws(() => reviewedWindows({ ...input, windows: [{ ...input.windows[0], start: -1 }] }, hash, 60));
+  assert.throws(() => reviewedWindows({ ...input, windows: [{ ...input.windows[0], end: Infinity }] }, hash, 60));
+});
 
 test('uses actual action observations and rejects unsupported feedback timestamps', () => {
   const record = { observation: 'The dial opened and selected an alien.', elapsedMs: 12500, sampledFrames: [{ elapsedMs: 10500 }, { elapsedMs: 11500 }] };

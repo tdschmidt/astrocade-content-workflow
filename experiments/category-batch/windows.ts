@@ -1,14 +1,32 @@
 import type { FootageAnalysis } from '../../src/shared/domain.js';
+import { z } from 'zod';
 import { validateEditPlan, type EditPlan } from '../troll-editor/schema.js';
 
 export interface EvidenceWindow {
   id: string;
   start: number;
   end: number;
-  basis: 'core-analysis' | 'feedback-search-lead';
+  basis: 'core-analysis' | 'feedback-search-lead' | 'source-review';
   /** Prior analysis covers these bounds only; surrounding context is new. */
   analyzedBounds?: { start: number; end: number };
   observation: string;
+}
+
+/** Explicit source review replaces automatic candidates; fresh decoding still proves the edit. */
+export function reviewedWindows(input: unknown, sourceSha256: string, duration: number): EvidenceWindow[] {
+  const supplied = z.object({
+    sourceSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    sourceReview: z.string().trim().min(1).max(2000),
+    windows: z.array(z.object({
+      start: z.number().nonnegative(), end: z.number().positive(), observation: z.string().trim().min(1).max(2000),
+    }).strict()).min(1).max(10),
+  }).strict().parse(input);
+  if (supplied.sourceSha256 !== sourceSha256) throw new Error('Reviewed windows belong to a different source hash.');
+  if (!Number.isFinite(duration) || duration <= 0) throw new Error('Source duration must be finite and positive.');
+  return supplied.windows.map((window, index) => {
+    if (window.end <= window.start || window.end > duration || window.end - window.start > 30) throw new Error('Reviewed window must be nonempty, within the source, and at most 30 seconds.');
+    return { id: `source-review-${index + 1}`, ...window, basis: 'source-review' as const };
+  }).sort((a, b) => a.start - b.start);
 }
 
 /** Controller reports locate candidates; fresh source images must verify them. */
