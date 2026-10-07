@@ -57,6 +57,32 @@ This test used no existing Astro Runner control profile and no manually written 
 
 Validation: typecheck and default suite **79 passed, zero failures, 12 opt-in tests skipped**; the focused learning suite including both real-browser start-label cases **13 passed, zero skips**. [CI for fix `005bed4`](https://github.com/tdschmidt/astrocade-content-workflow/actions/runs/37577618546) passed.
 
+## Gameplay improvement experiments (2026-10-06)
+
+The user asked for better play and interesting content across a couple of games. These were targeted engineering experiments, not a random benchmark or a measured win rate. All production decisions used public UI/screenshots and native inputs. No game scripts, hidden state, artificial pause, or game-clock manipulation were used.
+
+### Car Wash Simulator: improve the timed plan between attempts
+
+- Fresh old-preset baseline: `data/runs/2026-10-07T05-58-04-184Z-842ae2`, 29.397s. Independent frames show **23% dirt, 0% foam, no customer served**. Soap plateaued early while the sequence continued soaping; it stopped short of a completed wash.
+- The live-feedback eligibility check rejected this game because its shift timer keeps running while inference takes seconds. This is retained at `data/runs/2026-10-07T05-59-23-049Z-2942e0`.
+- A diagnostic script supplied Codex with the prior native action trace, visible instructions, actual cropped footage frames and observed failures. Revision 1 reached **0% dirt and foam**, but a randomized Blue SUV requested polishing and no customer was served. This failure was fed into the second revision.
+- Revision 2 and its **exact unchanged-plan replay** produced **Perfect / three stars / Clean 100% / one completed customer** on a Red Sedan and Blue SUV, with 148 and 168 coins respectively. Recordings: **34.398s / 34.453s**. The action profile hash matches between attempts; no manual gameplay was substituted.
+- Replaced the shipped preset with the exact model-generated sequence. A third fresh full CLI run, `data/runs/2026-10-07T06-13-11-583Z-a7503b`, repeated the Perfect result on an SUV. Capture: **34.464s**. Its initial automatic edit was truthful but too narrowly focused on the last rinse; the editorial follow-up is recorded below.
+- Source evidence and diagnostic script: `data/evidence/gameplay-improvement/carwash-practice/`. The timed practice experiment is distinct from the shipped screenshot-feedback mode: there is no claimed automatic training service. Later customers and every special-request variation remain unverified.
+
+### Sort It Out: observe current state and react
+
+- An independent manual scout established that native drag matching can reach an explicit completed case; scout actions were not used as an agent solution. Fresh boards shuffle items and target positions.
+- First feedback setup was too strict: it rejected the visible board because the drag affordance had not already been tested. The revised gate permits a medium-confidence input-paced hypothesis, then enforces exactly one initial probe at most. Every profile remains unverified until real results are inspected.
+- First live feedback capture, `data/runs/2026-10-07T06-02-37-765Z-c29438`, reached **14/20** in its 120-second budget. It visibly detected an unsuccessful placement; repeated one-item probing and inference latency limited progress.
+- Longer run `data/runs/2026-10-07T06-05-43-998Z-9d2b43` reached **19/20** in 175.065s. Independent video QA identified a concrete error: the 250ms screenshot caught a rejected paper roll mid-snapback. The next action used its transient location after the roll had returned home. Tape and bottle corrections did work. No completion claim was made for this attempt.
+- Run `data/runs/2026-10-07T06-08-38-318Z-ce7ede` also exhausted its decision budget short of completion. Learned mechanics had accidentally included a one-item-at-a-time strategy, which conflicted with controller batching. Its edit exposed a separate real frame-sampling failure when the native source briefly changed resolution.
+- Fixes: wait one second for input effects to settle; learn mechanics separately from agent pacing; expose remaining action-batch budget; use up to four confirmed matches per batch; preserve before/current screenshots and recent lessons; prevent late inputs and preserve partial footage on later provider failure. The final model call is evaluation-only. Native time always continues normally.
+- Fixed run `data/runs/2026-10-07T06-13-34-414Z-bf1466` completed **all 20 matches**. Native source frames show 18 at124s, 19 at125s, and **CASE COMPLETE! / PERFECTLY SORTED** at126–127s. The complete capture is **134.38s**, with seven model decisions. The source advances to the next case during the final model call, so the edit should end on the earned first-case result, not the next empty board.
+- Feedback reports contain exact screenshots, input actions, outcomes and concise lessons. These are an evidence trace, not hidden reasoning. Success is established by actual footage rather than the controller's self-rating.
+
+The feedback mode is deliberately for slow/input-paced games. These results do not establish reflex-game performance or general puzzle mastery. Failures, partial progress and full success are retained together.
+
 ## Changes driven by measured failures
 
 - Loading overlays intercepted Start; bounded actionability checks and displayed frame geometry fixed repeated capture and HUD cropping.

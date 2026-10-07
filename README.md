@@ -41,8 +41,11 @@ npm run pipeline
 # Stop after discovery and provisional selection
 npm run pipeline -- --stage discover --candidates 3
 
-# Try a particular ID or slug from discovery.json
+# Try a particular ID or slug from discovery.json (or an explicit public game URL)
 npm run pipeline -- --stage capture --game crowd-pier-run
+
+# Play an untimed game with screenshot feedback instead of replayed coordinates
+npm run pipeline -- --provider codex --play feedback --game https://www.astrocade.com/games/sort-it-out/01M2RV0JGG7W601TBGTK614CR9
 
 # Continue a saved run; edit requires an existing recording
 npm run pipeline -- --resume data/runs/RUN_DIRECTORY --stage edit
@@ -51,7 +54,7 @@ npm run pipeline -- --resume data/runs/RUN_DIRECTORY --stage edit
 npm run pipeline -- --resume data/runs/RUN_DIRECTORY --stage edit --model gemini-3.5-flash-lite
 ```
 
-Options: `--provider gemini|codex` (default `gemini`), `--stage discover|capture|edit|all` (default `all`), `--game ID_OR_SLUG`, `--candidates 1-5` (default `3`), `--model MODEL`, and `--resume data/runs/RUN_DIRECTORY`. Capture includes discovery/learning when missing; editing uses saved recordings. `--help` prints the command reference.
+Options: `--provider gemini|codex` (default `gemini`), `--stage discover|capture|edit|all` (default `all`), `--game ID_OR_SLUG_OR_URL`, `--play timed|feedback` (default `timed`), `--candidates 1-5` (default `3`), `--model MODEL`, and `--resume data/runs/RUN_DIRECTORY`. Capture includes discovery/learning when missing; editing uses saved recordings. `--help` prints the command reference.
 
 Each command prints its run directory. Resume reuses completed source footage, analysis and script, including the provider/model recorded for each artifact. A provider or model override affects unfinished work; start a new run to reconsider completed decisions or change the shortlist. Flash Lite recovered the demonstrated quota failure, but another model is not a guarantee of access or content accuracy. Ctrl-C preserves completed artifacts. Source/output hashes prevent silently reusing externally modified media, and a run lock prevents two processes resuming the same run together. Completed runs validate and reuse their output without retrying failed candidates or requiring a model key. A saved script resumes rendering without rerunning capture/analysis; missing final caption text is reconstructed.
 
@@ -65,10 +68,11 @@ Open `report.md`, watch the final MP4, and read `caption.txt`. A run directory c
 | `discovery.json`, `shortlist.json` | Live catalog evidence and provisional hook/control hypotheses |
 | `game-*/inspection-*/` | Before/after screenshots, observed instructions and controls, inspection JSON and learned proposal when needed |
 | `controls-*.json`, `capture-*.json`, `game-*/*.webm` | Bounded action profile, capture manifest and finalized original gameplay |
+| `game-*/feedback-*/report.md`, `decision-*.{jpg,json}` | Current-session screenshots, observed outcomes, corrective lessons and bounded action batches |
 | `analysis-*.json`, `edit.json` | Observed source intervals, uncertainties, selection rationale, hook and cut |
 | `highlight-*.mp4`, `caption.txt` | Finished 1080×1920 H.264/30 fps short and posting copy |
 
-The shortlist is a hypothesis, not a popularity ranking: unlabeled counters remain unknown. The learner uses visible instructions and before/after inspection, then proposes simple timed inputs. It skips uncertain controls and randomized puzzles whose answers cannot survive a fresh browser. Actual captured action determines the winner. One contiguous decision and consequence becomes the highlight, retaining approach/result context within the observed playable span. Recordings up to 45 seconds receive one full 8 FPS analysis with absolute timestamps. The final caption copies the selected observed outcome rather than adding another creative description. There is no minimum duration or filler. A fixed header/footer preserves the complete game view. Current highlights are silent.
+The shortlist is a hypothesis, not a popularity ranking: unlabeled counters remain unknown. The default learner uses visible instructions and before/after inspection, then proposes simple timed inputs. It skips uncertain controls and randomized puzzles whose answers cannot survive a fresh browser. `--play feedback` instead learns the mechanics, tests one reversible move in a fresh session, compares before/current screenshots, and adapts small action batches to the current board. It keeps recent observed lessons, stops on completion or repeated no progress, and saves every decision image. Canvas Play/intro buttons can be inspected through a bounded visual fallback. Feedback is restricted to input-paced games: the game keeps running during inference, so a 45-second shift or reflex runner is not suitable. Each attempt has at most ten decisions, a 175-second recording budget, and a 30-second per-decision deadline. The last decision is evaluation-only. Provider failures after useful play preserve partial footage; model statements of success still need visual review. Actual captured action determines the winner. One contiguous decision and consequence becomes the highlight, retaining approach/result context within the observed playable span. Recordings up to 45 seconds receive one full 8 FPS analysis with absolute timestamps. The final caption copies the selected observed outcome rather than adding another creative description. There is no minimum duration or filler. A fixed header/footer preserves the complete game view. Current highlights are silent.
 
 Account creation and publishing are manual handoff steps for now. Review the video and caption before uploading. A future publishing integration can consume these finished artifacts. This branch does not create accounts or post videos.
 

@@ -85,6 +85,7 @@ test('feedback setup skips reflex games and never treats learned mechanics as ve
   await rm(join(directory, 'learning.json'));
   await rm(join(directory, 'feedback-assessment.json'));
   response.latencyTolerant = true;
+  response.confidence = 'medium'; // A visible but untested affordance permits one reversible probe.
   const learned = await learnFeedbackProfile(inspection, candidate, provider);
   assert.equal(learned.profile?.verification, 'unverified');
   assert.equal(learned.profile?.focus, 'focus');
