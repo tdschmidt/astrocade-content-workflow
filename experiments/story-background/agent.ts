@@ -8,18 +8,18 @@ const here=dirname(fileURLToPath(import.meta.url));
 const Draft=z.object({version:z.literal(1),title:z.string().min(1).max(100),narration:z.string().min(50).max(1600),attribution:z.string().min(1).max(80),evidence:z.array(z.object({sentence:z.string(),beatIds:z.array(z.string()),commentary:z.boolean()})),rationale:z.string().max(1500)});
 const count=(s:string)=>s.trim().split(/\s+/u).length;
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
-export async function writeStory(sourcePath:string,output:string) {
+export async function writeStory(sourcePath:string,output:string,options:{model?:string;signal?:AbortSignal;feedback?:string}={}) {
  const sourceText=await readFile(sourcePath,'utf8'),source=JSON.parse(sourceText);
  const system=await readFile(resolve(here,'prompts/story-writer.md'),'utf8');
  await mkdir(dirname(output),{recursive:true}); await mkdir(output);
- const prompt=`${system}\n\nSOURCE FACT LEDGER\n${sourceText}\n\nReturn a complete draft. Use the ledger's grounded beat IDs in evidence. Narration90–110words; attribution must identify the author and community when source_type=public_reddit_post.`;
+ const prompt=`${system}\n\nSOURCE FACT LEDGER\n${sourceText}\n\nEDITORIAL FEEDBACK\n${options.feedback??''}\n\nReturn a complete draft. Use the ledger's grounded beat IDs in evidence. Narration90–110words; attribution must identify the author and community when source_type=public_reddit_post.`;
  await writeFile(resolve(output,'prompt.txt'),prompt,{flag:'wx'});
- await writeFile(resolve(output,'request.json'),JSON.stringify({createdAt:new Date().toISOString(),sourcePath:resolve(sourcePath),sourceSha256:hash(sourceText),source,systemSha256:hash(system),provider:'CodexServices',model:'default'},null,2));
+ await writeFile(resolve(output,'request.json'),JSON.stringify({createdAt:new Date().toISOString(),sourcePath:resolve(sourcePath),sourceSha256:hash(sourceText),source,systemSha256:hash(system),provider:'CodexServices',model:options.model??'default'},null,2));
  const events:unknown[]=[];
- const provider=new CodexServices({reasoningModel:'default'},e=>{events.push(e);process.stderr.write(JSON.stringify(e)+'\n');});
+ const provider=new CodexServices({reasoningModel:options.model??'default'},e=>{events.push(e);process.stderr.write(JSON.stringify(e)+'\n');});
  let repair='';
  try {for(let attempt=1;attempt<=2;attempt++){
-   const draft=await provider.json(prompt+repair,Draft);
+   const draft=await provider.json(prompt+repair,Draft,[],options.signal);
    await writeFile(resolve(output,`response-${attempt}.json`),JSON.stringify(draft,null,2));
    const ids=new Set((source.grounded_beats??[]).map((b:{id:string})=>b.id));
    const issues=[];

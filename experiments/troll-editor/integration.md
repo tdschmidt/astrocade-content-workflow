@@ -1,3 +1,13 @@
+# Production integration
+
+`src/editing/meme.ts` now runs this package from the main CLI with `--format meme`. It uses verified analysis plus optional source-hashed review windows, fresh frames, the latest prompts, climax schema, payoff-ending gate, real audio catalog and deterministic renderer. New outputs target15–25seconds. The original category15-second adapter is a compatibility command only.
+
+The main run records input/source/output hashes and a new artifact directory for every meme attempt. Source and schema changes cannot silently reuse stale evidence. The actual render still requires visual and listening review; no publication is performed.
+
+The historical design notes below record how the initial experiment was developed. Their procedural-audio examples and pre-integration status are not the current production defaults.
+
+---
+
 # Experiment boundary and integration path
 
 This package is separate from the production pipeline. It reuses the existing `CodexServices` transport, frame extraction, media probing and process primitives without changing them. It does not capture new gameplay, publish media, or modify old run manifests.

@@ -131,9 +131,10 @@ function finalFilter(plan: EditPlan, duration: number, stickerInput: number | un
   return filters.join(';\n');
 }
 
-export interface RenderOptions { planPath: string; outputPath: string; assetsPath?: string; tools?: MediaTools }
+export interface RenderOptions { planPath: string; outputPath: string; assetsPath?: string; tools?: MediaTools; signal?: AbortSignal }
 
 export async function renderEdit(options: RenderOptions): Promise<Record<string, unknown>> {
+  options.signal?.throwIfAborted();
   const outputPath = resolve(options.outputPath), manifestPath = outputPath.replace(/\.mp4$/u, '.manifest.json');
   if (!outputPath.endsWith('.mp4')) throw new Error('Output must end in .mp4');
   await ensureNewOutput(outputPath);
@@ -142,7 +143,7 @@ export async function renderEdit(options: RenderOptions): Promise<Record<string,
   const preflight = await preflightMediaTools(tools);
   const rawPlan = JSON.parse(await readFile(options.planPath, 'utf8')) as unknown;
   if (typeof rawPlan !== 'object' || rawPlan === null || !('sourcePath' in rawPlan) || typeof rawPlan.sourcePath !== 'string' || !isAbsolute(rawPlan.sourcePath)) throw new Error('sourcePath must be an absolute local path');
-  const source = await probeMedia(rawPlan.sourcePath, tools);
+  const source = await probeMedia(rawPlan.sourcePath, tools, options.signal);
   if (!source.video) throw new Error('Edit source has no video stream');
   const { plan, timeline, duration } = validateEditPlan(rawPlan, source.durationSeconds);
   if (plan.sourceCrop && (plan.sourceCrop.x + plan.sourceCrop.width > source.video.width || plan.sourceCrop.y + plan.sourceCrop.height > source.video.height)) throw new Error('Source crop extends outside the recording');
@@ -161,7 +162,7 @@ export async function renderEdit(options: RenderOptions): Promise<Record<string,
   };
   const musicPath = assetPath(plan.music.assetId, join(assets, `${plan.music.asset}.wav`));
   await requireLocalFile(musicPath);
-  const music = await probeMedia(musicPath, tools);
+  const music = await probeMedia(musicPath, tools, options.signal);
   if (!music.audio) throw new Error('Music asset has no audio stream');
   if (catalog && plan.music.sourceStart + duration - plan.music.dropAt > music.durationSeconds) throw new Error('Selected real music excerpt is too short; no silent looping');
   const cuePaths = plan.soundCues.map(cue => assetPath(cue.assetId, join(assets, `${cue.kind}.wav`)));
@@ -174,7 +175,7 @@ export async function renderEdit(options: RenderOptions): Promise<Record<string,
   });
   for (const [index, cue] of effectiveSoundCues.entries()) {
     await requireLocalFile(cuePaths[index]!);
-    const info = await probeMedia(cuePaths[index]!, tools);
+    const info = await probeMedia(cuePaths[index]!, tools, options.signal);
     if (!info.audio || cue.sourceStart >= info.durationSeconds || (cue.duration && cue.sourceStart + cue.duration > info.durationSeconds + 0.03)) throw new Error('Sound cue exceeds its actual asset bounds');
   }
   for (const id of new Set([plan.music.assetId,...plan.soundCues.map(cue=>cue.assetId)])) {
@@ -195,10 +196,10 @@ export async function renderEdit(options: RenderOptions): Promise<Record<string,
         '-filter_complex_threads', '1', '-filter_complex', segmentFilter(segment, mapping, !!source.audio, plan.sourceCrop),
         '-map', '[video]', '-map', '[audio]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-fps_mode', 'cfr',
         '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2', '-t', num(mapping.outputEnd - mapping.outputStart), join(work, `segment-${index}.mp4`)];
-      await runProcess(ffmpeg, args, { cwd: work, timeoutMs: 180_000 });
+      await runProcess(ffmpeg, args, { signal: options.signal, cwd: work, timeoutMs: 180_000 });
     }
     await writeFile(join(work, 'segments.txt'), plan.segments.map((_, index) => `file 'segment-${index}.mp4'\nduration ${num(timeline[index]!.outputEnd - timeline[index]!.outputStart)}`).join('\n'));
-    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-f', 'concat', '-safe', '1', '-i', 'segments.txt', '-c', 'copy', '-movflags', '+faststart', 'base.mp4'], { cwd: work, timeoutMs: 60_000 });
+    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-f', 'concat', '-safe', '1', '-i', 'segments.txt', '-c', 'copy', '-movflags', '+faststart', 'base.mp4'], { signal: options.signal, cwd: work, timeoutMs: 60_000 });
     const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-i', 'base.mp4'];
     let input = 1;
     const stickerInput = plan.stickers.length + plan.faceAttachments.length ? input++ : undefined;
@@ -213,10 +214,10 @@ export async function renderEdit(options: RenderOptions): Promise<Record<string,
     args.push('-filter_complex_threads', '1', '-filter_complex', filter, '-map', '[video]', '-map', '[audio]',
       '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', '30', '-fps_mode', 'cfr',
       '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-t', num(duration), '-movflags', '+faststart', partial);
-    await runProcess(ffmpeg, args, { cwd: work, timeoutMs: 300_000 });
-    const result = await validateVideo(partial, tools);
+    await runProcess(ffmpeg, args, { signal: options.signal, cwd: work, timeoutMs: 300_000 });
+    const result = await validateVideo(partial, tools, options.signal);
     validateOutput(result, duration);
-    const loudness = await runProcess(ffmpeg, ['-hide_banner', '-nostdin', '-i', partial, '-af', 'loudnorm=I=-14:TP=-1.5:LRA=9:print_format=json', '-f', 'null', '-'], { timeoutMs: 90_000 });
+    const loudness = await runProcess(ffmpeg, ['-hide_banner', '-nostdin', '-i', partial, '-af', 'loudnorm=I=-14:TP=-1.5:LRA=9:print_format=json', '-f', 'null', '-'], { signal: options.signal, timeoutMs: 90_000 });
     const loudnessMatch = loudness.stderr.match(/\{\s*"input_i"[\s\S]*?\}/u);
     const loudnessData = loudnessMatch ? JSON.parse(loudnessMatch[0]) as Record<string, string> : undefined;
     if (!loudnessData || !Number.isFinite(Number(loudnessData.input_i)) || Number(loudnessData.input_tp) > -1) throw new Error(`Output has unusable loudness or a true peak above −1 dBTP: ${JSON.stringify(loudnessData??null)}`);
@@ -231,6 +232,7 @@ export async function renderEdit(options: RenderOptions): Promise<Record<string,
     };
     const partialManifest = join(work, 'manifest.json');
     await writeFile(partialManifest, JSON.stringify(manifest, null, 2) + '\n');
+    options.signal?.throwIfAborted();
     await promoteMedia(partial, outputPath);
     try { await promoteMedia(partialManifest, manifestPath); } catch (error) { await rm(outputPath, { force: true }); throw error; }
     return manifest;

@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "check": "npm run typecheck && npm test",
-    "check:editing": "tsc --project tsconfig.editing.json && node --import tsx --test experiments/troll-editor/render.test.ts experiments/category-batch/windows.test.ts",
+    "check:editing": "tsc --project tsconfig.editing.json && node --import tsx --test \"experiments/**/*.test.ts\"",
     "browser:install": "playwright install chromium --no-shell",
     "doctor": "node --import tsx src/server/doctor.ts"
   },

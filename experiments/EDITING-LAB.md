@@ -1,6 +1,6 @@
 # Gameplay editing lab
 
-Three separate, reusable agent workflows, built against actual local gameplay and model-generated edit decisions. They remain outside the main production pipeline.
+Three separate, reusable agent workflows, built against actual local gameplay and model-generated edit decisions. The main pipeline now orchestrates these packages through `src/editing` and `--format meme|overview|story`. Historical scripts and previews remain available for comparison.
 
 | Format | Process package | Key editing rule |
 | --- | --- | --- |
@@ -29,4 +29,4 @@ Open `http://127.0.0.1:8777/review/index.html`. Current versions are shown first
 
 Agent requests, source-frame timestamps, drafts, transcripts, edit plans, rendered outputs and review evidence remain under `data/experiments/`. Runs preserve previous versions; failures are recorded rather than presented as successful agent edits. The repository packages contain prompts, constrained schemas, deterministic renderers and local tests. Renderers never execute model-supplied shell commands.
 
-The integration boundary is a reviewed source selection plus a structured edit plan, audio catalog entries and validation evidence. Editorial planning and narration generation remain separate from rendering. Main capture and publishing behavior is unchanged by these experiment packages.
+The integration boundary is a reviewed source selection plus a structured edit plan, audio catalog entries and validation evidence. Editorial planning and narration generation remain separate from rendering. Main capture supplies the recorded source and analysis; production integration preserves the package contracts and local-only outputs.

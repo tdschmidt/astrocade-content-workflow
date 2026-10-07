@@ -1,4 +1,11 @@
-# Category gameplay reels
+# Category gameplay videos
+
+The category bridge is now integrated into `npm run pipeline -- --format meme`. Its production code lives in `src/editing/meme.ts` and `src/editing/windows.ts`; the old `edit.ts` command delegates to those same functions. Latest meme edits target15–25seconds, including at least4seconds after a phonk climax with2seconds of moving aftermath. This supersedes the historical15-second limit described below.
+
+Use `--from-run`, `--source-windows` and `--edit-feedback` through the main CLI. `--format overview` and `--format story` invoke the new narrated paths. See the root README for current commands. The following notes preserve the original batch's source-window contract and historical limits; source hashing, fresh frame evidence, chronology and audio provenance still apply.
+
+---
+
 
 This small adapter takes an existing core capture, its verified event analysis and optional feedback observations, then runs the separate [troll editing workflow](../troll-editor/README.md) on several source windows. It reuses that experiment's saved editorial/style prompts, shared editing preferences, revised agent schema, [real audio catalog](../meme-audio/catalog.json), reaction-face asset and FFmpeg renderer. It does not change the original run, capture another game, or publish anything.
 

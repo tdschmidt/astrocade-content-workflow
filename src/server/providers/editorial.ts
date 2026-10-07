@@ -1,10 +1,9 @@
 import { z } from 'zod';
 import {
-  analysisSchema, cutSchema, eventSchema, hookConceptSchema, scriptSchema, subtitleSchema,
+  analysisSchema, cutSchema, eventSchema, hookConceptSchema, scriptSchema,
   type Capture, type FootageAnalysis, type ResearchSnapshot, type VideoFormat, type VideoScript,
 } from '../../shared/domain.js';
 import { NeedsAttention } from '../errors.js';
-import type { WordTiming } from './google.js';
 import type { Inference } from './inference.js';
 import { contentAssessmentSchema, contentScore, defaultContentBrief, summarizeBrief, type ContentBrief, type ContentAssessment } from '../../shared/content.js';
 import { validateOverlayCues } from '../media/render.js';
@@ -49,28 +48,6 @@ export function validateCuts(cuts: Cut[], duration: number, observedEvents?: Cut
     }
   }
   return cuts.map(cut => ({ ...cut }));
-}
-
-export function phraseCaptions(words: WordTiming[], audioDuration: number): Array<z.infer<typeof subtitleSchema>> {
-  if (!Number.isFinite(audioDuration) || audioDuration <= 0) throw new NeedsAttention('Captioning needs the measured audio duration.');
-  const phrases: Array<z.infer<typeof subtitleSchema>> = [];
-  let pending: WordTiming[] = [];
-  let previousEnd = 0;
-  const flush = () => {
-    if (!pending.length) return;
-    phrases.push({ startSeconds: pending[0]!.startSeconds, endSeconds: pending.at(-1)!.endSeconds, text: pending.map(word => word.text.trim()).join(' ') });
-    pending = [];
-  };
-  for (const word of words) {
-    if (!word.text.trim() || !validRange(word, audioDuration) || word.startSeconds < previousEnd) throw new NeedsAttention('Transcription returned invalid or overlapping word timings. Review the saved audio before captioning.');
-    const phraseText = [...pending.map(item => item.text), word.text].join(' ');
-    if (pending.length && (pending.length >= 6 || phraseText.length > 42 || word.startSeconds - previousEnd > 0.45 || word.endSeconds - pending[0]!.startSeconds > 2.5)) flush();
-    pending.push(word);
-    previousEnd = word.endSeconds;
-    if (/[.!?;:]$/.test(word.text)) flush();
-  }
-  flush();
-  return phrases.map(phrase => subtitleSchema.parse(phrase));
 }
 
 function tokens(text: string): string[] {
@@ -672,16 +649,4 @@ Rationale must explain the visible hook/payoff, cut choice and any uncertainty. 
     caption += `\nSources: ${sources.join(' ')}`;
   }
   return scriptSchema.parse({ ...response, narration: format === 'highlight' ? '' : response.narration, caption });
-}
-
-export async function shortenScript(script: VideoScript, targetSeconds: number, google: Inference, signal?: AbortSignal): Promise<VideoScript> {
-  if (!Number.isFinite(targetSeconds) || targetSeconds < 5) throw new NeedsAttention('There is less than five seconds for shortening narration. Use a brief manually edited line, a narration-free highlight, or capture more action; do not pad or repeat footage.');
-  const maxWords = Math.max(1, Math.floor(targetSeconds * 2));
-  const schema = z.object({ narration: z.string().min(1).max(1600) });
-  const shortened = await google.json(
-    `Shorten this narration to at most ${maxWords} words for at most ${targetSeconds} seconds. Preserve the supported meaning and ending; remove detail rather than adding claims. Return only narration. Do not change names, numbers, negations, fiction status or imply an unobserved gameplay result.\n${JSON.stringify(script.narration)}`,
-    schema, [], signal,
-  );
-  if (tokens(shortened.narration).length > maxWords || tokens(shortened.narration).length >= tokens(script.narration).length) throw new NeedsAttention('The shortened narration is still too long; edit it in the draft.');
-  return scriptSchema.parse({ ...script, narration: shortened.narration });
 }

@@ -21,6 +21,8 @@ import type { Inference, InferenceProgressEvent } from '../server/providers/infe
 import { JsonStore } from '../server/store.js';
 import { nominateGames, nominationSchema } from './selection.js';
 import { Trace, traceInference } from './trace.js';
+import { editGameplay } from '../editing/index.js';
+import { editorSettingsSchema, editorialResultSchema, prepareEditor, verifyEditorInputs, type EditorRequest } from '../editing/contracts.js';
 
 const attemptSchema = z.object({
   gameId: z.string(), profile: gameProfileSchema.optional(),
@@ -42,6 +44,7 @@ export const coreRunSchema = z.object({
   presenterPath: z.string().optional(), presenterSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   candidates: z.array(gameCandidateSchema).default([]),
   shortlist: z.array(nominationSchema).default([]), attempts: z.array(attemptSchema).default([]),
+  editor: editorSettingsSchema.optional(), editorialResult: editorialResultSchema.optional(), editorAttemptPath: z.string().optional(),
   selectedGameId: z.string().optional(), script: scriptSchema.optional(),
   scriptModel: z.string().optional(), scriptProvider: z.enum(['gemini', 'codex']).optional(),
   videoPath: z.string().optional(), videoSha256: z.string().optional(), error: z.string().optional(),
@@ -49,7 +52,7 @@ export const coreRunSchema = z.object({
 export type CoreRun = z.infer<typeof coreRunSchema>;
 export type CoreStage = 'discover' | 'capture' | 'analyze' | 'edit' | 'all';
 
-const defaults = { discoverGames, nominateGames, inspectGame, learnGameProfile, learnFeedbackProfile, createFeedbackController, runCaptureAttempt, analyzeFootage, draftScript, renderPortrait, presenterVideoDuration, validateVideo };
+const defaults = { editGameplay, discoverGames, nominateGames, inspectGame, learnGameProfile, learnFeedbackProfile, createFeedbackController, runCaptureAttempt, analyzeFootage, draftScript, renderPortrait, presenterVideoDuration, validateVideo };
 export type CoreServices = typeof defaults;
 
 async function hashFile(path: string) { return createHash('sha256').update(await readFile(path)).digest('hex'); }
@@ -139,7 +142,8 @@ async function report(directory: string, run: CoreRun) {
     '- [Full event trace](trace.jsonl)', '- [Run data](run.json)', '- [Editorial brief](content-brief.json)', `- [Discovery evidence](${run.provenance ? link(run.provenance.discoveryPath) : 'discovery.json'})`, '',
     ...(run.provenance ? [`Re-edit of [${run.provenance.sourceRunId}](${link(join(run.provenance.sourceRunPath, 'report.md'))}). Saved recordings and observations are referenced; the original run is unchanged.`, ''] : []),
     ...(run.presenterPath ? [`Fictional AI commentator: [generated asset supplied](${link(run.presenterPath)}). This is not a recording of a real person playing. Publishing is manual.`, ''] : []),
-    `Edit style: **${run.contentBrief.editingStyle === 'reel' ? 'gameplay reel · up to 15 seconds · several distinct moments' : 'single episode'}**.`, '',
+    ...(run.editor && run.editor.format !== 'legacy' ? [`Editor: **${run.editor.format}**${run.editor.format === 'meme' ? ' · 15–25 seconds with a real climax and aftermath' : ' · evidence-grounded narration'}.`, ''] : []),
+    `Capture analysis style: **${run.contentBrief.editingStyle === 'reel' ? 'gameplay reel · up to 15 seconds · several distinct moments' : 'single episode'}**.`, '',
     ...(run.captureSeconds === undefined ? [] : [`Capture budget: at most ${run.captureSeconds} seconds per attempt, including controller latency. Useful exploration may finish earlier.`, '']),
     '## Candidate decisions', '',
     'Content scores are editorial heuristics out of 30, not probabilities of audience performance. Zero clarity, payoff, or readability rejects a candidate regardless of visual appeal.', '',
@@ -183,13 +187,14 @@ async function report(directory: string, run: CoreRun) {
     ));
     lines.push(`Duration: ${editorial.durationReason}`, '', `Review: ${editorial.review}`, '');
   }
+  if (run.editorialResult) lines.push('## Integrated edit', '', `[Agent plan and evidence](${link(run.editorialResult.planPath)})`, '', `${run.editorialResult.durationSeconds.toFixed(2)} seconds. Requires visual and listening review; generation does not establish audience performance.`, '');
   if (run.videoPath) lines.push(`[Play final video](${link(run.videoPath)})`, '', 'Publishing is manual. Review the video and caption before posting.', '');
   if (run.error) lines.push('## Stopped', '', run.error, '', `Resume: npm run pipeline -- --resume ${directory}`, '');
   await writeFile(join(directory, 'report.md'), lines.join('\n'), { mode: 0o600 });
 }
 
 export async function runPipeline(options: {
-  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; captureGoal?: string; playMode?: 'timed' | 'feedback' | 'auto'; captureSeconds?: number; contentBrief?: ContentBrief; fromRun?: string; presenterPath?: string; signal?: AbortSignal; quiet?: boolean;
+  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; captureGoal?: string; playMode?: 'timed' | 'feedback' | 'auto'; captureSeconds?: number; contentBrief?: ContentBrief; fromRun?: string; presenterPath?: string; editor?: EditorRequest; signal?: AbortSignal; quiet?: boolean;
 }, config: Configuration, overrides: Partial<CoreServices> = {}): Promise<CoreRun> {
   const directory = resolve(options.directory);
   if (options.fromRun && resolve(options.fromRun) === directory) throw new Error('--from-run needs a new output directory; use --resume to continue an existing run.');
@@ -215,8 +220,12 @@ export async function runPipeline(options: {
       : coreRunSchema.parse({ version: 1, id: basename(directory), createdAt: new Date().toISOString(), model: options.model, status: 'running',
         playMode: options.playMode ?? ((requestedBrief ?? defaultContentBrief).editingStyle === 'reel' ? 'auto' : 'timed'),
         captureSeconds: options.captureSeconds, contentBrief: requestedBrief ?? defaultContentBrief });
+    if (options.editor) initial.editor = await prepareEditor(options.editor);
     if (options.presenterPath) { initial.presenterPath = resolve(options.presenterPath); initial.presenterSha256 = await hashFile(initial.presenterPath); }
+    if (initial.editor?.format !== undefined && initial.editor.format !== 'legacy' && options.presenterPath) throw new Error('The integrated formats are faceless; use --format legacy with a supplied presenter.');
     const opened = await JsonStore.open(join(directory, 'run.json'), coreRunSchema, initial);
+    if (options.editor && JSON.stringify(initial.editor) !== JSON.stringify(opened.read().editor)) throw new Error('A saved editor configuration cannot change on resume. Use --from-run for a new revision.');
+    if (opened.read().editor) await verifyEditorInputs(opened.read().editor!);
     if (requestedBrief && JSON.stringify(requestedBrief) !== JSON.stringify(opened.read().contentBrief)) throw new Error('A saved editorial brief cannot be changed while resuming. Start a new run for a different brief.');
     if (options.presenterPath && resolve(options.presenterPath) !== opened.read().presenterPath) throw new Error('A saved presenter cannot be changed while resuming. Use --from-run to make a new edit.');
     if (options.captureSeconds !== undefined && options.captureSeconds !== opened.read().captureSeconds) throw new Error('A saved capture budget cannot be changed while resuming. Start a new run for a different duration.');
@@ -235,7 +244,7 @@ export async function runPipeline(options: {
     const getProvider = () => provider ??= traceInference(providerName === 'codex'
       ? new CodexServices({ reasoningModel: options.model, mediaTools: config.mediaTools }, onProviderEvent)
       : new GoogleServices(settings, onProviderEvent), trace, providerName, options.model,
-    [settings.geminiApiKey, settings.tavilyApiKey]);
+    [settings.geminiApiKey]);
     const save = async (change: (run: CoreRun) => void) => { await store!.update(change); await report(directory, store!.read()); };
     const updateAttempt = async (gameId: string, change: (attempt: CoreRun['attempts'][number]) => void) => save(run => change(run.attempts.find(item => item.gameId === gameId)!));
     const verifySource = async (attempt: CoreRun['attempts'][number]) => {
@@ -243,7 +252,7 @@ export async function runPipeline(options: {
     };
     const finish = async () => {
       // Reconstruct derived posting copy even if the previous process stopped after saving videoPath.
-      await writeFile(join(directory, 'caption.txt'), `${store!.read().script!.caption}\n`, { mode: 0o600 });
+      await writeFile(join(directory, 'caption.txt'), `${store!.read().editorialResult?.caption ?? store!.read().script!.caption}\n`, { mode: 0o600 });
       await save(run => { run.status = 'complete'; });
       trace.event('run', 'completed', `Video and evidence: ${directory}`);
       return store!.read();
@@ -256,7 +265,7 @@ export async function runPipeline(options: {
       return game.id === options.game || canonicalGameUrl(game.url) === canonicalGameUrl(options.game!) || new URL(game.url).pathname.split('/').at(-2) === options.game;
     })) throw new Error('A saved shortlist cannot be changed while resuming. Start a new run for a different game.');
     if (saved.videoPath && stage !== 'analyze') {
-      if (!saved.script || !saved.attempts.some(attempt => attempt.gameId === saved.selectedGameId && attempt.capture)) throw new Error('The saved video is missing its source or edit decisions. Start a new run.');
+      if ((!saved.script && !saved.editorialResult) || !saved.attempts.some(attempt => attempt.gameId === saved.selectedGameId && attempt.capture)) throw new Error('The saved video is missing its source or edit decisions. Start a new run.');
       for (const attempt of saved.attempts) await verifySource(attempt);
       if (await hashFile(saved.videoPath) !== saved.videoSha256) throw new Error('The finished video was modified outside the workflow. Start a new run.');
       await services.validateVideo(saved.videoPath, config.mediaTools, options.signal);
@@ -414,6 +423,34 @@ export async function runPipeline(options: {
       await save(run => { run.status = 'paused'; });
       trace.event('run', 'paused', 'Saved footage analysis is ready. Editing and rendering were not requested.');
       return store.read();
+    }
+    const editor = store.read().editor;
+    if (editor && editor.format !== 'legacy') {
+      const score = (attempt: CoreRun['attempts'][number]) => attempt.capture?.analysis?.content ? contentScore(attempt.capture.analysis.content) : -1;
+      const candidates = store.read().attempts.filter(attempt => attempt.capture &&
+        (editor.windows || (attempt.capture.analysis?.usable && attempt.capture.analysis.events.length)))
+        .sort((a, b) => score(b) - score(a));
+      if (!candidates.length) throw new Error('No recording has usable observed gameplay for this editor. Review the source or supply source-hashed review windows in a new revision.');
+      if (editor.windows && candidates.length !== 1) throw new Error('Source-review windows require a run containing a single recording.');
+      const selected = candidates[0]!;
+      await verifySource(selected);
+      await save(run => { run.selectedGameId = selected.gameId; });
+      // Narrated stages fingerprint and resume exact saved speech instead of
+      // generating another voice to get past a failed transcript check.
+      const output = editor.format !== 'meme' && store.read().editorAttemptPath
+        ? store.read().editorAttemptPath! : join(directory, `editing-${editor.format}-${randomUUID().slice(0, 8)}`);
+      await save(run => { run.editorAttemptPath = output; });
+      trace.event('edit', 'started', `Running the ${editor.format} editorial agent and renderer.`, { output });
+      const result = await services.editGameplay({ settings: editor, capture: selected.capture!, sourceSha256: selected.sourceSha256!,
+        runPath: join(directory, 'run.json'), output, model: providerName === 'codex' ? options.model : 'default',
+        brief: store.read().contentBrief, captureFeedbackPath: selected.feedbackPath, signal: options.signal });
+      await verifySource(selected);
+      await verifyEditorInputs(editor);
+      await services.validateVideo(result.videoPath, config.mediaTools, options.signal);
+      if (await hashFile(result.videoPath) !== result.videoSha256) throw new Error('Edited video changed before saving its result.');
+      await save(run => { run.editorialResult = result; run.videoPath = result.videoPath; run.videoSha256 = result.videoSha256; });
+      trace.event('render', 'completed', `${result.durationSeconds.toFixed(2)}-second ${editor.format} candidate ready for review.`, result);
+      return await finish();
     }
     if (!store.read().script) {
       const usable = store.read().attempts.filter(item => {

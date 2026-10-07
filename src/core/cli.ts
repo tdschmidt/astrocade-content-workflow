@@ -4,36 +4,39 @@ import { resolve } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { Configuration } from '../server/config.js';
 import { coreRunSchema, runPipeline, type CoreStage } from './pipeline.js';
+import { editorSettingsSchema, type EditorRequest } from '../editing/contracts.js';
 import { contentBriefSchema } from '../shared/content.js';
 
 const { values } = parseArgs({ options: {
   provider: { type: 'string' }, stage: { type: 'string', default: 'all' }, resume: { type: 'string' }, model: { type: 'string' },
   game: { type: 'string' }, candidates: { type: 'string', default: '3' }, help: { type: 'boolean', short: 'h' },
+  format: { type: 'string' }, style: { type: 'string' }, narration: { type: 'string' },
+  'source-windows': { type: 'string' }, 'edit-feedback': { type: 'string' }, 'story-source': { type: 'string' },
   play: { type: 'string' }, 'capture-seconds': { type: 'string' }, 'capture-goal': { type: 'string' }, brief: { type: 'string' }, 'from-run': { type: 'string' }, presenter: { type: 'string' },
 } });
 
 if (values.help) {
-  console.log(`Astrocade: discover → inspect/learn → capture → analyze → edit
+  console.log(`Astrocade: discover → inspect/learn → capture → analyze → agent edit → local video
 
-npm run pipeline -- [--provider gemini|codex] [--stage discover|capture|analyze|edit|all] [--play timed|feedback|auto] [--game ID_OR_SLUG] [--candidates 1-5] [--capture-seconds 5-600] [--brief PATH.json]
-npm run pipeline -- --resume data/runs/RUN_DIRECTORY [--model MODEL]
-npm run pipeline -- --from-run data/runs/RUN_DIRECTORY [--brief PATH.json] [--presenter GENERATED_VIDEO.mp4]
+npm run pipeline -- [--provider codex|gemini] [--format meme|overview|story|legacy] [--game PUBLIC_URL] [--capture-seconds 5-600]
+npm run pipeline -- --from-run data/runs/RUN_DIRECTORY --format meme
+npm run pipeline -- --from-run data/runs/RUN_DIRECTORY --format overview --narration local
+npm run pipeline -- --from-run data/runs/RUN_DIRECTORY --format story --story-source FACT_LEDGER.json
+npm run pipeline -- --resume data/runs/RUN_DIRECTORY
 npm run pipeline -- --from-run data/runs/RUN_DIRECTORY --stage analyze
-npm run pipeline -- --provider codex --play feedback --game PUBLIC_ASTROCADE_GAME_URL
 
-Default: inspect up to three provisional choices, learn and explore supported games, then render a gameplay reel with several distinct moments in at most 15 seconds. New default-brief runs use --play auto; saved runs retain their mode. An explicit game URL is inspected directly.
-Feedback mode: learn controls, practice and explore supported gameplay, then trim the longer source into a reel. New reel feedback profiles allow up to ten minutes by default and observe frames during action batches so transient effects can be learned. Saved profiles retain their limits. Slow model calls cannot supply reflex control.
-Auto mode: reuse a tested timed profile when available. For unfamiliar reel games, assess latency-tolerant screenshot feedback first, then timed controls if unsupported. Legacy episode runs try timed controls first. Both assessments share one inspection; provider errors do not trigger a fallback.
-Capture budget: --capture-seconds bounds recording wall time, including inference, and guides a new control plan. It is separate from the at-most-15-second edit; exploration can finish earlier when useful gameplay coverage is complete.
-Capture goal: --game URL --capture-goal "..." records a specific progression or feature-exploration objective. It guides learning and play, never proves an outcome, and cannot be changed on resume. Omit it for the default thorough exploration goal.
-Editorial brief: optional JSON with audience, voice, hookExamples, format sources, dated trend evidence, and editingStyle: reel or episode. The new default is reel; older briefs without editingStyle preserve their episode behavior. Resumes reuse the saved brief; start a new run to change it.
-Re-edit: --from-run creates a new run referencing saved gameplay, with a new edit and no recapture. It inherits the original brief unless --brief is supplied. Changing editingStyle reanalyzes the source for that format; unchanged analyses are reused. --from-run and --resume cannot be combined.
-Analysis only: --stage analyze requires --resume or --from-run with saved recordings. It verifies the source files, saves footage analysis and pauses before editorial selection, script drafting or rendering. Analysis can report unusable footage without requiring an edit.
-Presenter: --presenter adds a supplied fictional AI commentator video; generation is separate. It is saved with a file hash and cannot change on resume. New edits are faceless unless --presenter is supplied.
-Outputs: report.md, trace.jsonl, content-brief.json, discovery/inspection/control evidence, original recordings, edit.json, highlight-*.mp4, caption.txt.
-The trace shows observable actions and concise decision summaries, not private internal reasoning. Publishing is manual.
-Gemini (default): configure GEMINI_API_KEY in .env; existing saved keys are also read.
-Codex: install the Codex CLI, run codex login using ChatGPT, then pass --provider codex. This uses your Codex allowance/credits and refuses API-key billing. FFmpeg with libass and Playwright Chromium are required.`);
+Default: Codex-authenticated inference, thorough native gameplay exploration, then a 15–25s meme edit. The editorial agent chooses real source moments, synchronizes its principal climax and music, and retains moving aftermath. Overview: hook-first game premise/choices/appeal with real narration, roughly30–45s. Story: sourced narration over independently reviewed sustained gameplay, roughly35–60s. Legacy retains the earlier silent editor for saved-run reproduction.
+
+--stage discover|capture|analyze|edit|all (default all). Analysis needs --from-run or --resume with saved capture. A stage preserves its artifacts for continuation.
+--play timed|feedback|auto (default auto for new reels); --candidates 1-5 (default3); --capture-goal TEXT (max800 characters, explicit --game required). Recording budget includes model latency; slow feedback cannot provide reflex play.
+--style auto|troll-freeze|ironic-fail|velocity applies to meme editing. --source-windows JSON supplies source-hashed review leads; the agent freshly inspects them and chooses the actual cuts. --edit-feedback TEXT_FILE requests an evidence-based revision.
+--narration local|gemini defaults local (Kokoro + real Faster Whisper recognition; see local-speech setup). --story-source supplies a grounded fact ledger and is required for story. Existing audio/model assets are verified; missing prerequisites fail explicitly.
+--brief JSON supplies the audience and voice. --model MODEL changes the selected inference model. --presenter VIDEO is supported only with --format legacy.
+
+--from-run creates a new immutable editorial revision without recapturing. --resume reuses saved configuration and verifies all source/input/output hashes. It cannot change the brief, format, source windows or feedback. Failed attempts preserve evidence. Ctrl-C preserves completed stages.
+
+Outputs: run.json, report.md, trace.jsonl, original gameplay, source-frame evidence, agent plan, captions and final MP4. Videos stay local; there is no GUI, account creation or publishing.
+Codex: install Codex CLI and sign in with ChatGPT. Gemini: configure GEMINI_API_KEY. FFmpeg with libass and Playwright Chromium are required.`);
 } else {
   if (values.resume && values['from-run']) throw new Error('--resume and --from-run are mutually exclusive.');
   if (values['from-run'] && !['all', 'analyze', 'edit'].includes(values.stage)) throw new Error('--from-run only supports --stage analyze or edit.');
@@ -51,9 +54,20 @@ Codex: install the Codex CLI, run codex login using ChatGPT, then pass --provide
     const sourceDirectory = values.resume ?? values['from-run'];
     const saved = sourceDirectory ? coreRunSchema.parse(JSON.parse(await readFile(resolve(sourceDirectory, 'run.json'), 'utf8'))) : undefined;
     const contentBrief = values.brief ? contentBriefSchema.parse(JSON.parse(await readFile(resolve(values.brief), 'utf8'))) : undefined;
-    const provider = (values.provider ?? saved?.provider ?? 'gemini') as 'gemini' | 'codex';
+    const provider = (values.provider ?? saved?.provider ?? 'codex') as 'gemini' | 'codex';
     const model = values.model ?? (saved?.provider === provider ? saved.model : provider === 'codex' ? 'gpt-5.6-sol' : 'gemini-3.5-flash');
-    const run = await runPipeline({ directory, model, provider, stage: values.stage as CoreStage, game: values.game, captureGoal: values['capture-goal'], playMode: values.play as 'timed' | 'feedback' | 'auto' | undefined, contentBrief, captureSeconds: values['capture-seconds'] === undefined ? undefined : Number(values['capture-seconds']), fromRun: values['from-run'], presenterPath: values.presenter, shortlistSize: Number(values.candidates), signal: abort.signal }, config);
+    const editorialFlags = values.format || values.style || values.narration || values['source-windows'] || values['edit-feedback'] || values['story-source'];
+    let editor: EditorRequest | undefined;
+    if (!values.resume || editorialFlags) {
+      const settings = editorSettingsSchema.pick({ format: true, style: true, narration: true }).parse({
+        format: values.format ?? (values.resume ? saved?.editor?.format ?? 'legacy' : 'meme'),
+        style: values.style ?? saved?.editor?.style, narration: values.narration ?? saved?.editor?.narration,
+      });
+      editor = { ...settings, windowsPath: values['source-windows'] ?? (values.resume ? saved?.editor?.windows?.path : undefined),
+        feedbackPath: values['edit-feedback'] ?? (values.resume ? saved?.editor?.feedback?.path : undefined),
+        storySourcePath: values['story-source'] ?? (values.resume ? saved?.editor?.storySource?.path : undefined) };
+    }
+    const run = await runPipeline({ directory, model, provider, editor, stage: values.stage as CoreStage, game: values.game, captureGoal: values['capture-goal'], playMode: values.play as 'timed' | 'feedback' | 'auto' | undefined, contentBrief, captureSeconds: values['capture-seconds'] === undefined ? undefined : Number(values['capture-seconds']), fromRun: values['from-run'], presenterPath: values.presenter, shortlistSize: Number(values.candidates), signal: abort.signal }, config);
     console.log(`\n${run.status === 'complete' ? 'Ready' : 'Stage complete'}: ${directory}/report.md`);
   } catch (error) {
     // Detailed sanitized stage errors are in the trace; never dump SDK request objects or credentials.

@@ -1,0 +1,74 @@
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { z } from 'zod';
+import type { Capture } from '../shared/domain.js';
+import type { Inference } from '../server/providers/inference.js';
+import { narrationWindows, assertNarratedSelection, overviewLedger, runNarratedAgentStage, verifySavedNarration } from './narrated.js';
+import type { EvidenceWindow } from './windows.js';
+
+const capture: Capture = { id: 'sample', runId: 'run', profileId: 'profile', game: { id: 'g', title: 'Example', titleSource: 'visible_text', url: 'https://example.com/game', metrics: [], observations: [] }, path: '/tmp/source.mp4', durationSeconds: 100, width: 720, height: 1280, createdAt: '2026-10-07',
+  analysis: { usable: true, reason: 'Observed', mechanic: 'Choices change powers', visualScore: 4, events: [{ startSeconds: 2, endSeconds: 6, event: 'Flight', evidence: 'Actor rises', outcome: 'Lands on roof' }, { startSeconds: 25, endSeconds: 30, event: 'Wall', evidence: 'Wall rises', outcome: 'Barrier appears' }] } };
+const windows: EvidenceWindow[] = [{ id: 'one', start: 0, end: 20, basis: 'source-review', observation: 'Flight evidence' }, { id: 'two', start: 30, end: 50, basis: 'source-review', observation: 'Building evidence' }];
+const inspection = () => ({ usable: true, reason: 'Two useful mechanics', gameSummary: 'Choose different powers to move and build.', facts: [
+  { id: 'flight', fact: 'The actor can fly.', windowId: 'one', start: 2, end: 4, observation: 'Actor rises from street to rooftop.' },
+  { id: 'wall', fact: 'A wall can be created.', windowId: 'two', start: 32, end: 35, observation: 'Selected power produces a new wall.' },
+], chapters: [{ id: 'opening', start: 0, end: 16, factIds: ['flight'], rationale: 'Introduce movement and choices.' }, { id: 'building', start: 30, end: 46, factIds: ['wall'], rationale: 'Show a genuinely different capability.' }], captionPosition: 'upper-middle' as const, exclusions: ['No completed mission demonstrated.'] });
+const hash = (s: string) => createHash('sha256').update(s).digest('hex');
+
+test('narration candidate context stays inside capture and invalid analysis cannot become evidence', () => {
+  const result = narrationWindows(capture);
+  assert.deepEqual(result.map(w => [w.start, w.end]), [[0, 13], [20, 37]]);
+  assert.throws(() => narrationWindows({ ...capture, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, endSeconds: 110 }] } }), /invalid source bounds/);
+});
+
+test('selected narration cannot bridge unobserved gaps, reuse footage, or pad weak source', () => {
+  assert.equal(assertNarratedSelection([{ start: 0, end: 16 }, { start: 30, end: 46 }], windows, 30, 45), 32);
+  assert.throws(() => assertNarratedSelection([{ start: 10, end: 35 }], windows, 1, 60), /freshly inspected/);
+  assert.throws(() => assertNarratedSelection([{ start: 0, end: 16 }, { start: 2, end: 18 }], windows, 1, 60), /chronological/);
+  assert.throws(() => assertNarratedSelection([{ start: 1, end: 3 }], windows, 30, 45), /Do not pad or loop/);
+});
+
+test('whole-game overview facts retain original hash/time evidence and opening evidence is local', () => {
+  const ledger = overviewLedger(capture, 'a'.repeat(64), inspection(), windows);
+  assert.equal(ledger.gameFacts[1]!.evidence.kind, 'gameplay');
+  assert.equal(ledger.gameFacts[1]!.evidence.kind === 'gameplay' && ledger.gameFacts[1]!.evidence.sourceSha256, 'a'.repeat(64));
+  const bad = inspection(); bad.chapters[0]!.factIds = ['wall'];
+  assert.throws(() => overviewLedger(capture, 'a'.repeat(64), bad, windows), /actually appear/);
+  const unseen = inspection(); unseen.facts[0]!.end = 25;
+  assert.throws(() => overviewLedger(capture, 'a'.repeat(64), unseen, windows), /unseen source/);
+  assert.throws(() => overviewLedger(capture, 'a'.repeat(64), { ...inspection(), usable: false }, windows), /Inadequate overview/);
+});
+
+test('a semantic rejection stops after one call and cannot turn into approval on resume', async () => {
+  const out = await mkdtemp(join(tmpdir(), 'narrated-rejection-')); let calls = 0;
+  const schema = z.object({ approved: z.boolean(), issues: z.array(z.string()) });
+  const provider: Inference = { async json<T>(_prompt: string, responseSchema: z.ZodType<T>) { calls++; return responseSchema.parse({ approved: false, issues: ['Repeated failed obstacle'] }); }, async withVideo() { throw new Error('Unexpected video'); } };
+  const invoke = () => runNarratedAgentStage(provider, out, 'Review evidence', schema, [], value => value.approved ? [] : value.issues);
+  try { await assert.rejects(invoke, /Repeated failed/); assert.equal(calls, 1); await assert.rejects(invoke, /Saved editorial rejection/); assert.equal(calls, 1); }
+  finally { await rm(out, { recursive: true, force: true }); }
+});
+
+test('one structural plan repair is bounded and keeps original rejected response', async () => {
+  const out = await mkdtemp(join(tmpdir(), 'narrated-repair-')); let calls = 0;
+  const schema = z.object({ start: z.number() });
+  const provider: Inference = { async json<T>(_prompt: string, responseSchema: z.ZodType<T>) { return responseSchema.parse({ start: ++calls === 1 ? -1 : 2 }); }, async withVideo() { throw new Error('Unexpected video'); } };
+  try { const result = await runNarratedAgentStage(provider, out, 'Choose window', schema, [], value => value.start < 0 ? ['Start outside source'] : []); assert.equal(result.start, 2); assert.equal(calls, 2); assert.deepEqual(JSON.parse(await readFile(join(out, 'accepted.json'), 'utf8')), { start: 2 }); }
+  finally { await rm(out, { recursive: true, force: true }); }
+});
+
+test('speech resume rejects changed waveform even when the spoken script still matches', async () => {
+  const out = await mkdtemp(join(tmpdir(), 'narrated-waveform-')), audio = join(out, 'voice.wav'), record = join(out, 'narration.json'), checkpoint = join(out, 'waveform.json');
+  const script = 'This is the exact generated narration.';
+  try {
+    await writeFile(audio, 'original waveform');
+    await writeFile(record, JSON.stringify({ path: audio, script, voiceLabel: 'Test', words: [{ text: 'This', start: 0, end: 1 }, { text: 'is', start: 1, end: 2 }], alignmentMethod: 'Real test boundaries' }));
+    await writeFile(checkpoint, JSON.stringify({ path: audio, sha256: hash('original waveform'), scriptSha256: hash(script) }));
+    await verifySavedNarration(record, checkpoint, script);
+    await writeFile(audio, 'changed waveform');
+    await assert.rejects(() => verifySavedNarration(record, checkpoint, script), /waveform or script changed/);
+  } finally { await rm(out, { recursive: true, force: true }); }
+});

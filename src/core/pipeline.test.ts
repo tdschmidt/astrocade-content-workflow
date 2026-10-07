@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -46,6 +47,68 @@ async function fixture(t: TestContext) {
   };
   return { directory: join(directory, 'run'), config, services, calls, candidate };
 }
+
+test('integrated editor runs after capture/analysis and completed resume needs no legacy script', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  let edits = 0;
+  services.editGameplay = async options => {
+    edits++;
+    assert.equal(options.settings.format, 'meme');
+    assert.equal(options.capture.analysis?.events.length, 1);
+    assert.ok(options.sourceSha256);
+    await mkdir(options.output);
+    const videoPath = join(options.output, 'video.mp4'), bytes = 'SYNTHETIC new editor output';
+    await writeFile(videoPath, bytes);
+    return { videoPath, videoSha256: createHash('sha256').update(bytes).digest('hex'), planPath: join(options.output, 'plan.json'), caption: 'SYNTHETIC integrated caption', durationSeconds: 18 };
+  };
+  const options = { directory, model: 'fixture-model', quiet: true, editor: { format: 'meme' as const } };
+  const run = await runPipeline(options, config, services);
+  assert.equal(run.status, 'complete');
+  assert.equal(run.script, undefined);
+  assert.equal(run.editorialResult?.durationSeconds, 18);
+  assert.equal(calls.draft + calls.render, 0);
+  assert.equal(await readFile(join(directory, 'caption.txt'), 'utf8'), 'SYNTHETIC integrated caption\n');
+  await rm(join(directory, 'caption.txt'));
+  await runPipeline(options, config, services);
+  assert.equal(edits, 1);
+  assert.equal(calls.capture, 1);
+  assert.equal(await readFile(join(directory, 'caption.txt'), 'utf8'), 'SYNTHETIC integrated caption\n');
+});
+
+test('saved integrated format and review inputs cannot silently change on resume', async t => {
+  const { directory, config, services } = await fixture(t);
+  const feedbackPath = join(directory, '..', 'feedback.txt');
+  await writeFile(feedbackPath, 'SYNTHETIC observed feedback');
+  const options = { directory, model: 'fixture-model', quiet: true, editor: { format: 'meme' as const, feedbackPath } };
+  await runPipeline({ ...options, stage: 'capture' }, config, services);
+  await assert.rejects(runPipeline({ ...options, editor: { format: 'overview' } }, config, services), /configuration cannot change/);
+  await writeFile(feedbackPath, 'SYNTHETIC changed feedback');
+  await assert.rejects(runPipeline({ directory, model: 'fixture-model', quiet: true }, config, services), /editorial input changed/);
+});
+
+test('integrated revision failure preserves the original and resumes without recapture', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  await runPipeline({ directory, model: 'fixture-model', quiet: true, stage: 'capture' }, config, services);
+  const original = await readFile(join(directory, 'run.json'), 'utf8');
+  const revision = join(directory, 'revision');
+  const outputs: string[] = [];
+  services.editGameplay = async options => {
+    outputs.push(options.output);
+    await mkdir(options.output);
+    if (outputs.length === 1) { await writeFile(join(options.output, 'failed.json'), '{}'); throw new Error('SYNTHETIC editorial rejection'); }
+    const videoPath = join(options.output, 'video.mp4'), bytes = 'SYNTHETIC revised output';
+    await writeFile(videoPath, bytes);
+    return { videoPath, videoSha256: createHash('sha256').update(bytes).digest('hex'), planPath: join(options.output, 'plan.json'), caption: 'Revision', durationSeconds: 20 };
+  };
+  await assert.rejects(runPipeline({ directory: revision, fromRun: directory, model: 'fixture-model', quiet: true, editor: { format: 'meme' } }, config, services), /editorial rejection/);
+  const resumed = await runPipeline({ directory: revision, model: 'fixture-model', quiet: true }, config, services);
+  assert.equal(resumed.status, 'complete');
+  assert.notEqual(outputs[0], outputs[1]);
+  assert.equal(await readFile(join(outputs[0]!, 'failed.json'), 'utf8'), '{}');
+  assert.equal(await readFile(join(directory, 'run.json'), 'utf8'), original);
+  assert.equal(calls.capture, 1);
+  assert.equal(calls.analyze, 1);
+});
 
 test('SYNTHETIC core run resumes after analysis failure without rediscovery or recapture', async t => {
   const { directory, config, services, calls } = await fixture(t);

@@ -79,8 +79,8 @@ export function sourceWindowFilter(window: WindowMapping, crop?:StoryPlan['sourc
 }
 
 interface Loudness { input_i: string; input_tp: string; input_lra: string; input_thresh: string; target_offset: string; [key: string]: string }
-async function measureAudio(ffmpeg: string, path: string): Promise<Loudness> {
-  const result = await runProcess(ffmpeg, ['-hide_banner', '-nostdin', '-i', path, '-map', '0:a:0', '-af', 'loudnorm=I=-16:TP=-2:LRA=9:print_format=json', '-f', 'null', '-'], { timeoutMs: 180_000 });
+async function measureAudio(ffmpeg: string, path: string, signal?:AbortSignal): Promise<Loudness> {
+  const result = await runProcess(ffmpeg, ['-hide_banner', '-nostdin', '-i', path, '-map', '0:a:0', '-af', 'loudnorm=I=-16:TP=-2:LRA=9:print_format=json', '-f', 'null', '-'], { timeoutMs: 180_000,signal });
   const json = result.stderr.match(/\{\s*"input_i"[\s\S]*?\}/u)?.[0];
   if (!json) throw new Error('FFmpeg returned no audio loudness measurement');
   const measurement = JSON.parse(json) as Loudness;
@@ -92,7 +92,8 @@ function audioFilter(measured: Loudness, duration: number): string {
   return `[1:a]aresample=48000,aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-2:LRA=9:measured_I=${measured.input_i}:measured_TP=${measured.input_tp}:measured_LRA=${measured.input_lra}:measured_thresh=${measured.input_thresh}:offset=${measured.target_offset}:linear=true,alimiter=limit=0.794:level=false,apad,atrim=duration=${number(duration)},aresample=48000[audio]`;
 }
 
-export async function renderStory(options: { planPath: string; outputPath: string; tools?: MediaTools }): Promise<Record<string, unknown>> {
+export async function renderStory(options: { planPath: string; outputPath: string; tools?: MediaTools;signal?:AbortSignal }): Promise<Record<string, unknown>> {
+  const {signal}=options; signal?.throwIfAborted();
   const outputPath = resolve(options.outputPath), manifestPath = outputPath.replace(/\.mp4$/u, '.manifest.json');
   if (!outputPath.endsWith('.mp4')) throw new Error('Output must end in .mp4');
   await ensureNewOutput(outputPath);
@@ -101,13 +102,13 @@ export async function renderStory(options: { planPath: string; outputPath: strin
   const preflight = await preflightMediaTools(tools);
   const input = StoryPlanSchema.parse(JSON.parse(await readFile(options.planPath, 'utf8')));
   if (!isAbsolute(input.source.path) || !isAbsolute(input.narration.path)) throw new Error('Source and narration paths must be absolute local files');
-  const [source, narration] = await Promise.all([probeMedia(input.source.path, tools), probeMedia(input.narration.path, tools)]);
+  const [source, narration] = await Promise.all([probeMedia(input.source.path, tools,signal), probeMedia(input.narration.path, tools,signal)]);
   if (!source.video || !narration.audio) throw new Error('The source needs video and the narration needs audio');
   validateSourceCrop(input.source.crop,source.video.width,source.video.height);
   const { plan, timeline, duration, availableDuration } = validateStoryPlan(input, source.durationSeconds, narration.durationSeconds);
   const captions = makeStoryCaptions(plan, duration, tools.fontFamily);
   const ffmpeg = mediaExecutables(tools).ffmpeg;
-  const narrationLoudness = await measureAudio(ffmpeg, plan.narration.path);
+  const narrationLoudness = await measureAudio(ffmpeg, plan.narration.path,signal);
   await mkdir(dirname(outputPath), { recursive: true });
   const work = await mkdtemp(join(dirname(outputPath), '.story-render-'));
   try {
@@ -117,19 +118,19 @@ export async function renderStory(options: { planPath: string; outputPath: strin
     for (const [index, window] of timeline.entries()) {
       await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-ss', number(window.sourceStart), '-reinit_filter', '0', '-i', plan.source.path,
         '-filter_complex_threads', '1', '-filter_complex', sourceWindowFilter(window,plan.source.crop), '-map', '[video]', '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
-        '-pix_fmt', 'yuv420p', '-r', '30', '-fps_mode', 'cfr', '-t', number(window.outputEnd - window.outputStart), join(work, `window-${index}.mp4`)], { cwd: work, timeoutMs: 240_000 });
+        '-pix_fmt', 'yuv420p', '-r', '30', '-fps_mode', 'cfr', '-t', number(window.outputEnd - window.outputStart), join(work, `window-${index}.mp4`)], { cwd: work, timeoutMs: 240_000,signal });
     }
     await writeFile(join(work, 'windows.txt'), timeline.map((window, index) => `file 'window-${index}.mp4'\nduration ${number(window.outputEnd - window.outputStart)}`).join('\n'));
-    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-f', 'concat', '-safe', '1', '-i', 'windows.txt', '-c', 'copy', 'base.mp4'], { cwd: work, timeoutMs: 60_000 });
+    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-f', 'concat', '-safe', '1', '-i', 'windows.txt', '-c', 'copy', 'base.mp4'], { cwd: work, timeoutMs: 60_000,signal });
     const partial = join(work, 'render.mp4');
     const filter = `[0:v]subtitles=captions.ass:fontsdir=fonts,fade=t=out:st=${number(duration - 0.3)}:d=0.3,format=yuv420p[video];${audioFilter(narrationLoudness, duration)}`;
     await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-i', 'base.mp4', '-i', plan.narration.path,
       '-filter_complex_threads', '1', '-filter_complex', filter, '-map', '[video]', '-map', '[audio]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p',
-      '-r', '30', '-fps_mode', 'cfr', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-t', number(duration), '-movflags', '+faststart', partial], { cwd: work, timeoutMs: 480_000 });
-    const output = await validateVideo(partial, tools);
+      '-r', '30', '-fps_mode', 'cfr', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-t', number(duration), '-movflags', '+faststart', partial], { cwd: work, timeoutMs: 480_000,signal });
+    const output = await validateVideo(partial, tools,signal);
     if (output.video?.width !== WIDTH || output.video.height !== HEIGHT || output.video.frameRate !== 30 || output.video.codec !== 'h264' || output.video.pixelFormat !== 'yuv420p' || Math.abs(output.durationSeconds - duration) > 0.1) throw new Error('Rendered story failed video format or duration validation');
     if (output.audio?.codec !== 'aac' || output.audio.sampleRate !== 48000 || output.audio.channels !== 2) throw new Error('Rendered story failed audio format validation');
-    const outputLoudness = await measureAudio(ffmpeg, partial);
+    const outputLoudness = await measureAudio(ffmpeg, partial,signal);
     if (Number(outputLoudness.input_tp) > -1) throw new Error('Encoded narration exceeds the −1 dBTP true-peak limit');
     const manifest = { version: 1, renderer: 'story-background-experiment/1', createdAt: new Date().toISOString(), outputPath, planPath: resolve(options.planPath),
       plan, story: plan.story, primarySourcePermalink: plan.story.permalink ?? null, script: plan.narration.script,

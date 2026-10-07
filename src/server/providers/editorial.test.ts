@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { analyzeFootage, draftScript, mapWindowEvents, phraseCaptions, shortenScript, storyMode, transcriptWarnings, validateCuts } from './editorial.js';
+import { analyzeFootage, draftScript, mapWindowEvents, storyMode, transcriptWarnings, validateCuts } from './editorial.js';
 import { defaultContentBrief, type ContentAssessment } from '../../shared/content.js';
 import type { Capture } from '../../shared/domain.js';
 import type { GoogleServices } from './google.js';
@@ -21,16 +21,6 @@ test('dense timestamps map exactly once from window-relative to source time', ()
   const event = { startSeconds: 1, endSeconds: 4, event: 'jump', evidence: 'avatar rises', outcome: 'lands' };
   assert.deepEqual(mapWindowEvents([event], { startSeconds: 20, endSeconds: 26 }, 30), [{ ...event, startSeconds: 21, endSeconds: 24 }]);
   assert.throws(() => mapWindowEvents([{ ...event, startSeconds: 21, endSeconds: 24 }], { startSeconds: 20, endSeconds: 26 }, 30));
-});
-
-test('captions follow measured words and split on length, pauses and punctuation', () => {
-  const words = ['One', 'two', 'three', 'four', 'five', 'six', 'seven.'].map((text, index) => ({ text, startSeconds: index * 0.3, endSeconds: index * 0.3 + 0.2 }));
-  const captions = phraseCaptions(words, 3);
-  assert.deepEqual(captions.map(caption => caption.text), ['One two three four five six', 'seven.']);
-  assert.equal(captions[0]!.startSeconds, words[0]!.startSeconds);
-  assert.equal(captions.at(-1)!.endSeconds, words.at(-1)!.endSeconds);
-  assert.throws(() => phraseCaptions([{ text: 'bad', startSeconds: 1, endSeconds: 3 }], 2));
-  assert.throws(() => phraseCaptions([{ text: 'one', startSeconds: 0, endSeconds: 1 }, { text: 'two', startSeconds: 0.9, endSeconds: 2 }], 2));
 });
 
 test('transcript comparison ignores punctuation but flags changed negations and numbers', () => {
@@ -414,14 +404,9 @@ test('a 12-second recommendation uses its observed action without a minimum-dura
   await assert.rejects(draftScript({ capture: shortCapture, format: 'recommendation', topic: '' }, googleFixture([{ ...shortScript, narration: ' ' }])), /needs a spoken line/);
 });
 
-test('factual stories require actual source evidence and shortening preserves edit decisions', async () => {
+test('factual stories require actual source evidence', async () => {
   await assert.rejects(draftScript({ capture, format: 'story', topic: 'A factual story about a real event' }, googleFixture([])), /research snapshot/);
-  const shortened = await shortenScript(script, 6, googleFixture([{ narration: 'The explorer found home.' }]));
-  assert.deepEqual(shortened.cuts, script.cuts);
-  assert.equal(shortened.caption, script.caption);
-  await assert.rejects(shortenScript(script, 6, googleFixture([{ narration: script.narration }])), /still too long/);
 });
-
 
 test('visual review can correct a hook and placement but cannot approve unsupported footage', async () => {
   const corrected = { ...review, hook: 'which platform would you pick?', position: 'lower', reason: 'Upper overlay would cover the target; lower scenery is clear.' };

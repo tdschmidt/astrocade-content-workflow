@@ -11,10 +11,11 @@ import { canonicalSpeechTokens, speechTranscriptWarnings } from './speech-valida
 import { z } from 'zod';
 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
-export interface NarrationOptions { audioPath?: string; audioLabel?: string; transcriptPath?: string; tempo?: number; allowZeroLengthWords?:boolean }
+export interface NarrationOptions { audioPath?: string; audioLabel?: string; transcriptPath?: string; tempo?: number; allowZeroLengthWords?:boolean; signal?:AbortSignal }
 const SavedTranscript = z.object({provider:z.string().min(1),audioSha256:z.string().regex(/^[a-f0-9]{64}$/u),text:z.string(),words:z.array(z.object({text:z.string(),startSeconds:z.number(),endSeconds:z.number()})).min(1)}).passthrough();
 
 export async function narrate(draftPath: string, output: string, options: NarrationOptions = {}) {
+  options.signal?.throwIfAborted();
   const tempo = options.tempo ?? 1;
   if (!Number.isFinite(tempo) || tempo < 0.8 || tempo > 1.3) throw new Error('Narration tempo must be between 0.8 and 1.3');
   const raw = await readFile(draftPath, 'utf8'), draft = JSON.parse(raw);
@@ -54,19 +55,19 @@ export async function narrate(draftPath: string, output: string, options: Narrat
         model: settings.speechModel, store: false, stream: false,
         input: [{ type: 'user_input', content: [{ type: 'text', text: draft.narration, annotations: [{ type: 'speech_metadata', style: 'Conversational short story. Clear and engaged, brisk but easy to follow. Read exactly these words, with a small pause before the last sentence. Do not read extra headings or directions.' }] }] }],
         response_format: { type: 'audio' }, generation_config: { speech_config: [{ voice: settings.voice }] },
-      }, { signal: AbortSignal.timeout(120000), timeout_ms: 90000, retries: { strategy: 'none' } });
+      }, { signal: options.signal ? AbortSignal.any([options.signal,AbortSignal.timeout(120000)]) : AbortSignal.timeout(120000), timeout_ms: 90000, retries: { strategy: 'none' } });
       if (speech.status !== 'completed' || !speech.output_audio?.data) throw new Error('Speech generation did not produce complete audio');
       const bytes = Buffer.from(speech.output_audio.data, 'base64');
       if (bytes.subarray(0, 4).toString() !== 'RIFF' || bytes.subarray(8, 12).toString() !== 'WAVE') throw new Error('Speech response is not WAV');
       await writeFile(inputAudioPath, bytes, { flag: 'wx' });
       event({ stage: 'speech', model: settings.speechModel, status: 'completed', durationMs: Date.now() - started, sha256: hash(bytes) });
     }
-    const inputInfo = await probeMedia(inputAudioPath, cfg.mediaTools);
+    const inputInfo = await probeMedia(inputAudioPath, cfg.mediaTools,options.signal);
     if (!inputInfo.audio) throw new Error('Narration input has no audio stream');
     event({ stage: 'tempo', status: 'started', multiplier: tempo, inputDurationSeconds: inputInfo.durationSeconds });
     if (tempo === 1) await writeFile(audioPath, await readFile(inputAudioPath), { flag: 'wx' });
-    else await runProcess(mediaExecutables(cfg.mediaTools).ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-i', inputAudioPath, '-map', '0:a:0', '-af', `atempo=${tempo}`, '-c:a', 'pcm_s16le', audioPath], { timeoutMs: 120_000 });
-    const info = await probeMedia(audioPath, cfg.mediaTools);
+    else await runProcess(mediaExecutables(cfg.mediaTools).ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-i', inputAudioPath, '-map', '0:a:0', '-af', `atempo=${tempo}`, '-c:a', 'pcm_s16le', audioPath], { timeoutMs: 120_000,signal:options.signal });
+    const info = await probeMedia(audioPath, cfg.mediaTools,options.signal);
     if (!info.audio || info.durationSeconds < 5 || info.durationSeconds > 90) throw new Error('Speech must contain audio and last 5–90 seconds');
     const audioSha256 = hash(await readFile(audioPath));
     event({ stage: 'tempo', status: 'completed', multiplier: tempo, durationSeconds: info.durationSeconds, audioSha256 });
@@ -75,7 +76,7 @@ export async function narrate(draftPath: string, output: string, options: Narrat
     // regenerate speech to evade a transcript mismatch.
     const savedTranscript = options.transcriptPath ? SavedTranscript.parse(JSON.parse(await readFile(resolve(options.transcriptPath),'utf8'))) : undefined;
     if (savedTranscript && savedTranscript.audioSha256 !== audioSha256) throw new Error('Saved transcript does not match the final audio waveform');
-    const transcript = savedTranscript ?? await new GoogleServices(settings, event).transcribe(audioPath);
+    const transcript = savedTranscript ?? await new GoogleServices(settings, event).transcribe(audioPath,options.signal);
     const alignmentProvider = savedTranscript?.provider ?? settings.transcriptionModel;
     if(savedTranscript)event({stage:'transcription-reuse',status:'completed',provider:alignmentProvider,audioSha256,sourcePath:resolve(options.transcriptPath!)});
     await writeFile(resolve(output, 'transcript-1.json'), JSON.stringify(transcript, null, 2));

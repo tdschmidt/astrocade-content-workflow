@@ -8,7 +8,6 @@ if (existsSync('.env')) loadEnvFile('.env');
 
 export const settingsSchema = z.object({
   geminiApiKey: z.string().max(500).default(''),
-  tavilyApiKey: z.string().max(500).default(''),
   reasoningModel: z.string().default('gemini-3.8-flash'),
   speechModel: z.string().default('gemini-3.8-flash-lite-tts'),
   transcriptionModel: z.string().default('gemini-3.5-transcribe'),
@@ -38,7 +37,6 @@ export class Configuration {
     const value = this.store.read();
     const overrides = {
       geminiApiKey: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY,
-      tavilyApiKey: process.env.TAVILY_API_KEY,
     };
     for (const [key, entry] of Object.entries(overrides)) if (entry?.trim()) Reflect.set(value, key, entry);
     return settingsSchema.parse(value);
