@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { analyzeFootage, draftScript, mapWindowEvents, phraseCaptions, shortenScript, storyMode, transcriptWarnings, validateCuts } from './editorial.js';
-import type { ContentAssessment } from '../../shared/content.js';
+import { defaultContentBrief, type ContentAssessment } from '../../shared/content.js';
 import type { Capture } from '../../shared/domain.js';
 import type { GoogleServices } from './google.js';
 
@@ -293,6 +293,42 @@ test('visual review can correct a hook and placement but cannot approve unsuppor
   await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), { ...review, caption: 'Visit https:\/\/unrelated.example' }])), /external link/);
   const tiny = { ...capture, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, endSeconds: 2 }] } };
   await assert.rejects(draftScript({ capture: tiny, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), review])), /too short to read/);
+});
+
+test('conversational hooks retain their wording with measured reading time and an unobscured payoff', async () => {
+  for (const hook of [
+    "i cannot let this be the thing i'm bad at",
+    'this tiny little platform is the hill i will die on',
+  ]) {
+    const choice = choiceFor([0]);
+    choice.alternatives[0]!.hook = hook;
+    const result = await draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([choice, { ...review, hook }]));
+    assert.equal(result.hook, hook, 'longer conversational wording must not be truncated to eight words');
+    assert.equal(result.editorial!.alternatives[0]!.hook, hook, 'saved concepts use the same readable text budget as the reviewed hook');
+    assert.equal(result.overlays![0]!.endSeconds, hook.split(/\s+/).length / 3);
+    const tooShort = { ...capture, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, endSeconds: 4 }] } };
+    await assert.rejects(draftScript({ capture: tooShort, format: 'highlight', topic: '' }, googleFixture([choice, { ...review, hook }])), /too short to read/, 'longer copy cannot consume the payoff or cause duration padding');
+  }
+  const overBudget = 'one two three four five six seven eight nine ten eleven twelve thirteen';
+  await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), { ...review, hook: overBudget }])), /hook is too long/);
+  const tooManyLines = 'the fact that someone actually sat down and made this playable';
+  await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), { ...review, hook: tooManyLines }])), /three short lines/, 'word and character ceilings never override the actual renderer width budget');
+});
+
+test('visual review receives the writing brief and alternative premises before choosing final copy', async () => {
+  const choice = choiceFor([0]);
+  const brief = { ...defaultContentBrief, voice: 'Dry group-chat reactions to suspiciously small platforms.' };
+  const alternate = choice.alternatives[2]!;
+  const provider = googleFixture([choice, { ...review, hook: alternate.hook, caption: alternate.caption, reason: 'The gap is already crossed too soon for a choice; its comic personification is supported.' }]);
+  const json = provider.json.bind(provider);
+  const prompts: string[] = [];
+  provider.json = async (prompt, ...args) => { prompts.push(prompt); return json(prompt, ...args); };
+  const result = await draftScript({ capture, format: 'highlight', topic: '', brief }, provider);
+  assert.ok(prompts[1]!.includes(brief.voice), 'the visual critic needs the same requested voice as the writer');
+  assert.ok(prompts[1]!.includes(JSON.stringify(alternate)), 'a rejected premise can be replaced by a previously considered, evidence-backed alternative');
+  assert.equal(result.hook, alternate.hook);
+  assert.equal(result.editorial!.selectedIndex, choice.selectedIndex, 'initial selection remains traceable even when visual review changes the hook');
+  assert.match(result.editorial!.review, /comic personification/);
 });
 
 test('visual review maps caption anchors through the game crop instead of the browser viewport', async () => {

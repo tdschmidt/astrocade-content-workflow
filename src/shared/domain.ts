@@ -16,7 +16,7 @@ export const subtitleSchema = cutSchema.extend({ text: z.string() });
 export const overlaySchema = subtitleSchema.extend({ position: z.enum(['upper', 'lower']) });
 export const hookConceptSchema = z.object({
   angle: contentAssessmentSchema.shape.angle,
-  hook: z.string().min(1).max(60), caption: z.string().min(1).max(180),
+  hook: z.string().min(1).max(84), caption: z.string().min(1).max(180),
   evidence: z.string().min(1).max(600), tradeoff: z.string().min(1).max(400),
 });
 export const scriptSchema = z.object({
