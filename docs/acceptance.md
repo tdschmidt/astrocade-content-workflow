@@ -24,6 +24,23 @@ Updated 2026-10-06 (America/Los_Angeles). Scope: [PLAN.md](../PLAN.md), branch `
 - Rejected candidates are retained: Manu's ball leaves the frame with no basket/score (zero score also visually checked); Bladefish swims without a clear hit/score. Learning controls and recording movement do not establish a useful payoff.
 - Separate learned-control diagnostic: `data/evidence/shuriken-learned/{highlight.mp4,proof.json,qa.json}` records two fresh captures (5.732s/5.557s) replaying the same learned profile. One showed 0→28 XP and a shield; the other stayed at 0 XP under different spawns. A 4.0s portrait short was rendered, but this is independent of the main CLI run. QA flags unsupported level/color wording in the raw model analysis; the output hook/caption omit those claims. Repeatable inputs do not guarantee the same reward.
 
+## Codex account inference (2026-10-06)
+
+`npm run pipeline -- --provider codex --candidates 1` completed a fresh live run at `data/runs/2026-10-07T05-25-56-881Z-2f6231` in about 66 seconds. CLI authentication was verified as ChatGPT; API-key overrides were removed and ChatGPT login enforced. No billing settings or credit purchases were changed.
+
+- Discovery returned 30 candidates; `gpt-5.6-sol` nominated Crowd Pier Run automatically. This game used the previously verified native-input profile.
+- A new 12.78-second recording was captured. Codex analyzed timestamped frames at 8 FPS and selected the +10 gate, where the crowd visibly goes from 10 to 20.
+- `highlight-d9565e15.mp4` is a 3.23-second 1080×1920 H.264/30 fps silent short. Hook: “Take +10 and double the crowd.” Source frames at 5.0/5.4s verify the before/after counts and +10 animation; the final render preserves the HUD and fits its text.
+- Selection, footage analysis and edit selection took 5.35s, 22.54s and 9.45s. Reported input/output token totals were 10,695/122, 128,415/506 and 9,026/69 respectively. These are usage observations, not dollar charges or a promised allowance.
+- Completed resume validated/reused the output in 0.81s with no model or capture calls. Run evidence records `codex/gpt-5.6-sol` for the analysis and edit.
+- A separate screenshot test correctly transcribed visible Shuriken HUD text. The actual controls learner then produced a valid bounded WASD plan from the saved before/after inspection, with uncertainty about randomized targets; it took 13.329s (11,814 input/441 output tokens). The endpoint initially rejected Zod’s `oneOf` for tagged actions; converting tagged unions to supported `anyOf` fixed the real request while preserving local Zod checks. Model-name probing rejected `gpt-6-sol`; the CLI default and explicit `gpt-5.6-sol` succeeded. Model availability must be tested on the recipient's account.
+
+The resulting Codex-learned Shuriken profile was replayed in **one fresh 16.144-second VP9 capture** with 12 native actions and `actions_complete`. Sampled frames at 1/8/15s show active movement and top XP readings of 6/12/22. The profile remains unverified (one diagnostic attempt); leaderboard score is a separate quantity, and no win or level increase is claimed. Evidence: `data/evidence/codex-provider/learning/{learning.json,capture.webm,capture.json,capture-qa.json}`. No model calls were made during this capture.
+
+Final typecheck and the default suite plus real FFmpeg frame tests passed: **81 passed, zero failures, nine opt-in browser/render tests skipped**. The earlier full browser/render suite passed on this branch; this change additionally passed fresh live capture/render, exact frame-time tests, account-auth refusal tests and independent code review. [GitHub CI for implementation commit `4d1aa5f`](https://github.com/tdschmidt/astrocade-content-workflow/actions/runs/37576892955) passed.
+
+Original recordings, generated decisions, provider timings/token counts and QA images remain under ignored `data/`. No Gemini inference was used for this fresh run. Account creation and publishing remain manual.
+
 ## Changes driven by measured failures
 
 - Loading overlays intercepted Start; bounded actionability checks and displayed frame geometry fixed repeated capture and HUD cropping.

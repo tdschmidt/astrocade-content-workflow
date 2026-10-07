@@ -13,7 +13,7 @@ export async function doctor(config: Configuration): Promise<{ checks: Readiness
     const media = await preflightMediaTools(config.mediaTools);
     checks.push({ name: 'Video rendering', status: 'ready', message: `${media.ffmpegVersion}. Caption font and libass available.` });
   } catch (error) { checks.push({ name: 'Video rendering', status: 'failed', message: error instanceof Error ? error.message : 'FFmpeg preflight failed.' }); }
-  checks.push({ name: 'Gemini', status: settings.geminiApiKey ? 'ready' : 'missing', message: settings.geminiApiKey ? 'Key configured. Model access and quota are checked when used.' : 'Set GEMINI_API_KEY in .env. Required for selection, control learning, analysis, and editing.' });
+  checks.push({ name: 'Gemini', status: settings.geminiApiKey ? 'ready' : 'missing', message: settings.geminiApiKey ? 'Key configured. Model access and quota are checked when used.' : 'Set GEMINI_API_KEY for --provider gemini, or use --provider codex after signing in with codex login.' });
   return { checks };
 }
 
