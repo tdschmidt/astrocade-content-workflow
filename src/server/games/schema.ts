@@ -28,7 +28,7 @@ export const gameCandidateSchema = z.object({
 export type GameCandidate = z.infer<typeof gameCandidateSchema>;
 
 const pointSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) });
-const keySchema = z.string().regex(/^(Arrow(Up|Down|Left|Right)|Space|Enter|Escape|Tab|Backspace|Key[A-Z]|Digit[0-9])$/);
+export const keySchema = z.string().regex(/^(Arrow(Up|Down|Left|Right)|Space|Enter|Escape|Tab|Backspace|Key[A-Z]|Digit[0-9])$/);
 
 export const inputActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('key'), key: keySchema, durationMs: z.number().int().min(20).max(2000) }),
@@ -68,7 +68,12 @@ export const gameProfileSchema = z.object({
   maxDurationMs: z.number().int().min(1000).max(120000).default(60000),
   controller: z.discriminatedUnion('type', [
     z.object({ type: z.literal('timed'), actions: z.array(inputActionSchema).min(1).max(60), repetitions: z.number().int().min(1).max(20).default(1) }),
-    z.object({ type: z.literal('sparse'), maxDecisions: z.number().int().min(1).max(20).default(6) }),
+    z.object({
+      type: z.literal('sparse'), maxDecisions: z.number().int().min(1).max(20).default(6),
+      instructions: z.string().max(3000).default(''),
+      allowedKeys: z.array(keySchema).max(20).default([]),
+      allowPointer: z.boolean().default(false),
+    }),
   ]),
 });
 export type GameProfile = z.infer<typeof gameProfileSchema>;
