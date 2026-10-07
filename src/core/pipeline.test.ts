@@ -8,7 +8,13 @@ import { Configuration } from '../server/config.js';
 import { NeedsAttention } from '../server/jobs.js';
 import { verifiedProfiles } from '../server/games/profiles.js';
 import type { GameCandidate } from '../server/games/schema.js';
+import { defaultContentBrief, type ContentAssessment } from '../shared/content.js';
 import { runPipeline, type CoreServices } from './pipeline.js';
+
+const content: ContentAssessment = {
+  angle: 'prediction', clarity: 3, participation: 2, payoff: 3, readability: 3, distinctiveness: 1,
+  evidence: 'SYNTHETIC route choice and readable consequence.', textPlacement: 'upper', placementReason: 'SYNTHETIC lower route labels must stay visible.',
+};
 
 async function fixture(t: TestContext) {
   const directory = await mkdtemp(join(tmpdir(), 'core-workflow-fixture-'));
@@ -20,7 +26,7 @@ async function fixture(t: TestContext) {
   const calls = { discover: 0, inspect: 0, capture: 0, analyze: 0, draft: 0, render: 0, validate: 0 };
   const services: Partial<CoreServices> = {
     discoverGames: async () => { calls.discover++; return { status: 'ok', observedAt: new Date().toISOString(), candidates: [candidate], sources: [] }; },
-    nominateGames: async () => [{ gameId: candidate.id, hypothesis: 'Fixture hypothesis.', viewerQuestion: 'Fixture question?', controlRisk: 'Fixture only.' }],
+    nominateGames: async () => [{ gameId: candidate.id, hypothesis: 'Fixture hypothesis.', viewerQuestion: 'Fixture question?', controlRisk: 'Fixture only.', angle: 'prediction', captureGoal: 'SYNTHETIC meaningful route choice.', rejectIf: 'SYNTHETIC route labels are unreadable.' }],
     inspectGame: async (_game, outputDir) => {
       calls.inspect++;
       return { gameUrl: candidate.url, observedAt: new Date().toISOString(), outputDir, imagePath: join(outputDir, 'inspection.png'), beforeImagePath: join(outputDir, 'inspection-before.png'), text: 'SYNTHETIC controls', surface: preset.surface, ready: preset.ready, startTargets: [], viewport: preset.viewport, setup: preset.setup };
@@ -30,7 +36,7 @@ async function fixture(t: TestContext) {
       const now = new Date().toISOString();
       return { attemptId: 'fixture', gameUrl: candidate.url, profileId: preset.id, profileVerification: 'verified', artifact: { path: options.outputPath, durationSeconds: 8, width: 720, height: 1280, codec: 'vp9' }, surfaceBounds: { x: 0, y: 0, width: 720, height: 1280 }, actionsExecuted: 7, decisions: [], stopReason: 'actions_complete', startedAt: now, finishedAt: now };
     },
-    analyzeFootage: async () => { calls.analyze++; return { usable: true, reason: 'Fixture visible consequence.', mechanic: 'Fixture', visualScore: 4, events: [{ startSeconds: 1, endSeconds: 7, event: 'Fixture action', evidence: 'SYNTHETIC evidence', outcome: 'Fixture result' }] }; },
+    analyzeFootage: async () => { calls.analyze++; return { usable: true, reason: 'Fixture visible consequence.', mechanic: 'Fixture', visualScore: 4, content, events: [{ startSeconds: 1, endSeconds: 7, event: 'Fixture action', evidence: 'SYNTHETIC evidence', outcome: 'Fixture result' }] }; },
     draftScript: async () => { calls.draft++; return { hook: 'Fixture hook', narration: '', caption: 'SYNTHETIC test caption', rationale: 'Fixture edit decision.', cuts: [{ startSeconds: 1, endSeconds: 7 }] }; },
     renderPortrait: async options => { calls.render++; await writeFile(options.outputPath, 'SYNTHETIC final, not actual video'); return { path: options.outputPath, durationSeconds: 6, width: 1080, height: 1920, hasAudio: false }; },
     validateVideo: async () => { calls.validate++; return { durationSeconds: 6, sizeBytes: 32, video: { width: 1080, height: 1920, codec: 'h264', frameRate: 30 } }; },
@@ -132,6 +138,11 @@ test('a saved script freezes candidate work when resuming a failed render', asyn
   };
   const options = { directory, model: 'fixture-model', quiet: true };
   await assert.rejects(runPipeline(options, config, services), /Render interrupted/);
+  // A legacy edit must still render even though its analysis predates the rubric.
+  const legacy = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
+  delete legacy.attempts[0].capture.analysis.content;
+  delete legacy.contentBrief;
+  await writeFile(join(directory, 'run.json'), JSON.stringify(legacy));
   const noKey: Configuration = Object.assign(Object.create(config), { get: () => ({ ...config.get(), geminiApiKey: '' }) });
   const resumed = await runPipeline(options, noKey, services);
   assert.equal(resumed.status, 'complete');
@@ -257,4 +268,115 @@ test('an explicit Astrocade URL is inspected directly without inventing catalog 
   assert.equal(run.candidates[0]!.url, game);
   assert.equal(run.candidates[0]!.titleSource, 'url_slug');
   assert.deepEqual(run.candidates[0]!.observations, []);
+});
+
+test('a saved brief is reused by nomination and editing, and a changed resume brief preserves prior provenance', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const brief = { ...defaultContentBrief, audience: 'SYNTHETIC viewers who choose the route.' };
+  const nominate = services.nominateGames!, draft = services.draftScript!;
+  let nominations = 0;
+  services.nominateGames = async (...args) => {
+    nominations++;
+    assert.deepEqual(args[6], brief);
+    return nominate(...args);
+  };
+  services.draftScript = async (...args) => {
+    assert.deepEqual(args[0].brief, brief);
+    return draft(...args);
+  };
+  const options = { directory, model: 'fixture-model', quiet: true };
+  const discovered = await runPipeline({ ...options, stage: 'discover', contentBrief: brief }, config, services);
+  assert.deepEqual(discovered.contentBrief, brief);
+  assert.deepEqual(JSON.parse(await readFile(join(directory, 'content-brief.json'), 'utf8')), brief);
+  const completed = await runPipeline(options, config, services);
+  assert.equal(completed.status, 'complete');
+  assert.deepEqual(completed.contentBrief, brief);
+  const manifest = await readFile(join(directory, 'run.json'), 'utf8');
+  await assert.rejects(runPipeline({ ...options, contentBrief: { ...brief, voice: 'A different voice.' } }, config, services), /saved editorial brief cannot be changed/);
+  assert.equal(await readFile(join(directory, 'run.json'), 'utf8'), manifest);
+  const resumed = await runPipeline({ ...options, contentBrief: brief }, config, services);
+  assert.equal(resumed.status, 'complete');
+  assert.equal(nominations, 1);
+  assert.equal(calls.analyze, 1);
+  assert.equal(calls.draft, 1);
+});
+
+test('content gates reject beautiful unreadable footage and rank the remaining games by editorial evidence', async t => {
+  const { directory, config, services, candidate } = await fixture(t);
+  const discover = services.discoverGames!, analyze = services.analyzeFootage!;
+  services.discoverGames = async (...args) => ({ ...await discover(...args), candidates: [candidate, { ...candidate, id: 'unreadable' }, { ...candidate, id: 'clear-choice' }] });
+  services.nominateGames = async () => ['fixture', 'unreadable', 'clear-choice'].map(gameId => ({ gameId, hypothesis: 'Fixture', viewerQuestion: 'Fixture?', controlRisk: 'Fixture' }));
+  services.analyzeFootage = async (...args) => {
+    const analysis = await analyze(...args);
+    if (args[0].game.id === 'unreadable') return { ...analysis, visualScore: 5, content: { ...content, participation: 3, distinctiveness: 3, readability: 0 } };
+    if (args[0].game.id === 'clear-choice') return { ...analysis, visualScore: 1, content: { ...content, participation: 3, distinctiveness: 3 } };
+    return analysis;
+  };
+  const run = await runPipeline({ directory, model: 'fixture-model', quiet: true }, config, services);
+  assert.equal(run.selectedGameId, 'clear-choice');
+  assert.match(await readFile(join(directory, 'report.md'), 'utf8'), /rejected by clarity\/payoff\/readability gate/);
+  const trace = (await readFile(join(directory, 'trace.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  const selection = trace.find(event => event.stage === 'select');
+  assert.deepEqual(selection.data.map((entry: { score: number }) => entry.score), [30, 26]);
+});
+
+test('an unfinished legacy analysis is refreshed once, while a finished legacy video is reused without inference', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const options = { directory, model: 'fixture-model', quiet: true };
+  await runPipeline({ ...options, stage: 'capture' }, config, services);
+  const legacy = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
+  legacy.attempts[0].capture.analysis = { usable: true, reason: 'Legacy analysis', mechanic: 'Legacy', visualScore: 5, events: [{ startSeconds: 1, endSeconds: 7, event: 'Legacy', evidence: 'Legacy evidence', outcome: 'Legacy result' }] };
+  delete legacy.contentBrief;
+  await writeFile(join(directory, 'run.json'), JSON.stringify(legacy));
+  const edited = await runPipeline({ ...options, stage: 'edit' }, config, services);
+  assert.deepEqual(edited.contentBrief, defaultContentBrief);
+  assert.equal(calls.analyze, 1);
+  assert.equal(calls.capture, 1);
+  const completedLegacy = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
+  delete completedLegacy.attempts[0].capture.analysis.content;
+  delete completedLegacy.contentBrief;
+  await writeFile(join(directory, 'run.json'), JSON.stringify(completedLegacy));
+  await runPipeline(options, config, services);
+  assert.equal(calls.analyze, 1);
+  assert.equal(calls.draft, 1);
+  assert.equal(calls.render, 1);
+  assert.equal(calls.validate, 1);
+});
+
+test('new unassessed footage cannot bypass the content gates', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const analyze = services.analyzeFootage!;
+  services.analyzeFootage = async (...args) => {
+    const { content: _missing, ...legacy } = await analyze(...args);
+    return legacy;
+  };
+  await assert.rejects(runPipeline({ directory, model: 'fixture-model', quiet: true }, config, services), /No recording contains a supported short-form moment/);
+  assert.equal(calls.draft, 0);
+  assert.equal(calls.render, 0);
+});
+
+test('scheduled overlays reach the renderer and the report retains editorial alternatives and duration reasoning', async t => {
+  const { directory, config, services } = await fixture(t);
+  const draft = services.draftScript!, render = services.renderPortrait!;
+  const overlays = [{ startSeconds: 0, endSeconds: 2.5, text: 'Which route would you pick?', position: 'upper' as const }];
+  services.draftScript = async (...args) => ({
+    ...await draft(...args), overlays,
+    editorial: {
+      alternatives: ['Which route?', 'That looked safe', 'Watch the gate'].map(hook => ({ angle: 'prediction' as const, hook, caption: 'SYNTHETIC caption', evidence: 'SYNTHETIC route decision.', tradeoff: 'SYNTHETIC tradeoff between choice and surprise.' })),
+      selectedIndex: 0, durationReason: 'SYNTHETIC six seconds preserve approach and result.', review: 'SYNTHETIC labels remain readable.',
+    },
+  });
+  services.renderPortrait = async options => {
+    assert.deepEqual(options.overlays, overlays);
+    return render(options);
+  };
+  const run = await runPipeline({ directory, model: 'fixture-model', quiet: true }, config, services);
+  assert.deepEqual(run.script!.overlays, overlays);
+  const report = await readFile(join(directory, 'report.md'), 'utf8');
+  assert.match(report, /Capture goal: SYNTHETIC meaningful route choice/);
+  assert.match(report, /Reject if: SYNTHETIC route labels/);
+  assert.match(report, /\*\*Selected:\*\* Which route/);
+  assert.match(report, /SYNTHETIC six seconds preserve approach and result/);
+  assert.match(report, /SYNTHETIC labels remain readable/);
+  assert.match(report, /SYNTHETIC tradeoff between choice and surprise/);
 });

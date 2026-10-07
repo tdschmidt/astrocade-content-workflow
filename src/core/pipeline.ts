@@ -2,7 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
-import { captureSchema, scriptSchema, type Capture, type FootageAnalysis } from '../shared/domain.js';
+import { analysisSchema, captureSchema, scriptSchema, type Capture, type FootageAnalysis } from '../shared/domain.js';
+import { contentBriefSchema, contentScore, defaultContentBrief, type ContentBrief } from '../shared/content.js';
 import type { Configuration } from '../server/config.js';
 import { NeedsAttention } from '../server/jobs.js';
 import { canonicalGameUrl, discoverGames } from '../server/games/discovery.js';
@@ -33,6 +34,7 @@ export const coreRunSchema = z.object({
   version: z.literal(1), id: z.string(), createdAt: z.string(), model: z.string(), provider: z.enum(['gemini', 'codex']).default('gemini'),
   status: z.enum(['running', 'paused', 'failed', 'complete']),
   playMode: z.enum(['timed', 'feedback']).default('timed'),
+  contentBrief: contentBriefSchema.default(defaultContentBrief),
   candidates: z.array(gameCandidateSchema).default([]),
   shortlist: z.array(nominationSchema).default([]), attempts: z.array(attemptSchema).default([]),
   selectedGameId: z.string().optional(), script: scriptSchema.optional(),
@@ -71,12 +73,16 @@ async function report(directory: string, run: CoreRun) {
   const lines = [
     '# Astrocade run', '', `Status: **${run.status}** · Current provider/model: \`${run.provider}/${run.model}\` · Started: ${run.createdAt}`, '',
     'This is an evidence trace: observable inputs, actions, results, and concise decision summaries. It does not contain private internal model reasoning.', '',
-    '- [Full event trace](trace.jsonl)', '- [Run data](run.json)', '- [Discovery evidence](discovery.json)', '', '## Candidate decisions', '',
+    '- [Full event trace](trace.jsonl)', '- [Run data](run.json)', '- [Editorial brief](content-brief.json)', '- [Discovery evidence](discovery.json)', '', '## Candidate decisions', '',
+    'Content scores are editorial heuristics out of 30, not probabilities of audience performance. Zero clarity, payoff, or readability rejects a candidate regardless of visual appeal.', '',
   ];
   for (const choice of run.shortlist) {
     const game = run.candidates.find(candidate => candidate.id === choice.gameId)!;
     const attempt = run.attempts.find(item => item.gameId === choice.gameId);
     lines.push(`### ${game.title}`, '', `[Game](${game.url})`, '', `Hypothesis: ${choice.hypothesis}`, '', `Viewer question: ${choice.viewerQuestion}`, '', `Control risk: ${choice.controlRisk}`, '');
+    if (choice.angle) lines.push(`Proposed angle: ${choice.angle}`, '');
+    if (choice.captureGoal) lines.push(`Capture goal: ${choice.captureGoal}`, '');
+    if (choice.rejectIf) lines.push(`Reject if: ${choice.rejectIf}`, '');
     if (attempt?.inspectionPath) lines.push(`[Inspection](${link(attempt.inspectionPath)})`, '');
     if (attempt?.feedbackPath) lines.push(`[Gameplay feedback and screenshots](${link(attempt.feedbackPath)})`, '');
     if (attempt?.controllerError) lines.push(`Controller stopped early: ${attempt.controllerError}. Partial footage is preserved.`, '');
@@ -85,23 +91,40 @@ async function report(directory: string, run: CoreRun) {
     if (attempt?.capture) {
       lines.push('', `[Source recording](${link(attempt.capture.path)}) (${attempt.capture.durationSeconds.toFixed(2)} seconds)`, '');
       if (attempt.capture.analysis) lines.push(`Observed (${attempt.analysisProvider ?? 'gemini'}/${attempt.analysisModel}): ${attempt.capture.analysis.reason}`, '', ...attempt.capture.analysis.events.map(event => `- ${event.startSeconds.toFixed(2)}–${event.endSeconds.toFixed(2)}s: ${event.event}. Evidence: ${event.evidence}. Result: ${event.outcome}.`), '');
+      const content = attempt.capture.analysis?.content;
+      if (content) {
+        const score = contentScore(content);
+        lines.push(`Content: ${score < 0 ? 'rejected by clarity/payoff/readability gate' : `${score}/30`} · Angle: ${content.angle}`, '',
+          `Clarity ${content.clarity}/3 · Participation ${content.participation}/3 · Payoff ${content.payoff}/3 · Readability ${content.readability}/3 · Distinctiveness ${content.distinctiveness}/3`, '',
+          `Evidence: ${content.evidence}`, '', `Text placement: ${content.textPlacement}. ${content.placementReason}`, '');
+      }
     }
     if (attempt?.error) lines.push(`Attempt stopped: ${attempt.error}`, '');
   }
   if (run.script) lines.push('## Edit', '', `Provider/model: ${run.scriptProvider ?? 'gemini'}/${run.scriptModel}`, '', `Hook: ${run.script.hook}`, '', `Decision: ${run.script.rationale}`, '', `Cuts: ${run.script.cuts.map(cut => `${cut.startSeconds}–${cut.endSeconds}s`).join(', ')}`, '', 'Caption:', '', run.script.caption, '');
+  if (run.script?.editorial) {
+    const editorial = run.script.editorial;
+    lines.push('### Editorial alternatives', '');
+    editorial.alternatives.forEach((concept, index) => lines.push(
+      `${index + 1}. ${index === editorial.selectedIndex ? '**Selected:** ' : ''}${concept.hook} (${concept.angle})`, '',
+      `Evidence: ${concept.evidence}`, '', `Tradeoff: ${concept.tradeoff}`, '',
+    ));
+    lines.push(`Duration: ${editorial.durationReason}`, '', `Review: ${editorial.review}`, '');
+  }
   if (run.videoPath) lines.push(`[Play final video](${link(run.videoPath)})`, '', 'Publishing is manual. Review the video and caption before posting.', '');
   if (run.error) lines.push('## Stopped', '', run.error, '', `Resume: npm run pipeline -- --resume ${directory}`, '');
   await writeFile(join(directory, 'report.md'), lines.join('\n'), { mode: 0o600 });
 }
 
 export async function runPipeline(options: {
-  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; playMode?: 'timed' | 'feedback'; signal?: AbortSignal; quiet?: boolean;
+  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; playMode?: 'timed' | 'feedback'; contentBrief?: ContentBrief; signal?: AbortSignal; quiet?: boolean;
 }, config: Configuration, overrides: Partial<CoreServices> = {}): Promise<CoreRun> {
   const directory = resolve(options.directory);
   const services = { ...defaults, ...overrides };
   const stage = options.stage ?? 'all';
   const limit = options.shortlistSize ?? 3;
   const providerName = options.provider ?? 'gemini';
+  const requestedBrief = options.contentBrief ? contentBriefSchema.parse(options.contentBrief) : undefined;
   if (!Number.isInteger(limit) || limit < 1 || limit > 5) throw new Error('Shortlist size must be 1–5.');
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const release = await lockRun(directory);
@@ -109,10 +132,13 @@ export async function runPipeline(options: {
   const settings = { ...config.get(), reasoningModel: options.model };
   let store: JsonStore<CoreRun> | undefined;
   try {
-    store = await JsonStore.open(join(directory, 'run.json'), coreRunSchema, coreRunSchema.parse({ version: 1, id: basename(directory), createdAt: new Date().toISOString(), model: options.model, status: 'running' }));
+    const opened = await JsonStore.open(join(directory, 'run.json'), coreRunSchema, coreRunSchema.parse({ version: 1, id: basename(directory), createdAt: new Date().toISOString(), model: options.model, status: 'running', contentBrief: requestedBrief ?? defaultContentBrief }));
+    if (requestedBrief && JSON.stringify(requestedBrief) !== JSON.stringify(opened.read().contentBrief)) throw new Error('A saved editorial brief cannot be changed while resuming. Start a new run for a different brief.');
+    store = opened;
     if (options.playMode && options.playMode !== store.read().playMode && store.read().attempts.length) throw new Error('Start a new run to change the gameplay mode.');
     if (options.playMode) await store.update(run => { run.playMode = options.playMode!; });
     await store.update(run => { run.model = options.model; run.provider = providerName; run.status = 'running'; delete run.error; });
+    trace.artifact('content-brief.json', store.read().contentBrief);
     let provider: Inference | undefined;
     const onProviderEvent = (event: InferenceProgressEvent) => trace.event(`provider.${event.stage}`, event.status, event.message ?? `${event.model ?? providerName} attempt ${event.attempt}`, { provider: providerName, ...event });
     const getProvider = () => provider ??= providerName === 'codex'
@@ -167,8 +193,8 @@ export async function runPipeline(options: {
       if (options.game) {
         const game = candidates.find(candidate => candidate.id === options.game || canonicalGameUrl(candidate.url) === canonicalGameUrl(options.game!) || new URL(candidate.url).pathname.split('/').at(-2) === options.game);
         if (!game) throw new Error('The requested game is not in this run’s discovered catalog. Use an exact ID, slug, or URL from discovery.json.');
-        shortlist = [{ gameId: game.id, hypothesis: 'Operator-selected candidate; suitability still requires actual play.', viewerQuestion: 'What visible decision and consequence does this game offer?', controlRisk: 'Inspect the actual controls before capturing.' }];
-      } else shortlist = await services.nominateGames(candidates, verifiedProfiles, getProvider(), limit, options.signal, store.read().playMode);
+        shortlist = [{ gameId: game.id, hypothesis: 'Operator-selected candidate; suitability still requires actual play.', viewerQuestion: 'What visible decision and consequence does this game offer?', controlRisk: 'Inspect the actual controls before capturing.', captureGoal: 'Capture an understandable setup, meaningful action, and visible consequence; determine the angle from actual play.', rejectIf: 'No attainable, readable consequence or interesting viewer decision is observed.' }];
+      } else shortlist = await services.nominateGames(candidates, verifiedProfiles, getProvider(), limit, options.signal, store.read().playMode, store.read().contentBrief);
       await save(run => { run.shortlist = shortlist; run.attempts = shortlist.map(item => attemptSchema.parse({ gameId: item.gameId })); });
       trace.artifact('shortlist.json', shortlist);
       trace.event('shortlist', 'completed', 'Provisional choices saved. Actual recordings will determine the edit.', shortlist);
@@ -237,12 +263,12 @@ export async function runPipeline(options: {
     if (stage === 'capture') { await save(run => { run.status = 'paused'; }); return store.read(); }
 
     for (const attempt of store.read().script ? [] : store.read().attempts) {
-      if (!attempt.capture || attempt.capture.analysis) continue;
+      if (!attempt.capture || attempt.capture.analysis?.content) continue;
       trace.event('analyze', 'started', `Finding a visible decision and consequence in ${attempt.capture.game.title}.`);
       const provider = getProvider(); // Missing credentials are a run-level setup failure, not bad footage.
       let analysis: FootageAnalysis;
       try {
-        analysis = await services.analyzeFootage(attempt.capture, provider, options.signal);
+        analysis = analysisSchema.required({ content: true }).parse(await services.analyzeFootage(attempt.capture, provider, options.signal));
       } catch (error) {
         options.signal?.throwIfAborted();
         if (!(error instanceof z.ZodError || error instanceof NeedsAttention)) throw error;
@@ -253,25 +279,29 @@ export async function runPipeline(options: {
       }
       await updateAttempt(attempt.gameId, item => { item.capture!.analysis = analysis; item.analysisModel = options.model; item.analysisProvider = providerName; delete item.error; });
       trace.artifact(`analysis-${attempt.gameId}.json`, analysis);
-      trace.event('analyze', analysis.usable ? 'completed' : 'rejected', analysis.reason, analysis);
+      trace.event('analyze', analysis.usable && contentScore(analysis.content!) >= 0 ? 'completed' : 'rejected', analysis.reason, analysis);
     }
-    const usable = store.read().attempts.filter(item => item.capture?.analysis?.usable && item.capture.analysis.events.length).sort((a, b) => b.capture!.analysis!.visualScore - a.capture!.analysis!.visualScore);
-    if (!usable.length) throw new Error('No recording contains a supported short-form moment. The rejected footage and reasons are saved; choose another game in a new run.');
     if (!store.read().script) {
+      const usable = store.read().attempts.filter(item => {
+        const analysis = item.capture?.analysis;
+        return analysis?.usable && analysis.events.length && analysis.content && contentScore(analysis.content) >= 0;
+      }).sort((a, b) => contentScore(b.capture!.analysis!.content!) - contentScore(a.capture!.analysis!.content!));
+      if (!usable.length) throw new Error('No recording contains a supported short-form moment. The rejected footage and reasons are saved; choose another game in a new run.');
       const selected = usable[0]!;
       await save(run => { run.selectedGameId = selected.gameId; });
-      trace.event('select', 'completed', `Selected ${selected.capture!.game.title} from observed footage, using visual score and verified action windows.`, usable.map(item => ({ game: item.capture!.game.title, score: item.capture!.analysis!.visualScore, reason: item.capture!.analysis!.reason })));
-      const script = await services.draftScript({ capture: selected.capture!, format: 'highlight', topic: '' }, getProvider(), options.signal);
+      trace.event('select', 'completed', `Selected ${selected.capture!.game.title} from verified action windows and editorial evidence. Scores are heuristics out of 30, not audience probabilities.`, usable.map(item => ({ game: item.capture!.game.title, score: contentScore(item.capture!.analysis!.content!), content: item.capture!.analysis!.content, reason: item.capture!.analysis!.reason })));
+      const script = await services.draftScript({ capture: selected.capture!, format: 'highlight', topic: '', brief: store.read().contentBrief }, getProvider(), options.signal);
       await save(run => { run.script = script; run.scriptModel = options.model; run.scriptProvider = providerName; });
       trace.artifact('edit.json', script);
-      trace.event('edit', 'completed', script.rationale, { hook: script.hook, cuts: script.cuts });
+      trace.event('edit', 'completed', script.rationale, { hook: script.hook, cuts: script.cuts, editorial: script.editorial, overlays: script.overlays });
     }
     const run = store.read();
-    const selected = run.attempts.find(item => item.gameId === run.selectedGameId)!.capture!;
+    const selected = run.attempts.find(item => item.gameId === run.selectedGameId)?.capture;
+    if (!selected) throw new Error('The saved edit is missing its source recording. Start a new run.');
     // A crash between rendering and saving the manifest cannot block a later render.
     const outputPath = join(directory, `highlight-${randomUUID().slice(0, 8)}.mp4`);
     trace.event('render', 'started', 'Rendering a portrait highlight from the verified cuts.');
-    const artifact = await services.renderPortrait({ outputPath, cuts: run.script!.cuts.map(cut => ({ ...cut, path: selected.path, crop: selected.crop })), hook: run.script!.hook, attribution: `${selected.game.title} · ${selected.game.creator ?? 'Astrocade'}`, ffmpeg: config.mediaTools, signal: options.signal });
+    const artifact = await services.renderPortrait({ outputPath, cuts: run.script!.cuts.map(cut => ({ ...cut, path: selected.path, crop: selected.crop })), hook: run.script!.hook, overlays: run.script!.overlays, attribution: `${selected.game.title} · ${selected.game.creator ?? 'Astrocade'}`, ffmpeg: config.mediaTools, signal: options.signal });
     const videoSha256 = await hashFile(artifact.path);
     await save(state => { state.videoPath = artifact.path; state.videoSha256 = videoSha256; });
     trace.event('render', 'completed', `${artifact.durationSeconds.toFixed(2)}-second video ready. Publishing is manual.`, artifact);
