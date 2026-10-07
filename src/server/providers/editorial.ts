@@ -118,7 +118,7 @@ export async function analyzeFootage(capture: Capture, google: Inference, signal
       const response = shortAnalysisSchema.parse(await google.json(
         `Inspect this entire 8 FPS recording of ${JSON.stringify(capture.game.title)}. Its measured duration is ${capture.durationSeconds} seconds.
 Every timestamp is ABSOLUTE SOURCE TIME in [0, ${capture.durationSeconds}], measured from the recording's start. No window-relative offsets are used.
-Report playableStartSeconds/playableEndSeconds for one continuous span containing unobscured gameplay and, when earned by the visible action, its brief result panel or celebration. Include enough of that result to read the payoff, then stop before prolonged idle. Exclude obstructing opening banners, navigation menus, loading and pauses from this span. Use null for both if there is no such span.
+Report playableStartSeconds/playableEndSeconds for one continuous span containing unobscured gameplay and, when earned by the visible action, its brief result panel or celebration. When the source supports it, include about one to two seconds AFTER the earned panel or celebration settles within both its event bounds and this playable span so a viewer can read the result. This is payoff reading time; stop before prolonged idle. Exclude obstructing opening banners, navigation menus, loading and pauses from this span. Use null for both if there is no such span.
 Each event's startSeconds/endSeconds identifies the central action and visible consequence, such as a gate contact through the resulting count change. These are IMPACT bounds, not final edit boundaries. Describe the readable approach, action and result with concrete visual evidence. The server will retain up to two seconds before the impact and one second afterward, clipped to the playable span.
 Return at most three useful events, best short-video potential first. Prefer one coherent moment; for a visible transformation, identify its readable before-state, active changes and earned result as up to three connected events. A brief earned result panel or celebration is a legitimate payoff event when its connection to the action is visible.
 Exclude opening/stage banners that obscure the action, navigation menus, loading, idle movement, redundant travel and prolonged result screens. Do not fill the recording's duration merely because footage exists.
@@ -145,7 +145,7 @@ Set usable=false and events=[] if no understandable action and visible consequen
 It is sampled at 1 FPS: identify candidate action windows, not precise collisions or outcomes between frames.
 Return up to six useful windows, best short-video potential first, with absolute source seconds within [0, ${capture.durationSeconds}].
 Describe only visible mechanics, controls' visible effects, progress, and outcomes. Mark uncertainty explicitly.
-Opening banners that obscure the action, navigation menus, loading screens, pointer movement without game response, static/idle footage, and unseen promised payoffs are not usable action. A brief earned result panel or celebration can be a payoff when visibly connected to the action; stop once its result is readable, excluding prolonged idle.
+Opening banners that obscure the action, navigation menus, loading screens, pointer movement without game response, static/idle footage, and unseen promised payoffs are not usable action. A brief earned result panel or celebration can be a payoff when visibly connected to the action; when the source supports it, include about one to two seconds after it settles for reading, excluding prolonged idle.
 Each event must state concrete visual evidence and what actually happens. A failure can be usable; a promised victory without visible proof cannot.
 Prefer a single understandable decision with its setup and visible result. For a transformation, identify connected before-state, active-change and result windows rather than only its final movement. Do not pad an event to a duration target. Set usable=false and events=[] when no meaningful action is seen.`,
       verifiedAnalysisSchema, [{ type: 'video', uri: video.uri, mime_type: video.mimeType, processing: { type: 'static', fps: 1 } }], signal,
@@ -169,7 +169,7 @@ Prefer a single understandable decision with its setup and visible result. For a
       const detail = denseSchema.parse(await google.json(
         `Inspect only this 8 FPS gameplay window. The source interval is ${window.startSeconds}–${window.endSeconds} seconds.
 IMPORTANT: return timebase="window_relative". Every event timestamp is seconds from THIS WINDOW'S START, between 0 and ${duration}, not the original video's clock.
-Verify actual action, its visible consequence and any claimed payoff. Exclude opening banners that obscure play, loading, navigation menus and inactivity. Retain a brief earned result panel or celebration when visibly connected to the action, ending once the result is readable rather than including prolonged idle. Do not adopt the coarse analysis as evidence.
+Verify actual action, its visible consequence and any claimed payoff. Exclude opening banners that obscure play, loading, navigation menus and inactivity. Retain a brief earned result panel or celebration when visibly connected to the action; when these source frames support it, include about one to two seconds after it settles within the event bounds for reading, excluding prolonged idle. Do not adopt the coarse analysis as evidence.
 Each event is a contiguous usable action or earned-result interval with concrete visual evidence; outcome must describe what is visible, or explicitly say the outcome is unknown. For a transformation, preserve its before-state, active change and result when supported by this window.
 Do not claim a win, hit, combo, score change or objective completion unless visible in these frames. usable=false/events=[] is better than invented action.`,
         denseSchema, [{ type: 'video', uri: video.uri, mime_type: video.mimeType, processing: { type: 'static', fps: 8, start_offset: `${window.startSeconds}s`, end_offset: `${window.endSeconds}s` } }], signal,
@@ -181,9 +181,12 @@ Do not claim a win, hit, combo, score change or objective completion unless visi
         confirmed.push(...events.map(event => ({ ...event, evidence: `8 FPS review: ${event.evidence}` })));
       }
     }
-    const events = confirmed.sort((a, b) => a.startSeconds - b.startSeconds)
+    // Windows arrive in editorial priority order; cap before sorting so an early
+    // sequence with many events cannot crowd out a later, higher-priority payoff.
+    const events = confirmed
       .filter((event, index, all) => !all.slice(0, index).some(prior => event.startSeconds >= prior.startSeconds && event.endSeconds <= prior.endSeconds))
-      .slice(0, 6);
+      .slice(0, 6)
+      .sort((a, b) => a.startSeconds - b.startSeconds);
     return analysisSchema.parse({
       usable: events.length > 0, reason: reasons.join(' ').slice(0, 2000), mechanic: coarse.mechanic,
       visualScore: scores.length ? Math.max(...scores) : 0, events,

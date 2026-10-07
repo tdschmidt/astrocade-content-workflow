@@ -103,6 +103,17 @@ test('coarse apparent action cannot survive a dense review that found only idle 
   assert.deepEqual(result.events, []);
 });
 
+test('long analysis keeps a late high-priority payoff when earlier windows produce many events', async () => {
+  const event = capture.analysis!.events[0]!;
+  const coarse = { ...capture.analysis!, events: [60, 0, 20].map(start => ({ ...event, startSeconds: start, endSeconds: start + 10 })) };
+  const payoff = { ...event, startSeconds: 7, endSeconds: 10, event: 'Board completed', evidence: 'All items are sorted and the completion panel appears', outcome: 'The board is complete.' };
+  const densePayoff = { timebase: 'window_relative', analysis: { ...capture.analysis!, events: [payoff] } };
+  const denseEarly = { timebase: 'window_relative', analysis: { ...capture.analysis!, events: [1, 3, 5, 7].map(start => ({ ...event, startSeconds: start, endSeconds: start + 1 })) } };
+  const result = await analyzeFootage(capture, googleFixture([coarse, densePayoff, denseEarly, denseEarly]));
+  assert.deepEqual(result.events.map(event => event.startSeconds), [1, 3, 5, 7, 20, 66], 'retain the six highest-priority verified events, then present them chronologically');
+  assert.equal(result.events.at(-1)!.outcome, payoff.outcome, 'early actions must not evict the verified completion');
+});
+
 const script = { hook: 'Watch the landing', narration: 'The tiny explorer found a way home.', caption: 'A short story.', cuts: [{ startSeconds: 0, endSeconds: 25 }], rationale: 'Visible jumps', claims: [] };
 
 test('a highlight preserves the whole context of a single selected event', async () => {
