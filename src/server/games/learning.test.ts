@@ -496,6 +496,33 @@ for (const scenario of ['DOM instructions', 'canvas instructions', 'symbol close
   assert.equal(await page.frames()[1]!.locator('body').getAttribute('data-clicks'), 'start:true,', 'fresh capture must not replay help navigation');
 });
 
+test('active-game help can reopen a tutorial whose native Skip returns to gameplay', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
+  const { outputDir, candidate } = await fixture(t);
+  const browser = await chromium.launch({ channel: 'chromium', headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 720, height: 1280 } });
+  await page.setContent('<style>body{margin:0}iframe{width:600px;height:1100px;border:0}button{position:absolute;z-index:2;top:0;left:0}</style><button aria-label="Start playing" onclick="this.remove()">Open game</button><iframe title="Astrocade Game"></iframe>');
+  await page.frames()[1]!.setContent(`<style>body{margin:0;background:#123;color:white}button{width:180px;height:80px}#tutorial{display:none}</style>
+    <div id="board">Cash $0. Tap scrap to collect it.<button id="openHelp">?</button></div>
+    <div id="tutorial"><p>Step 1 of 8. Welcome, Tycoon! Tap scrap to bank money.</p><button>Let's go!</button><button id="skip">Skip</button></div>
+    <script>
+      document.body.dataset.clicks='';
+      const board=document.getElementById('board'),tutorial=document.getElementById('tutorial');
+      document.getElementById('openHelp').onclick=event=>{document.body.dataset.clicks+='help:'+event.isTrusted+',';board.style.display='none';tutorial.style.display='block'};
+      document.getElementById('skip').onclick=event=>{document.body.dataset.clicks+='skip:'+event.isTrusted+',';tutorial.style.display='none';board.style.display='block'};
+    </script>`);
+  const provider = { json: async () => ({ phase: 'playing', buttonIndex: null, point: null, label: '', reason: 'The scrap collection board and current cash are visible.' }) } as unknown as Pick<GoogleServices, 'json'>;
+  const inspection = await inspectGamePage(page, candidate.url, outputDir, undefined, provider);
+  assert.equal(inspection.readyToPlay, true);
+  assert.deepEqual(inspection.help?.opened, { selector: '#openHelp', label: '?' });
+  assert.deepEqual(inspection.help?.returned, { selector: '#skip', label: 'Skip' });
+  assert.match(inspection.help!.text, /Step 1 of 8/);
+  assert.equal(await page.frames()[1]!.locator('body').getAttribute('data-clicks'), 'help:true,skip:true,');
+  assert.equal(await page.frames()[1]!.locator('#tutorial').isVisible(), false);
+  assert.equal(JSON.parse(await readFile(join(outputDir, 'inspection-help.json'), 'utf8')).returnCompleted, true);
+  assert.deepEqual(inspection.performedMenuSteps, [], 'inspection-only help must not replay in a fresh recording');
+});
+
 for (const mode of ['timed', 'feedback'] as const) test(`${mode} learning receives observed tutorial pages as instructions, not current board coordinates`, async t => {
   const { candidate, inspection, proposal } = await fixture(t);
   inspection.readyToPlay = true;

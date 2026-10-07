@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { Inference } from '../providers/inference.js';
 import { canonicalGameUrl } from './discovery.js';
 import { gameBounds, gameHasPointerLock, InputExecutor, withAbort } from './input.js';
+import { gameScreenshot } from './screenshot.js';
 import { readVisibleText } from './visible-text.js';
 import { gameProfileSchema, inputActionSchema, plannedInputActionSchema, type GameCandidate, type GameProfile, type InputAction, type SurfaceLocator, type UiStep } from './schema.js';
 
@@ -82,7 +83,7 @@ export async function inspectGamePage(page: Page, gameUrl: string, directory: st
     return label ? [{ selector: element.id ? `#${CSS.escape(element.id)}` : `:nth-match(button, ${index + 1})`, label }] : [];
   }).slice(0, 50));
   const observeText = () => readVisibleText(frame.locator('body'));
-  const screenshot = async () => page.screenshot({ clip: await gameBounds(page, surface) });
+  const screenshot = async () => gameScreenshot(page, await gameBounds(page, surface));
   let startTargets = await observeStartTargets();
   const beforeText = await observeText();
   let beforeImagePath = join(directory, 'inspection-before.png');
@@ -95,11 +96,14 @@ export async function inspectGamePage(page: Page, gameUrl: string, directory: st
     if (!opened) return;
     inspectedHelp = true;
     await executor.step({ type: 'click', target: { selector: opened.selector, frames: gameFrames } });
-    await withAbort(frame.getByRole('button', { name: helpReturnLabel }).first().waitFor({ state: 'visible', timeout: 5000 }), signal).catch(error => { signal?.throwIfAborted(); return error; });
+    // Some in-game help buttons reopen the tutorial; its observed Skip is a
+    // return control. Do not promote an unrelated entry-screen Skip this way.
+    const returnLabel = activeGame ? new RegExp(`${helpReturnLabel.source}|^skip$`, helpReturnLabel.flags) : helpReturnLabel;
+    await withAbort(frame.getByRole('button', { name: returnLabel }).first().waitFor({ state: 'visible', timeout: 5000 }), signal).catch(error => { signal?.throwIfAborted(); return error; });
     const text = await observeText();
     const imagePath = join(directory, 'inspection-help.png');
-    await writeFile(imagePath, await page.screenshot({ clip: await gameBounds(page, { selector: gameFrames[0]!, frames: [] }) }), { flag: 'wx' });
-    const returned = (await observeStartTargets()).find(target => helpReturnLabel.test(target.label));
+    await writeFile(imagePath, await gameScreenshot(page, await gameBounds(page, { selector: gameFrames[0]!, frames: [] })), { flag: 'wx' });
+    const returned = (await observeStartTargets()).find(target => returnLabel.test(target.label));
     const evidence = { observedAt: new Date().toISOString(), text, imagePath, opened, returned, returnCompleted: false };
     const evidencePath = join(directory, 'inspection-help.json');
     await writeFile(evidencePath, JSON.stringify(evidence, null, 2) + '\n', { flag: 'wx' });

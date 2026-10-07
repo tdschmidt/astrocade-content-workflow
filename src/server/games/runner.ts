@@ -4,6 +4,7 @@ import type { Page } from 'playwright';
 import { createGameCapture, type CaptureArtifact, type CaptureOptions, type GameCapture } from '../media/recorder.js';
 import { isAllowedGameUrl } from './discovery.js';
 import { gameBounds, gameHasPointerLock, InputExecutor, locate, withAbort, type GameBounds } from './input.js';
+import { gameScreenshot } from './screenshot.js';
 import { readVisibleText } from './visible-text.js';
 import { controlDecisionSchema, gameProfileSchema, type GameProfile, type InputAction, type UiStep } from './schema.js';
 
@@ -153,7 +154,7 @@ export async function runCaptureAttempt(options: {
           if (profile.maxDurationMs - (performance.now() - recordingStarted) < 2000) { stopReason = 'duration_limit'; break; }
           const observationId = `${attemptId}:${index}`;
           const clip = await withAbort(gameBounds(page, profile.surface), controlSignal);
-          const image = await withAbort(page.screenshot({ clip, type: 'jpeg', quality: 70, timeout: 5000 }), controlSignal);
+          const image = await withAbort(gameScreenshot(page, clip, { type: 'jpeg', quality: 70, timeout: 5000 }), controlSignal);
           const surface = locate(page, profile.surface);
           const textSurface = await withAbort(surface.evaluate(element => element.tagName === 'IFRAME'), controlSignal)
             ? surface.contentFrame().locator('body') : surface;
@@ -190,7 +191,7 @@ export async function runCaptureAttempt(options: {
           // establish which changes were caused by the upcoming native actions.
           const actionClip = await withAbort(gameBounds(page, profile.surface), controlSignal);
           previousImageElapsedMs = Math.round(performance.now() - recordingStarted);
-          previousImage = await withAbort(page.screenshot({ clip: actionClip, type: 'jpeg', quality: 70, timeout: 5000 }), controlSignal);
+          previousImage = await withAbort(gameScreenshot(page, actionClip, { type: 'jpeg', quality: 70, timeout: 5000 }), controlSignal);
           controlSignal.throwIfAborted();
           previousActions = decision.actions;
           previousReason = decision.reason;
@@ -242,7 +243,7 @@ async function observeActionBatch(page: Page, clip: GameBounds, actions: InputAc
       // Await the bounded screenshot itself even on cancellation: no background
       // page operation may outlive this action batch or the capture session.
       try {
-        const image = await page.screenshot({ clip, type: 'jpeg', quality: 70, timeout: 1000 });
+        const image = await gameScreenshot(page, clip, { type: 'jpeg', quality: 70, timeout: 1000 });
         if (!samplingSignal.aborted) frames.push({ image, elapsedMs });
       } catch {
         if (!samplingSignal.aborted) warn(`Action screenshots stopped after ${frames.length} sample${frames.length === 1 ? '' : 's'} in this batch; source recording continues. The settled screenshot remains a separate observation.`);

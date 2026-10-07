@@ -3,6 +3,7 @@ import test, { type TestContext } from 'node:test';
 import { chromium } from 'playwright';
 import type { CaptureOptions } from '../media/recorder.js';
 import { gameProfileSchema } from './schema.js';
+import { gameScreenshot } from './screenshot.js';
 import { runCaptureAttempt, type ActionProgress, type GameplayObservation } from './runner.js';
 
 const browserTest = { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 };
@@ -92,7 +93,7 @@ test('the causal BEFORE frame is refreshed after changes during inference and be
         context.fillStyle = '#ee2200'; context.fillRect(0, 0, 320, 320);
         document.querySelector('#hud')!.textContent = 'Autonomous change before input';
       });
-      preActionImage = await page.screenshot({ clip: { x: 8, y: 8, width: 320, height: 320 }, type: 'jpeg', quality: 70 });
+      preActionImage = await gameScreenshot(page, { x: 8, y: 8, width: 320, height: 320 }, { type: 'jpeg', quality: 70 });
       return { stop: false, reason: 'Now move right.', actions: [{ type: 'key', key: 'ArrowRight', durationMs: 40 }] };
     }
     assert.notDeepEqual(current.previousImage, request.image, 'inference-time state must not be attributed to the action');
