@@ -705,3 +705,83 @@ test('nearby distinct gameplay survives a shared dense window with no artificial
   assert.deepEqual(result.events.map(event => event.event), ['jumping', 'aimed fire']);
   assert.deepEqual(result.events.map(event => [event.startSeconds, event.endSeconds]), [[0, 3], [3, 6]]);
 });
+
+test('controller hints locate a missed transient but cannot promote it without independent dense confirmation', async () => {
+  const hint = { startSeconds: 201.022, endSeconds: 203.786, observation: 'UNIQUE_SEARCH_LEAD: an orange projectile crossed the background; impact was not observed.' };
+  const run = async (includeHint: boolean, confirmed: boolean) => {
+    const sampled: number[] = [], denseWindows: Array<{ start: number; end: number }> = [];
+    const provider = googleFixture([]);
+    provider.json = async (prompt, schema, media) => {
+      const processing = media?.find(item => item.type === 'video')?.processing;
+      assert.ok(processing?.type === 'static');
+      sampled.push(processing.fps!);
+      if (processing.fps === 1) {
+        // The coarse frames themselves only reveal locomotion. A search lead can
+        // nominate the transient, but contributes no verified event evidence.
+        const candidates = [moment(40, 48, 'locomotion', 2)];
+        if (prompt.includes(hint.observation)) candidates.push({ ...moment(201.022, 203.786, 'ranged attack'), evidence: 'Unverified controller lead; effect is absent between coarse frames.' });
+        return schema.parse(windowAnalysis(candidates));
+      }
+      assert.ok(!prompt.includes(hint.observation), 'the dense reviewer receives no controller assertion');
+      const start = parseFloat(processing.start_offset!), end = parseFloat(processing.end_offset!);
+      denseWindows.push({ start, end });
+      if (start > 190) return schema.parse(windowAnalysis(confirmed ? [{ ...moment(5.5, 9, 'ranged attack'), evidence: 'Independent frames show the character aim, cast and launch a visible projectile.' }] : []));
+      return schema.parse(windowAnalysis([moment(2, 10, 'locomotion')]));
+    };
+    const result = await analyzeFootage({ ...capture, durationSeconds: 240 }, provider, undefined, reelInput.brief, includeHint ? [hint] : []);
+    return { result, sampled, denseWindows };
+  };
+  const missed = await run(false, true);
+  assert.equal(missed.result.usable, false);
+  assert.deepEqual(missed.sampled, [1, 8]);
+  const found = await run(true, true);
+  assert.equal(found.result.usable, true);
+  assert.deepEqual(found.sampled, [1, 8, 8]);
+  assert.ok(found.denseWindows[0]!.start <= 201.45 && found.denseWindows[0]!.end >= 202.2, 'the distinct hinted ability gets detailed coverage before repeated movement');
+  assert.match(found.result.events.at(-1)!.evidence, /Independent frames show/);
+  assert.ok(!JSON.stringify(found.result.events).includes('UNIQUE_SEARCH_LEAD'));
+  const rejected = await run(true, false);
+  assert.equal(rejected.result.usable, false);
+  assert.equal(rejected.result.events.length, 1);
+  assert.equal(rejected.result.events[0]!.event, 'locomotion', 'a disproven lead never becomes a final event');
+});
+
+test('observation hints are clipped and mapped per intersecting coarse chunk without mutating source hints', async () => {
+  const hints = [
+    { startSeconds: 295, endSeconds: 305, observation: 'Boundary-spanning ability lead.' },
+    { startSeconds: 370, endSeconds: 372, observation: 'Later ability lead.' },
+  ];
+  const before = structuredClone(hints);
+  const supplied: typeof hints[] = [];
+  const provider = googleFixture([]);
+  provider.json = async (prompt, schema) => {
+    const match = prompt.match(/relative to THIS PART's clock: (\[.*\])\n/);
+    assert.ok(match);
+    supplied.push(JSON.parse(match[1]!));
+    return schema.parse(windowAnalysis([]));
+  };
+  const result = await analyzeFootage({ ...capture, durationSeconds: 600.03 }, provider, undefined, reelInput.brief, hints);
+  assert.deepEqual(hints, before);
+  assert.equal(supplied.length, 2);
+  assert.deepEqual(supplied[0], [{ ...hints[0]!, endSeconds: 300.015 }]);
+  assert.equal(supplied[1]!.length, 2);
+  assert.equal(supplied[1]![0]!.startSeconds, 0);
+  assert.ok(Math.abs(supplied[1]![0]!.endSeconds - 4.985) < 1e-8);
+  assert.ok(Math.abs(supplied[1]![1]!.startSeconds - 69.985) < 1e-8);
+  assert.ok(Math.abs(supplied[1]![1]!.endSeconds - 71.985) < 1e-8);
+  assert.equal(result.usable, false);
+  assert.deepEqual(result.events, [], 'hints alone cannot make usable footage or trigger unverified final events');
+});
+
+test('reel observation hints enforce bounded text, count and valid finite source intervals before inference', async () => {
+  const hint = { startSeconds: 1, endSeconds: 2, observation: 'A possible ability appears.' };
+  for (const hints of [
+    [{ ...hint, startSeconds: -1 }], [{ ...hint, endSeconds: capture.durationSeconds + 1 }],
+    [{ ...hint, endSeconds: 1 }], [{ ...hint, startSeconds: Number.NaN }], [{ ...hint, endSeconds: Number.POSITIVE_INFINITY }],
+    [{ ...hint, observation: 'x'.repeat(801) }], [{ ...hint, observation: '   ' }], Array.from({ length: 61 }, () => hint),
+  ]) await assert.rejects(analyzeFootage(capture, googleFixture([]), undefined, reelInput.brief, hints), error => error instanceof Error && !error.message.includes('unexpected model call'));
+  const sampled: number[] = [];
+  const valid = await analyzeFootage(capture, googleFixture([windowAnalysis([])], sampled), undefined, reelInput.brief, Array.from({ length: 60 }, () => ({ ...hint, observation: 'x'.repeat(800) })));
+  assert.equal(valid.usable, false);
+  assert.deepEqual(sampled, [1]);
+});

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises';
-import { basename, join, relative, resolve } from 'node:path';
+import { mkdir, open, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
 import { analysisSchema, captureSchema, scriptSchema, type Capture, type FootageAnalysis } from '../shared/domain.js';
 import { contentBriefSchema, contentScore, defaultContentBrief, type ContentBrief } from '../shared/content.js';
@@ -14,7 +14,7 @@ import { runCaptureAttempt } from '../server/games/runner.js';
 import { gameCandidateSchema, gameProfileSchema } from '../server/games/schema.js';
 import { validateVideo } from '../server/media/probe.js';
 import { presenterVideoDuration, renderPortrait } from '../server/media/render.js';
-import { analyzeFootage, draftScript } from '../server/providers/editorial.js';
+import { analyzeFootage, draftScript, type GameplayObservationHint } from '../server/providers/editorial.js';
 import { GoogleServices } from '../server/providers/google.js';
 import { CodexServices } from '../server/providers/codex.js';
 import type { Inference, InferenceProgressEvent } from '../server/providers/inference.js';
@@ -53,6 +53,36 @@ const defaults = { discoverGames, nominateGames, inspectGame, learnGameProfile, 
 export type CoreServices = typeof defaults;
 
 async function hashFile(path: string) { return createHash('sha256').update(await readFile(path)).digest('hex'); }
+
+const hintRecordSchema = z.object({
+  observation: z.string().min(1).max(1200), elapsedMs: z.number().nonnegative(),
+  sampledFrames: z.array(z.object({ elapsedMs: z.number().nonnegative() })).min(1).max(6),
+});
+
+/** Feedback locates brief effects; only independent video review can verify them. */
+async function readObservationHints(feedbackPath: string | undefined, durationSeconds: number, warn: () => void): Promise<GameplayObservationHint[]> {
+  if (!feedbackPath) return [];
+  const hints: GameplayObservationHint[] = [];
+  let ignored = false;
+  try {
+    const directory = dirname(feedbackPath);
+    const files = (await readdir(directory)).filter(name => /^decision-\d+\.json$/.test(name)).sort().slice(0, 60);
+    for (const file of files) {
+      try {
+        const value = JSON.parse(await readFile(join(directory, file), 'utf8'));
+        // Legacy feedback has no action-time observations; do not guess a range.
+        if (!value.sampledFrames?.length) continue;
+        const record = hintRecordSchema.parse(value);
+        const startSeconds = record.sampledFrames[0]!.elapsedMs / 1000;
+        const endSeconds = record.elapsedMs / 1000;
+        if (startSeconds >= endSeconds || endSeconds > durationSeconds || record.sampledFrames.some((frame, index) => frame.elapsedMs > record.elapsedMs || (index > 0 && frame.elapsedMs < record.sampledFrames[index - 1]!.elapsedMs))) throw new Error('Invalid observation time.');
+        hints.push({ startSeconds, endSeconds, observation: record.observation.slice(0, 800) });
+      } catch { ignored = true; }
+    }
+  } catch { ignored = true; }
+  if (ignored) warn();
+  return hints;
+}
 
 /** Reuse source evidence by reference, without altering the original run or copying media. */
 async function editFromRun(sourceDirectory: string, directory: string, model: string, provider: 'gemini' | 'codex', brief?: ContentBrief): Promise<CoreRun> {
@@ -359,7 +389,9 @@ export async function runPipeline(options: {
       const provider = getProvider(); // Missing credentials are a run-level setup failure, not bad footage.
       let analysis: FootageAnalysis;
       try {
-        analysis = analysisSchema.required({ content: true }).parse(await services.analyzeFootage(attempt.capture, provider, options.signal, store.read().contentBrief));
+        const observationHints = editingStyle === 'reel' ? await readObservationHints(attempt.feedbackPath, attempt.capture.durationSeconds,
+          () => trace.event('analyze', 'warning', 'Some optional action observations were unavailable or invalid; video review remains authoritative.')) : [];
+        analysis = analysisSchema.required({ content: true }).parse(await services.analyzeFootage(attempt.capture, provider, options.signal, store.read().contentBrief, observationHints));
       } catch (error) {
         options.signal?.throwIfAborted();
         if (!(error instanceof z.ZodError || error instanceof NeedsAttention)) throw error;

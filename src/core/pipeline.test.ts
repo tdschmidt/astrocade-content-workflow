@@ -449,6 +449,38 @@ test('a ten-minute exploration budget and action observations survive capture an
   assert.equal(learns, 1);
 });
 
+test('source reuse passes bounded action observations as search hints without treating plans as evidence', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  await runPipeline({ directory, model: 'fixture-model', stage: 'capture', quiet: true }, config, services);
+  const feedback = join(directory, 'saved-feedback');
+  await mkdir(feedback);
+  const record = { elapsedMs: 4000, sampledFrames: [{ elapsedMs: 2500 }, { elapsedMs: 3200 }],
+    observation: 'SYNTHETIC brief projectile is visible.', lesson: 'UNVERIFIED stored lesson', mechanics: [{ nextGoal: 'INVENTED future goal' }] };
+  await writeFile(join(feedback, 'decision-01.json'), JSON.stringify(record));
+  await writeFile(join(feedback, 'decision-02.json'), JSON.stringify({ ...record, elapsedMs: 9000 }));
+  await writeFile(join(feedback, 'decision-03.json'), JSON.stringify({ ...record, sampledFrames: [{ elapsedMs: 3200 }, { elapsedMs: 2500 }] }));
+  await writeFile(join(feedback, 'decision-04.json'), JSON.stringify({ elapsedMs: 5000, observation: 'Legacy observation has no action-time range.' }));
+  await writeFile(join(feedback, 'decision-05-proposal.json'), JSON.stringify({ ...record, observation: 'Rejected proposal must not become a hint.' }));
+  await writeFile(join(feedback, 'decision-06.json'), 'invalid JSON');
+  const manifestPath = join(directory, 'run.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.attempts[0].feedbackPath = join(feedback, 'report.md');
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  const original = await readFile(manifestPath, 'utf8');
+  const analyze = services.analyzeFootage!;
+  services.analyzeFootage = async (...args) => {
+    assert.deepEqual(args[4], [{ startSeconds: 2.5, endSeconds: 4, observation: record.observation }]);
+    return analyze(...args);
+  };
+  const destination = join(directory, 'new-edit');
+  const result = await runPipeline({ directory: destination, fromRun: directory, stage: 'edit', model: 'fixture-model', quiet: true }, config, services);
+  assert.equal(result.status, 'complete');
+  assert.equal(calls.capture, 1);
+  assert.equal(calls.analyze, 1);
+  assert.equal(await readFile(manifestPath, 'utf8'), original, 'analysis never modifies source evidence');
+  assert.match(await readFile(join(destination, 'trace.jsonl'), 'utf8'), /optional action observations were unavailable or invalid/);
+});
+
 test('an explicit Astrocade URL is inspected directly without inventing catalog metadata', async t => {
   const { directory, config, services, calls } = await fixture(t);
   const game = verifiedProfiles[0]!.gameUrl;
