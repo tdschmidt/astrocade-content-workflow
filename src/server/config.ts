@@ -71,7 +71,7 @@ export class Configuration {
       instagramDisplayName: process.env.INSTAGRAM_DISPLAY_NAME,
       instagramBirthday: process.env.INSTAGRAM_BIRTHDAY,
     };
-    for (const [key, entry] of Object.entries(overrides)) if (entry !== undefined) Reflect.set(value, key, entry);
+    for (const [key, entry] of Object.entries(overrides)) if (entry?.trim()) Reflect.set(value, key, entry);
     return settingsSchema.parse(value);
   }
 
