@@ -8,20 +8,20 @@ The user's “Write Gen Z gameplay hooks” discussion supplies the voice: recog
 
 The shortlist now names a content angle, capture goal and explicit rejection condition. For example, a gate runner should show readable choices *before* a decision and a visible crowd-size consequence afterward. Reject it if the gates are unreadable; a tested controller or big public counter cannot repair that failure.
 
-These goals guide nomination and explain the shortlist. The current gameplay learner still pursues the game's visible objective; it does not receive a separate shot list. The later footage assessment decides whether the recorded attempt actually delivered a useful moment. This avoids claiming that an editorial hypothesis guarantees capture success.
+These goals and rejection conditions now reach the gameplay learner and feedback controller. They guide the attainable moment to pursue, while remaining hypotheses: observed controls may support a different milestone from the title-based nomination. The later footage assessment decides whether the recorded attempt actually delivered a useful moment. Passing a goal to the controller does not guarantee capture success.
 
 Recorded footage receives five evidence-based 0–3 ratings: goal clarity, viewer participation, visible payoff, portrait readability and distinctiveness. Clarity, payoff or readability at zero disqualifies it. The weighted score is a small, inspectable editorial heuristic; it is not a viral-probability estimate. Reports retain the evidence and rejected candidates.
 
 For longer footage, each dense review must pass these gates independently. Merge overlapping context within a reviewed window before limiting the final event list, retaining the episode's observed consequences. A series of routine placements must not crowd out its eventual mistake, and a readable scene must not admit another unreadable scene through its score.
 
-| Episode | What earns screen time | Initial creative budget | Reject when |
-| --- | --- | --- | --- |
-| Prediction or reveal | A choice the viewer can read, the actual input, its consequence | About 6–10s | The answer happens before viewers can form a prediction |
-| Mistake and recovery | An understandable error, a changed action, a different result | About 10–18s | Ordinary poor play is presented as unfair difficulty, or the correction is missing |
-| Transformation | Distinct before-state, causal progress, completed change | About 12–25s | Repeated movement adds no visible information, or the final state never arrives |
-| Escalation or unusual rule | A familiar expectation and a visible change that challenges it | As short as the complete event permits | The novelty exists only in the title or caption |
+| Episode | What earns screen time | Reject when |
+| --- | --- | --- |
+| Prediction or reveal | A choice the viewer can read, the actual input, its consequence | The answer happens before viewers can form a prediction |
+| Mistake and recovery | An understandable error, a changed action, a different result | Ordinary poor play is presented as unfair difficulty, or the correction is missing |
+| Transformation | Distinct before-state, causal progress, completed change | Repeated movement adds no visible information, or the final state never arrives |
+| Escalation or unusual rule | A familiar expectation and a visible change that challenges it | The novelty exists only in the title or caption |
 
-These ranges are budgets, not minimums or platform rules. Retain enough setup to understand the action and roughly 1–2 seconds to register a settled payoff. Cut loading, inference waits and redundant action. Do not freeze, repeat, or invent footage to reach a duration. A five-second completed event can be valid; a longer clip must keep adding information. Cuts across pauses do not establish a continuous combo or speedrun.
+Start with one complete episode and let its actual action set the length. Add another only for a new decision, contrast, escalation, or correction that strengthens the same premise; repeating the same move on another ingredient is insufficient. The earlier angle-based duration preferences encouraged a repetitive 13.53-second Rendang edit, while the complete 5.50-second chili variation communicates the transformation more directly. Retain enough setup to understand the action and roughly 1–2 seconds to register a settled payoff, within the runtime ceiling and hook-reading checks. Cut loading, inference waits and redundant action. Do not freeze, repeat, or invent footage to reach a duration. Cuts across pauses do not establish a continuous combo or speedrun.
 
 ## Hooks, captions and composition
 
@@ -29,7 +29,7 @@ For each selected sequence, generate three distinct concepts, record their visua
 
 The opening overlay supplies curiosity, recognition or tension; it does not announce the answer. Prefer a natural 5–8 word line such as “POV: your relaxing wash has a timer” to “A dirty car earns three stars.” A question such as “would you rinse it yet?” works only if the opening presents that decision with time to read it. A timer alone does not justify a close-race hook. Place text directly over nonessential picture, with bold outlines, and remove it after reading time so the result is clear. Preserve the complete game canvas and use upper/lower placement based on its actual HUD and controls. The planner's placement is a hypothesis until the rendered frame is checked at phone size.
 
-Keep three kinds of text separate: an opening hook, subtitles for words actually spoken, and a post caption adding a brief reaction/invitation plus attribution. Silent clips do not get pretend speech subtitles. Post captions can be conversational rather than copied analysis logs, but their claims must survive visual review. No compulsory emoji, slang, hashtag pile, invented statistics, fake urgency or false human-play claim.
+Keep three kinds of text separate: an opening hook, subtitles for words actually spoken, and a post caption adding a brief reaction/invitation plus attribution. Silent clips do not get pretend speech subtitles. A post caption can be a simple conversational follow-up; it does not need a second elaborate joke. Use concrete words and avoid making every game a workplace, paperwork, or income metaphor. Those jokes can still work when the actual scene makes the connection strong. Claims must survive visual review. No compulsory emoji, slang, hashtag pile, invented statistics, fake urgency or false human-play claim.
 
 ## Research and trend handling
 
