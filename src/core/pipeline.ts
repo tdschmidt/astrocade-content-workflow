@@ -14,6 +14,8 @@ import { validateVideo } from '../server/media/probe.js';
 import { renderPortrait } from '../server/media/render.js';
 import { analyzeFootage, draftScript } from '../server/providers/editorial.js';
 import { GoogleServices } from '../server/providers/google.js';
+import { CodexServices } from '../server/providers/codex.js';
+import type { Inference, InferenceProgressEvent } from '../server/providers/inference.js';
 import { JsonStore } from '../server/store.js';
 import { nominateGames, nominationSchema } from './selection.js';
 import { Trace } from './trace.js';
@@ -22,16 +24,16 @@ const attemptSchema = z.object({
   gameId: z.string(), profile: gameProfileSchema.optional(),
   inspectionPath: z.string().optional(), evidence: z.array(z.string()).default([]), limitations: z.array(z.string()).default([]),
   capture: captureSchema.optional(), sourceSha256: z.string().optional(),
-  analysisModel: z.string().optional(),
+  analysisModel: z.string().optional(), analysisProvider: z.enum(['gemini', 'codex']).optional(),
   unsupported: z.boolean().default(false), error: z.string().optional(),
 });
 export const coreRunSchema = z.object({
-  version: z.literal(1), id: z.string(), createdAt: z.string(), model: z.string(),
+  version: z.literal(1), id: z.string(), createdAt: z.string(), model: z.string(), provider: z.enum(['gemini', 'codex']).default('gemini'),
   status: z.enum(['running', 'paused', 'failed', 'complete']),
   candidates: z.array(gameCandidateSchema).default([]),
   shortlist: z.array(nominationSchema).default([]), attempts: z.array(attemptSchema).default([]),
   selectedGameId: z.string().optional(), script: scriptSchema.optional(),
-  scriptModel: z.string().optional(),
+  scriptModel: z.string().optional(), scriptProvider: z.enum(['gemini', 'codex']).optional(),
   videoPath: z.string().optional(), videoSha256: z.string().optional(), error: z.string().optional(),
 });
 export type CoreRun = z.infer<typeof coreRunSchema>;
@@ -64,7 +66,7 @@ async function lockRun(directory: string) {
 async function report(directory: string, run: CoreRun) {
   const link = (path: string) => relative(directory, path).split('/').map(encodeURIComponent).join('/');
   const lines = [
-    '# Astrocade run', '', `Status: **${run.status}** · Current model: \`${run.model}\` · Started: ${run.createdAt}`, '',
+    '# Astrocade run', '', `Status: **${run.status}** · Current provider/model: \`${run.provider}/${run.model}\` · Started: ${run.createdAt}`, '',
     'This is an evidence trace: observable inputs, actions, results, and concise decision summaries. It does not contain private internal model reasoning.', '',
     '- [Full event trace](trace.jsonl)', '- [Run data](run.json)', '- [Discovery evidence](discovery.json)', '', '## Candidate decisions', '',
   ];
@@ -77,23 +79,24 @@ async function report(directory: string, run: CoreRun) {
     for (const limitation of attempt?.limitations ?? []) lines.push(`- Limitation: ${limitation}`);
     if (attempt?.capture) {
       lines.push('', `[Source recording](${link(attempt.capture.path)}) (${attempt.capture.durationSeconds.toFixed(2)} seconds)`, '');
-      if (attempt.capture.analysis) lines.push(`Observed (${attempt.analysisModel}): ${attempt.capture.analysis.reason}`, '', ...attempt.capture.analysis.events.map(event => `- ${event.startSeconds.toFixed(2)}–${event.endSeconds.toFixed(2)}s: ${event.event}. Evidence: ${event.evidence}. Result: ${event.outcome}.`), '');
+      if (attempt.capture.analysis) lines.push(`Observed (${attempt.analysisProvider ?? 'gemini'}/${attempt.analysisModel}): ${attempt.capture.analysis.reason}`, '', ...attempt.capture.analysis.events.map(event => `- ${event.startSeconds.toFixed(2)}–${event.endSeconds.toFixed(2)}s: ${event.event}. Evidence: ${event.evidence}. Result: ${event.outcome}.`), '');
     }
     if (attempt?.error) lines.push(`Attempt stopped: ${attempt.error}`, '');
   }
-  if (run.script) lines.push('## Edit', '', `Model: ${run.scriptModel}`, '', `Hook: ${run.script.hook}`, '', `Decision: ${run.script.rationale}`, '', `Cuts: ${run.script.cuts.map(cut => `${cut.startSeconds}–${cut.endSeconds}s`).join(', ')}`, '', 'Caption:', '', run.script.caption, '');
+  if (run.script) lines.push('## Edit', '', `Provider/model: ${run.scriptProvider ?? 'gemini'}/${run.scriptModel}`, '', `Hook: ${run.script.hook}`, '', `Decision: ${run.script.rationale}`, '', `Cuts: ${run.script.cuts.map(cut => `${cut.startSeconds}–${cut.endSeconds}s`).join(', ')}`, '', 'Caption:', '', run.script.caption, '');
   if (run.videoPath) lines.push(`[Play final video](${link(run.videoPath)})`, '', 'Publishing is manual. Review the video and caption before posting.', '');
   if (run.error) lines.push('## Stopped', '', run.error, '', `Resume: npm run pipeline -- --resume ${directory}`, '');
   await writeFile(join(directory, 'report.md'), lines.join('\n'), { mode: 0o600 });
 }
 
 export async function runPipeline(options: {
-  directory: string; model: string; stage?: CoreStage; shortlistSize?: number; game?: string; signal?: AbortSignal; quiet?: boolean;
+  directory: string; model: string; provider?: 'gemini' | 'codex'; stage?: CoreStage; shortlistSize?: number; game?: string; signal?: AbortSignal; quiet?: boolean;
 }, config: Configuration, overrides: Partial<CoreServices> = {}): Promise<CoreRun> {
   const directory = resolve(options.directory);
   const services = { ...defaults, ...overrides };
   const stage = options.stage ?? 'all';
   const limit = options.shortlistSize ?? 3;
+  const providerName = options.provider ?? 'gemini';
   if (!Number.isInteger(limit) || limit < 1 || limit > 5) throw new Error('Shortlist size must be 1–5.');
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const release = await lockRun(directory);
@@ -102,9 +105,12 @@ export async function runPipeline(options: {
   let store: JsonStore<CoreRun> | undefined;
   try {
     store = await JsonStore.open(join(directory, 'run.json'), coreRunSchema, coreRunSchema.parse({ version: 1, id: basename(directory), createdAt: new Date().toISOString(), model: options.model, status: 'running' }));
-    await store.update(run => { run.model = options.model; run.status = 'running'; delete run.error; });
-    let google: GoogleServices | undefined;
-    const getGoogle = () => google ??= new GoogleServices(settings, event => trace.event(`provider.${event.stage}`, event.status, event.message ?? `${event.model ?? 'Files API'} attempt ${event.attempt}`, event));
+    await store.update(run => { run.model = options.model; run.provider = providerName; run.status = 'running'; delete run.error; });
+    let provider: Inference | undefined;
+    const onProviderEvent = (event: InferenceProgressEvent) => trace.event(`provider.${event.stage}`, event.status, event.message ?? `${event.model ?? providerName} attempt ${event.attempt}`, { provider: providerName, ...event });
+    const getProvider = () => provider ??= providerName === 'codex'
+      ? new CodexServices({ reasoningModel: options.model, mediaTools: config.mediaTools }, onProviderEvent)
+      : new GoogleServices(settings, onProviderEvent);
     const save = async (change: (run: CoreRun) => void) => { await store!.update(change); await report(directory, store!.read()); };
     const updateAttempt = async (gameId: string, change: (attempt: CoreRun['attempts'][number]) => void) => save(run => change(run.attempts.find(item => item.gameId === gameId)!));
     const verifySource = async (attempt: CoreRun['attempts'][number]) => {
@@ -117,7 +123,7 @@ export async function runPipeline(options: {
       trace.event('run', 'completed', `Video and evidence: ${directory}`);
       return store!.read();
     };
-    trace.event('run', 'started', `Target stage: ${stage}. Completed artifacts will be reused.`, { model: options.model });
+    trace.event('run', 'started', `Target stage: ${stage}. Completed artifacts will be reused.`, { provider: providerName, model: options.model });
     const saved = store.read();
     if (saved.shortlist.length && options.game && !saved.shortlist.some(choice => {
       const game = saved.candidates.find(candidate => candidate.id === choice.gameId)!;
@@ -148,7 +154,7 @@ export async function runPipeline(options: {
         const game = candidates.find(candidate => candidate.id === options.game || canonicalGameUrl(candidate.url) === canonicalGameUrl(options.game!) || new URL(candidate.url).pathname.split('/').at(-2) === options.game);
         if (!game) throw new Error('The requested game is not in this run’s discovered catalog. Use an exact ID, slug, or URL from discovery.json.');
         shortlist = [{ gameId: game.id, hypothesis: 'Operator-selected candidate; suitability still requires actual play.', viewerQuestion: 'What visible decision and consequence does this game offer?', controlRisk: 'Inspect the actual controls before capturing.' }];
-      } else shortlist = await services.nominateGames(candidates, verifiedProfiles, getGoogle(), limit, options.signal);
+      } else shortlist = await services.nominateGames(candidates, verifiedProfiles, getProvider(), limit, options.signal);
       await save(run => { run.shortlist = shortlist; run.attempts = shortlist.map(item => attemptSchema.parse({ gameId: item.gameId })); });
       trace.artifact('shortlist.json', shortlist);
       trace.event('shortlist', 'completed', 'Provisional choices saved. Actual recordings will determine the edit.', shortlist);
@@ -174,7 +180,7 @@ export async function runPipeline(options: {
           const inspection = await services.inspectGame(game, inspectionDir, options.signal);
           await updateAttempt(game.id, item => { item.inspectionPath = join(inspectionDir, 'inspection.json'); });
           const preset = verifiedProfiles.find(profile => canonicalGameUrl(profile.gameUrl) === canonicalGameUrl(game.url));
-          const learned = preset ? { profile: preset, evidence: [preset.verificationNotes ?? 'Previously tested native controls.'], limitations: ['A tested control sequence does not guarantee a win or a useful event in this attempt.'] } : await services.learnGameProfile(inspection, game, getGoogle(), options.signal);
+          const learned = preset ? { profile: preset, evidence: [preset.verificationNotes ?? 'Previously tested native controls.'], limitations: ['A tested control sequence does not guarantee a win or a useful event in this attempt.'] } : await services.learnGameProfile(inspection, game, getProvider(), options.signal);
           await updateAttempt(game.id, item => { item.profile = learned.profile; item.evidence = learned.evidence; item.limitations = learned.limitations; item.unsupported = !learned.profile; delete item.error; });
           trace.artifact(`controls-${game.id}.json`, learned);
           trace.event('learn', learned.profile ? 'completed' : 'unsupported', `${game.title}: ${learned.profile ? 'bounded controls prepared' : 'no supported control plan'}.`, learned);
@@ -200,7 +206,7 @@ export async function runPipeline(options: {
       } catch (error) {
         options.signal?.throwIfAborted();
         // A provider outage is not evidence that a game is unsuitable.
-        if (error && typeof error === 'object' && [429, 503].includes(Reflect.get(error, 'status') ?? Reflect.get(error, 'statusCode'))) throw error;
+        if (error && typeof error === 'object' && [400, 401, 403, 429, 503].includes(Reflect.get(error, 'status') ?? Reflect.get(error, 'statusCode'))) throw error;
         const detail = message(error, settings.geminiApiKey);
         await updateAttempt(game.id, item => { item.error = detail; });
         trace.event('capture', 'failed', `${game.title}: ${detail}`);
@@ -212,7 +218,7 @@ export async function runPipeline(options: {
     for (const attempt of store.read().script ? [] : store.read().attempts) {
       if (!attempt.capture || attempt.capture.analysis) continue;
       trace.event('analyze', 'started', `Finding a visible decision and consequence in ${attempt.capture.game.title}.`);
-      const provider = getGoogle(); // Missing credentials are a run-level setup failure, not bad footage.
+      const provider = getProvider(); // Missing credentials are a run-level setup failure, not bad footage.
       let analysis: FootageAnalysis;
       try {
         analysis = await services.analyzeFootage(attempt.capture, provider, options.signal);
@@ -224,7 +230,7 @@ export async function runPipeline(options: {
         trace.event('analyze', 'failed', `${attempt.capture.game.title}: ${detail}`, { gameId: attempt.gameId });
         continue;
       }
-      await updateAttempt(attempt.gameId, item => { item.capture!.analysis = analysis; item.analysisModel = options.model; delete item.error; });
+      await updateAttempt(attempt.gameId, item => { item.capture!.analysis = analysis; item.analysisModel = options.model; item.analysisProvider = providerName; delete item.error; });
       trace.artifact(`analysis-${attempt.gameId}.json`, analysis);
       trace.event('analyze', analysis.usable ? 'completed' : 'rejected', analysis.reason, analysis);
     }
@@ -234,8 +240,8 @@ export async function runPipeline(options: {
       const selected = usable[0]!;
       await save(run => { run.selectedGameId = selected.gameId; });
       trace.event('select', 'completed', `Selected ${selected.capture!.game.title} from observed footage, using visual score and verified action windows.`, usable.map(item => ({ game: item.capture!.game.title, score: item.capture!.analysis!.visualScore, reason: item.capture!.analysis!.reason })));
-      const script = await services.draftScript({ capture: selected.capture!, format: 'highlight', topic: '' }, getGoogle(), options.signal);
-      await save(run => { run.script = script; run.scriptModel = options.model; });
+      const script = await services.draftScript({ capture: selected.capture!, format: 'highlight', topic: '' }, getProvider(), options.signal);
+      await save(run => { run.script = script; run.scriptModel = options.model; run.scriptProvider = providerName; });
       trace.artifact('edit.json', script);
       trace.event('edit', 'completed', script.rationale, { hook: script.hook, cuts: script.cuts });
     }

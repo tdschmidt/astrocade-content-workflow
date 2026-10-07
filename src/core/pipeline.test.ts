@@ -189,3 +189,32 @@ test('all invalid analyses fail honestly, and an explicit successful retry clear
   assert.equal(calls.analyze, 2);
   assert.ok(!(await readFile(join(directory, 'report.md'), 'utf8')).includes('Attempt stopped:'));
 });
+
+test('Codex selection requires no Gemini key and persists provider provenance across resume', async t => {
+  const { directory, config, services, calls } = await fixture(t);
+  const noKey: Configuration = Object.assign(Object.create(config), { get: () => ({ ...config.get(), geminiApiKey: '' }) });
+  const options = { directory, model: 'fixture-model', provider: 'codex' as const, quiet: true };
+  const run = await runPipeline(options, noKey, services);
+  assert.equal(run.provider, 'codex');
+  assert.equal(run.attempts[0]!.analysisProvider, 'codex');
+  assert.equal(run.scriptProvider, 'codex');
+  assert.match(await readFile(join(directory, 'report.md'), 'utf8'), /codex\/fixture-model/);
+  const resumed = await runPipeline({ ...options, provider: 'gemini', model: 'different-model' }, noKey, services);
+  assert.equal(resumed.provider, 'gemini');
+  assert.equal(resumed.attempts[0]!.analysisProvider, 'codex');
+  assert.equal(resumed.scriptProvider, 'codex');
+  assert.equal(calls.analyze, 1);
+  assert.equal(calls.draft, 1);
+});
+
+test('a rejected provider schema during learning stops the run without marking the game unsupported', async t => {
+  const { directory, config, services, calls, candidate } = await fixture(t);
+  candidate.url = 'https://www.astrocade.com/games/fixture-game/fixture';
+  services.learnGameProfile = async () => { throw Object.assign(new Error('Provider rejected schema'), { status: 400 }); };
+  await assert.rejects(runPipeline({ directory, model: 'fixture-model', provider: 'codex', quiet: true }, config, services), /Provider rejected schema/);
+  const run = JSON.parse(await readFile(join(directory, 'run.json'), 'utf8'));
+  assert.equal(run.status, 'failed');
+  assert.equal(run.attempts[0].unsupported, false);
+  assert.equal(run.attempts[0].error, undefined);
+  assert.equal(calls.capture, 0);
+});
