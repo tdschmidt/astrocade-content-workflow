@@ -1,62 +1,45 @@
-# Implementation and acceptance evidence
+# Core workflow: acceptance evidence
 
-Updated 2026-10-06 (America/Los_Angeles). Repository: [tdschmidt/astrocade-content-workflow](https://github.com/tdschmidt/astrocade-content-workflow).
+Updated 2026-10-06 (America/Los_Angeles). Scope: [PLAN.md](../PLAN.md), branch `codex/core-workflow`. The current deliverable is **discover → learn/play/capture → edit**, operated through the CLI. Account creation/publication are manual follow-through and are not current automation gates.
 
-**The assignment is not complete.** Live discovery returned 30 games. Crowd Pier Run passed two direct captures and the actual Studio two-capture probe after the loading-overlay fix. Its verified preset is included, and Create video is enabled. A local portrait-render check also succeeded. The first Gemini footage analysis timed out; subsequent uploads await explicit permission after an automatic approval-review block. There is no end-to-end automatically generated live short, verified fresh Instagram account, or published video yet.
+**Current status:** the three-stage workflow has produced a verified real short from a live, automatically shortlisted three-game run. Capture, analysis, event selection, hook/caption creation and rendering were automatic; an explicit model change/resume recovered from provider quota limits. The result meets functional and conservative editorial acceptance. It does not establish viral performance or universal gameplay. The trimmed codebase passed a clean install, typecheck, doctor and all 79 retained opt-in tests.
 
-The current priority is the initial brief: discover, capture, create, create the account, publish two approved videos, and hand over the code. Research, extra formats and shared hosting are not additional acceptance gates.
+## Evidence by stage
 
-## Evidence by requirement
-
-| Requirement | Demonstrated evidence | Remaining proof |
+| Stage | Demonstrated | Limit / handoff note |
 | --- | --- | --- |
-| Discover suitable games | Live public-page discovery returned 30 unique games from Trending and Top Picks; URLs, visible text and observed counters were retained | Establish which candidates consistently yield useful short-form gameplay |
-| Repeatable gameplay capture | Two direct captures and the actual Studio two-capture probe passed for Crowd Pier Run; moving play and the full HUD were inspected. The verified preset is seeded only when absent, preserving saved edits | Use the proven capture path in complete automatic video generation; another game is not required |
-| Automatic video creation | Actual source footage was rendered into an inspected 11.7-second, 1080×1920, H.264, 30 fps silent MP4 using a manually supplied QA hook; synthetic integration exercises automatic orchestration | Obtain permission for the blocked Google upload, validate the SDK bounds fix live, and produce a complete real draft automatically; the manual render check does not satisfy this requirement |
-| Fresh Instagram account | Signup browser fixtures cover recognized screens, fresh email-code handling and resumable checkpoints; persistent browser/profile handling exists | Supply real owner/account details and a working inbox, complete fresh signup, then verify identity and upload readiness |
-| Two Instagram videos | Browser fixtures cover exact approval, upload, intent-before-Share, one Share and permalink inspection | Approve two actual previews/captions, publish through the workflow, and verify both processed videos; current live count is zero |
-| Handoff | Complete source, lockfile, private GitHub repository, incremental commits, tested Crowd Pier Run preset, setup/preflight, tests and decision records | Include a real completed automatic run record, actual human checkpoints and two real permalinks |
+| Discover suitable games | Public Trending and Top Picks pages returned 30 unique games with URLs and dated card evidence. A live model nominated three candidates with hook hypotheses, viewer questions and control risks. Unlabeled counters remain unknown. | Observed footage, not the provisional metadata hypothesis, determined the selected game. |
+| Learn, play and capture | Crowd Pier Run passed independent fresh-browser captures with native controls and complete HUD. Actual input actions, source geometry and finalized VP9 media are saved. Learned controls also produced Manu Tap-Tap Shots (3.611s) and Bladefish.io (10.316s) recordings; analysis rejected both for lacking a supported payoff. | Keep recorded control execution distinct from useful content; no universal-gameplay claim. |
+| Edit a short | The full run rendered and visually verified a 3.766667-second 1080×1920 H.264/yuv420p/30 fps silent highlight. Its +5 gate, 8→13 outcome, hook and caption agree; the full HUD remains visible. | Future recordings still need content review; model correctness and game compatibility are not guaranteed. |
+| Hand off the code | Source, lockfile, font/license, CLI setup, staged/resume commands, evidence artifacts and tests exist. | The saved run contains its report/media; the final retained suite passed. The recipient supplies their own key; private credentials stay out of the handoff. |
 
-## Live capture and render records
+## Saved live evidence
 
-- Discovery completed at `2026-10-07T02:34:42.814Z` (October 6 locally). Trending and Top Picks each yielded 20 observed links; deduplication/selection retained 30 candidates.
-- The first [Crowd Pier Run](https://www.astrocade.com/games/crowd-pier-run/01M2YWFH66FH6MMVW5AE66NX7S) source is `data/media/e05236ba-1264-4d55-bb6f-4ac93ee7ed8b.webm`: 12.731 seconds, recorded at `2026-10-07T02:35:18.381Z`. It is actual Astrocade footage.
-- A loading spinner initially covered Start in six of six rapid attempts. After the bounded actionability-wait fix, two direct captures passed at 12.799 and 12.732 seconds. Moving gameplay and the complete HUD were visually inspected.
-- The Studio **Test capture twice** action completed job `0a869b0a-203b-4bc9-babd-aad8ea15f586` at `2026-10-07T02:49:40.820Z`. It saved `data/media/b704031d-3642-445a-bb28-b17f8e4a5155.webm` (12.748 seconds) and `data/media/e557e05f-dae2-4241-a1d1-042865ce8b2e.webm` (12.948 seconds). Both are 720×1280 VP9 with game crop x=29, y=0, width=661, height=1176.
-- Profile `crowd-pier-run` is verified. Startup seeds the tested preset only if its ID is absent, preserving existing saved edits and their verification status. The Studio Create video action is now enabled without requiring profile JSON.
-- The local render check is preserved as `data/media/crowd-pier-render-check.mp4`: 11.7 seconds, 1080×1920, H.264 at 30 fps, silent, with the manually supplied hook “Choose your gate” and source credit. It was visually inspected. This proves rendering of real footage, not automatic selection, analysis or scripting.
-- A timed profile probe now requires two successful technical captures, including the capture layer's source decode validation. It does not call Google analysis or require a Google key. Footage content quality is assessed during generation.
+- Repeated Crowd Pier Run sources include `data/media/b704031d-3642-445a-bb28-b17f8e4a5155.webm` (12.748s) and `data/media/e557e05f-dae2-4241-a1d1-042865ce8b2e.webm` (12.948s). Both are 720×1280 VP9 with crop x=29, y=0, width=661, height=1176. Moving play and the full HUD were visually inspected. The tested profile is shipped; it does not guarantee useful content on every attempt.
+- Focused run `data/runs/2026-10-07T04-00-44-981Z-9d26f7` captured 12.731s of real gameplay. `gemini-3.5-flash` analysis supported the +8 gate and 10→18 count change. After a 503 response, an explicit edit-stage resume with `gemini-3.5-flash-lite` reused that source/analysis and produced `highlight-83aaddbe.mp4` (3.466s). Frames show a readable approach and result. The generated caption incorrectly called an addition gate a multiplier; that earlier artifact is not the final accepted output.
+- Fresh automatic run: `data/runs/2026-10-07T04-08-10-239Z-2b1896`. Discovery returned 30 games and nominated three. The nomination request received two HTTP 503 responses with `Retry-After: 30`, waited accordingly, and succeeded on attempt three after 77.459s. It captured Crowd Pier Run (12.915s), Manu Tap-Tap Shots (3.611s), and Bladefish.io (10.316s). Flash then hit the test project's reported 20-requests/day free quota. An explicit `--stage edit --model gemini-3.5-flash-lite` resume reused Crowd's completed Flash analysis; Lite rejected the other two recordings for no visible scored consequence.
+- **Accepted output:** `data/runs/2026-10-07T04-08-10-239Z-2b1896/highlight-3223d0fd.mp4`: 3.766667s, 1080×1920, H.264/yuv420p, 30 fps, silent. Eight sampled frames show the full HUD at 8, approach to the center +5 gate, the +5 animation, count 13 and exit. Hook: “Adding five runners to the crowd!” Caption: “Crowd Pier Run / Crowd count changes from 8 to 13. / Play: [game URL]”. Both match the visible event.
+- Recovery command: `npm run pipeline -- --resume data/runs/2026-10-07T04-08-10-239Z-2b1896 --stage edit --model gemini-3.5-flash-lite`. The run records Flash as the reused Crowd analysis model and Flash Lite for the final script and remaining candidate analyses. No manual cut or caption was supplied.
+- Completed CLI resume at `2026-10-07T04:23:34Z` validated/reused the finished video and returned complete in under one second, with no candidate or model calls.
+- Rejected candidates are retained: Manu's ball leaves the frame with no basket/score (zero score also visually checked); Bladefish swims without a clear hit/score. Learning controls and recording movement do not establish a useful payoff.
+- Separate learned-control diagnostic: `data/evidence/shuriken-learned/{highlight.mp4,proof.json,qa.json}` records two fresh captures (5.732s/5.557s) replaying the same learned profile. One showed 0→28 XP and a shield; the other stayed at 0 XP under different spawns. A 4.0s portrait short was rendered, but this is independent of the main CLI run. QA flags unsupported level/color wording in the raw model analysis; the output hook/caption omit those claims. Repeatable inputs do not guarantee the same reward.
 
-Local media and credentials stay outside the source handoff. These records identify development evidence; they are not substitute submission posts.
+## Changes driven by measured failures
 
-## Local verification
+- Loading overlays intercepted Start; bounded actionability checks and displayed frame geometry fixed repeated capture and HUD cropping.
+- Multi-pass analysis was slow and sometimes returned incorrect window-relative timestamps. Recordings up to 45s now use one full 8 FPS review with absolute source times and strict bounds.
+- Tight impact-only cuts produced a rushed 2.1s edit. Analysis now reports an unobscured playable span separately; code retains up to 2s before and 1s after the impact within that span. The writer selects an event index and cannot trim away its context.
+- Model numeric readings and creative captions have been wrong. Numeric uncertainty stays explicit; current highlight captions copy the selected observed outcome plus attribution/link. This prevents another creative paraphrase, but still requires checking the observation against footage.
+- Provider control-plan schemas omit wire-level `maxItems` and convert literal `const` to singleton `enum`, while retaining the original Zod limits on decoded output. Malformed or unsupported control proposals do not execute.
+- A candidate's invalid analysis formerly stopped the entire batch. Schema/content-validation failures now save that candidate's error and allow other usable footage to proceed; provider/authentication failures still stop the run.
+- Completed-run resume formerly retried failed candidates and could require a model key just to reuse output. Regression-tested behavior now validates/reuses completed media, freezes candidate work once a script exists, and reconstructs missing final caption text.
 
-- Strict TypeScript checks and the Vite production build pass.
-- The final full opt-in suite passed **83 tests with zero failures and zero skips**, including the loading-overlay, provider-bound and preset cases.
-- Unit/local HTTP tests cover credential redaction, artifact access, single-operation ownership, cancellation, email freshness, provider contracts, cut/timestamp bounds, approval invalidation, publication uncertainty and restart recovery. The existing local-access boundary remains tested; sharing is outside current scope.
-- Timed-profile regression cases pass with no Google key: two successful captures verify; failure on either attempt leaves the profile unverified; content analysis is not invoked.
-- Browser/media fixtures use pinned Playwright 1.63.0 / Chromium 153.0.8010.12 and FFmpeg 9.0.2 with libass. They verify native iframe input, moving VP9 footage, final flush and cancellation cleanup, plus decoded portrait output and the bundled Noto Sans captions.
-- A connected synthetic workflow generated highlight and narrated variants, verified hashes/timings, reused immutable media for caption edits, cleared approval and resumed without further provider calls. Its speech was a synthetic tone with mocked timings; this establishes orchestration, not provider output quality.
-- The workbench has been reviewed at desktop and 390×844 mobile widths. The simplified primary interface now exposes Studio and Setup, with one highlight by default and optional creative choices collapsed.
-- Instagram fixtures create no real account or post. Google wire-contract fixtures make no real provider requests. Optional research fixtures do not establish live Tavily results.
+## Verification and practical limits
 
-Reproduce the checks using [README](../README.md). Tests use isolated temporary data; live private configuration stays in ignored `data/`.
+After a clean `npm ci`, strict TypeScript checks, doctor and the full retained opt-in suite passed: **79 tests, zero failures, zero skips**. This verifies the final trimmed code, including real FFmpeg/layout and browser/capture checks. The earlier larger codebase passed 118 tests before removed features and their tests were trimmed. This branch has no GUI build step.
 
-## External dependency status
+Browser/media checks use pinned Playwright 1.63.0 / Chromium 153 and FFmpeg 9.0.2 with libass on macOS. They cover native input, recording flush/cancellation, decoded output, unobscured top/bottom game regions, schema/timestamp bounds, provider wire contracts and artifact reuse. Tests use fixtures and temporary data; they do not establish live model accuracy. Reproduce them using [README](../README.md).
 
-**Astrocade:** the earlier router block is resolved. Live discovery and repeatable Crowd Pier Run captures now work. No VPN was installed. The tested preset is included; this does not claim generic support for every discovered game.
+Gemini availability is variable: HTTP 503 overload and the test project's HTTP 429 daily free-quota limit both occurred. The observed 20/day allowance is specific to that project/model response, not a promised allowance for every recipient. Explicit retries are limited to HTTP 429/503, three total attempts and a shared 120-second operation deadline, honoring `Retry-After`; saved artifacts allow a later explicit resume. The recipient supplies their own key and model access. Highlights are silent. The simple timed learner deliberately skips uncertain controls and randomized puzzles needing current-board reasoning. Cross-platform native capture and broad game coverage are not yet demonstrated.
 
-**Google/Tavily:** keys are now configured locally and are not included in the handoff. The first live Gemini footage-analysis request timed out before returning usable analysis; the source capture remains saved. A subsequent upload was blocked by automatic approval review, and further uploads await explicit permission in this development session. The small SDK timeout/bounds fix is committed, but no new Google upload has validated it. Actual provider capacity and output quality remain unverified. The recipient needs their own key. Optional model/voice overrides remain collapsed; no paid upgrade was activated. Tavily is not required for the default highlight workflow.
-
-**Mailbox:** the authorized Mail.tm attempt remains pending. The selected identity's credentials were saved before creation; subsequent authentication returned HTTP 401. The initial response does not establish whether creation was rejected or its response was lost. No replacement identity or repeated creation request was made. Diagnostics distinguish stages/statuses without exposing credentials. A TLS IMAP alternative is available; live verification-email delivery is unproven.
-
-**Instagram:** no fresh account or post has been verified. Real owner/account details and a working inbox are still required. Unknown verification screens remain human checkpoints in the retained browser. A publication with uncertain Share outcome blocks another revision until reconciled.
-
-## Remaining execution order
-
-1. Obtain explicit permission for the blocked Google upload, then resume analysis from saved footage and validate the bounded request fix. Automatically create one usable highlight and inspect its actual phone-size result.
-2. Complete fresh Instagram signup and verify the persistent account and video composer.
-3. Obtain approval of the exact first preview/caption, publish and verify it. Produce a second video through the proven capture path, obtain approval, publish and verify it.
-4. Record the completed automatic run, actual human checkpoints and both playable permalinks in the handoff.
-
-Synthetic videos, manually scripted render checks and simulated permalinks do not satisfy those remaining steps.
+GUI/account/publishing/research modules and their dependencies are removed from this branch; the earlier implementation remains on `main`. Manual account creation and upload can use the reviewed MP4/caption; no fresh account or published-post success is claimed here. No additional infrastructure or automatic publishing work is required for this branch's clarified scope.
