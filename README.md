@@ -6,6 +6,8 @@ A local TypeScript CLI that finds Astrocade games, inspects their controls, play
 
 **Improved play:** Car Wash reached a Perfect three-star first-customer result in three fresh captures after two model-guided plan revisions. Screenshot feedback completed two independently shuffled 20-item Sort It Out boards, including recovery from a mismatch. These are measured examples, not a broad win-rate claim.
 
+**Variety test:** [21 reviewed videos across 10 games](docs/variety-results.md), with at least two variations per game. The report links the local videos and verification evidence, distinguishes saved-source edits and three reviewer timing corrections, and records remaining limitations.
+
 **Earlier end-to-end baseline:** a live run discovered 30 games, nominated and captured three, rejected two recordings without a useful payoff, and produced an inspected **3.77-second Crowd Pier Run highlight**. The video clearly shows a +5 gate taking the crowd from 8 to 13; hook and caption match. After Flash reached the test project's daily quota, an explicit Flash Lite resume reused completed sources/analysis. A fresh Codex-backed run also found 30 games and produced a verified **3.23-second 10→20 Crowd Pier Run highlight** without Gemini calls. These runs demonstrate the workflow and truthful shorts, not viral performance. See [acceptance evidence](docs/acceptance.md).
 
 ## Install and configure
