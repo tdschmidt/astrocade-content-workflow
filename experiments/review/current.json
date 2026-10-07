@@ -1,0 +1,23 @@
+{
+  "selectedAt": "2026-10-07",
+  "videos": [
+    {
+      "id": "ben10-overview-v3",
+      "title": "Pick Your Alien, Change Your Play Style",
+      "description": "A cyclone opens the overview, followed by transformations into a rolling ball and a ground-pound specialist. Natural-pace narration follows the demonstrated powers.",
+      "credit": "New local Kokoro narration. Original gameplay sources, word timing and caption corrections are preserved in the edit records."
+    },
+    {
+      "id": "golem-plot-armor-v3",
+      "title": "The golem has plot armor",
+      "description": "Four attacks build toward the actual Totem revival. The main phonk drop lands on that reversal, followed by a brief face-aligned freeze.",
+      "credit": "Music: Phonk Execution by Alex-Productions. Full music credits and meme sound sources are in the audio library below."
+    },
+    {
+      "id": "venus-clock-v1",
+      "title": "A Year Before One Full Spin",
+      "description": "A 37.8-second Venus explainer over a fresh parkour montage. Clean movement from distinct recorded attempts, with natural-pace narration and short phrase captions.",
+      "credit": "Information from NASA. The gameplay is a montage across attempts, with source cuts documented in the render records."
+    }
+  ]
+}

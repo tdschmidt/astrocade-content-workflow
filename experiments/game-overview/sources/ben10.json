@@ -1,0 +1,96 @@
+{
+  "gameTitle": "BEN 10 OPEN World",
+  "gameUrl": "https://www.astrocade.com/games/ben-10-open-world/01M32NFPAH709Z7CT0YXSTM73W",
+  "sourcePath": "data/experiments/game-overview/ben10-source-v2/ben10-feature-source.mp4",
+  "sourceSha256": "79f24e0395b14a46384e2191e9c192beda6e07867ac61796218c6a64d7bd2038",
+  "sourceProvenance": "data/experiments/game-overview/ben10-source-v2/provenance.json",
+  "selectionReason": "Three visually reviewed candidate games: Ben10 has flight across a city, selectable forms, constructed crystal walls, extending blades and burrow traversal. These demonstrated choices are richer than the available single placement loop in Sort It Out or repeated taps/appearance tiers in Muscle Mommy Clicker.",
+  "wordRange": [
+    80,
+    95
+  ],
+  "crop": {
+    "x": 30,
+    "y": 0,
+    "width": 660,
+    "height": 1176
+  },
+  "captionSafety": "Initial selection: upper-middle y320 is above central bodies and below the top HUD; verify full-resolution output because the crystal tips extend high. Lower-middle y960 would cover burrow mound and flight exhaust. No permanent title/author/credit.",
+  "chapters": [
+    {
+      "id": "flight",
+      "allowedStart": 0,
+      "allowedEnd": 7.5,
+      "framing": "Start exactly at0; rising through the city is already beginning. Keep the street-to-rooftop ascent; first-second picture supports a specific curiosity hook.",
+      "facts": [
+        {
+          "id": "heatblast-flight",
+          "fact": "Heatblast rises past a tall building and travels above streets/houses with a bright continuous flame trail beneath him. No target, impact, landing or obstacle goal is demonstrated."
+        },
+        {
+          "id": "game-context",
+          "fact": "This is the recorded BEN 10 OPEN World game. The native Omnitrix menu in the original 20:05 capture at158.3\u2013161s visibly offers alien choices and changes Fasttrack into Diamondhead. The overview shows different alien powers across two sessions, not a continuous mission. This general premise is backed by the original menu evidence; do not narrate a click as happening in the opening flight shot."
+        }
+      ]
+    },
+    {
+      "id": "crystal-wall",
+      "allowedStart": 7.5,
+      "allowedEnd": 13.5,
+      "framing": "Keep the unobstructed Diamondhead body followed by the wall activation within the first second. Native selection menu is intentionally omitted because CLICK TO AIM obstructed it; do not narrate the click/selection as though it occurs in this shot.",
+      "facts": [
+        {
+          "id": "diamond-wall",
+          "fact": "At derived8.3\u20138.5s, tall cyan-and-white crystal pillars rise around Diamondhead into a persistent enclosure. The footage does not demonstrate blocking an enemy."
+        }
+      ]
+    },
+    {
+      "id": "blades",
+      "allowedStart": 13.5,
+      "allowedEnd": 21,
+      "framing": "Keep raised blade extension around15.1\u201316.6s. Projectile/block debris near end does not prove a hit.",
+      "facts": [
+        {
+          "id": "diamond-blades",
+          "fact": "Diamondhead extends two long crystal blades from his arms, raising and lowering them. No opponent or successful target hit is shown."
+        }
+      ]
+    },
+    {
+      "id": "burrow",
+      "allowedStart": 21,
+      "allowedEnd": 28,
+      "framing": "Keep visible Wildvine body at start, change to mound by21.5, then movement through scattered colored blocks through~25.3. Do not claim travel beneath the city because this shot is a gray open lot.",
+      "facts": [
+        {
+          "id": "wildvine-burrow",
+          "fact": "Wildvine changes from a standing multi-legged green alien into a low brown mound with a pale ring. That mound moves across the ground past scattered blocks. This is an active burrow traversal demonstration; emergence is outside the selected shot."
+        },
+        {
+          "id": "different-powers",
+          "fact": "The displayed overview shows three selectable alien forms with different demonstrated abilities: Heatblast flight, Diamondhead crystal enclosure/blades, Wildvine burrow movement."
+        }
+      ]
+    }
+  ],
+  "forbiddenClaims": [
+    "Defeating enemies, escaping danger or winning a mission",
+    "Ability unlocks, leveling or progression not shown",
+    "All ten aliens or all powers demonstrated",
+    "Combat effectiveness or protective strength inferred from HUD",
+    "Flight or burrowing solves a required obstacle",
+    "Personal playtime or firsthand enjoyment",
+    "Platformwide rank or verified play count inferred from an unlabeled card counter"
+  ],
+  "avoidSpokenGameTitle": true,
+  "spokenAvoidPhrases": [
+    "cyan-and-white",
+    "pale ring",
+    "sampled abilities",
+    "recorded sessions",
+    "overview montage",
+    "close-range tools",
+    "weaving"
+  ]
+}

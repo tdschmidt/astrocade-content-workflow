@@ -1,0 +1,62 @@
+{
+  "id": "venus-day",
+  "source_type": "primary_informational_source",
+  "title": "All About Venus",
+  "url": "https://spaceplace.nasa.gov/all-about-venus/en/",
+  "author": "NASA Space Place / NASA JPL-Caltech",
+  "community": null,
+  "published_date": null,
+  "date_basis": "No exact publication date verified from the retrieved primary page",
+  "accessed_at": "2026-10-07",
+  "content_access": "Primary NASA page read through web research; rotation, orbit, solar-day distinction, and rotation direction checked",
+  "observed_score": null,
+  "engagement_basis": "Not applicable to this informational primary source; no popularity claim",
+  "truth_status": "Scientific facts grounded in NASA; rounded values and day definitions must be preserved",
+  "grounded_beats": [
+    {
+      "id": "rotation",
+      "fact": "Venus completes one rotation in about 243 Earth days."
+    },
+    {
+      "id": "orbit",
+      "fact": "One orbit around the Sun takes about 225 Earth days, so a Venus rotation lasts longer than its year."
+    },
+    {
+      "id": "solar-day",
+      "fact": "A sunrise-to-sunrise day on Venus is different from a rotation: it lasts about 117 Earth days."
+    },
+    {
+      "id": "direction",
+      "fact": "Venus rotates opposite to Earth and most other planets; the Sun would rise in the west and set in the east."
+    },
+    {
+      "id": "definition",
+      "fact": "The claim that Venus has a day longer than its year refers to its rotation period, not its sunrise-to-sunrise day."
+    }
+  ],
+  "forbidden_inventions": [
+    "Sunrise-to-sunrise takes 243 Earth days",
+    "A Venus year is longer than one Venus rotation",
+    "All planets except Venus rotate in the same direction",
+    "Earth-like sunrise visibility through the clouds",
+    "A traveler or observer actually witnessed these events",
+    "Gameplay shows, measures, or simulates Venus",
+    "Exact unrounded periods beyond the supplied approximate values",
+    "An explanation for the cause of Venus's rotation direction"
+  ],
+  "writer_brief": {
+    "target_words": [
+      90,
+      110
+    ],
+    "target_seconds": [
+      35,
+      45
+    ],
+    "voice": "Fresh conversational informational narration, grounded in NASA; no Reddit or personal-account framing",
+    "structure": "One concise curiosity hook about day versus year; define a rotation; compare it with an orbit; distinguish the solar day; use the reversed sunrise as the optional final detail; resolve the definition clearly",
+    "attribution": "Attribute facts to NASA naturally in speech or off-screen source credit; retain the primary page URL in saved provenance. Community is null because this is not a Reddit source.",
+    "commentary": "One short editorial observation about why definitions matter is allowed, marked separately; do not add scientific claims or a fictional observer",
+    "proposed_retelling_path": null
+  }
+}

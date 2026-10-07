@@ -1,0 +1,463 @@
+{
+  "version": 1,
+  "id": "rail-story-background-v1",
+  "status": "selected-alternative",
+  "gameTitle": "Rail Runner / visible game title RAIL JOURNEY",
+  "gameUrl": "https://www.astrocade.com/games/rail-runner/01KYNNYEY1VXE2HYZQDA71M27Z",
+  "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/rail-capture-01/source.webm",
+  "sourceSha256": "4181e4a5f795c17877ee85dacf8d0365353bf61224b6e5238659c93751be09b8",
+  "sourceInfo": {
+    "durationSeconds": 54.245000000000005,
+    "sizeBytes": 35061535,
+    "video": {
+      "width": 720,
+      "height": 1280,
+      "codec": "vp9",
+      "pixelFormat": "yuv420p",
+      "frameRate": 30
+    }
+  },
+  "captureProvenance": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/rail-capture-01/capture.json",
+  "nativeInputLog": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/rail-capture-01/native-inputs.json",
+  "selectionMode": "separate editorial scout agent using actual local source frames",
+  "continuity": "two forward-ordered unique windows from one native take; one cut, no loops, no resets",
+  "matchesExactReferenceGenre": false,
+  "genreLimit": "Train traversal rather than Roblox character parkour. Both obby candidates failed to yield supported ready traversal.",
+  "segments": [
+    {
+      "sourceStart": 2,
+      "sourceEnd": 10.5,
+      "speed": 1,
+      "outputStart": 0,
+      "outputEnd": 8.5
+    },
+    {
+      "sourceStart": 22,
+      "sourceEnd": 49,
+      "speed": 1,
+      "outputStart": 8.5,
+      "outputEnd": 35.5
+    }
+  ],
+  "durationSeconds": 35.5,
+  "sourceRepeated": false,
+  "sourceAudioPresent": false,
+  "crop": {
+    "x": 30,
+    "y": 0,
+    "width": 660,
+    "height": 1176,
+    "reason": "Retain the game surface and remove Astrocade side/footer chrome; full native recording remains intact."
+  },
+  "preferredCaptionRegion": {
+    "coordinateSpace": "cropped game, normalized",
+    "xMin": 0.12,
+    "xMax": 0.88,
+    "yMin": 0.13,
+    "yMax": 0.3,
+    "reason": "Open sky above horizon; preserves train, rails, terrain and bottom control widgets. Avoid score HUD at y<.06."
+  },
+  "excluded": [
+    {
+      "start": 0,
+      "end": 2,
+      "reason": "Starting/acceleration portion."
+    },
+    {
+      "start": 10.5,
+      "end": 22,
+      "reason": "Deer warning followed by life-loss feedback competes with narration; do not imply a flawless run."
+    },
+    {
+      "start": 49,
+      "end": 54.245,
+      "reason": "Braking reduces motion; speed reads0 by51s. Avoid idle padding."
+    }
+  ],
+  "review": {
+    "planningFramesFps": 2,
+    "frames": [
+      {
+        "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/rail-capture-01/source.webm",
+        "fps": 2,
+        "startSeconds": 2,
+        "endSeconds": 10.5,
+        "frames": [
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0000.jpg",
+            "sourceSeconds": 2.031,
+            "windowSeconds": 0.03100000000000014
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0001.jpg",
+            "sourceSeconds": 2.531,
+            "windowSeconds": 0.5310000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0002.jpg",
+            "sourceSeconds": 3.063,
+            "windowSeconds": 1.0630000000000002
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0003.jpg",
+            "sourceSeconds": 3.531,
+            "windowSeconds": 1.5310000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0004.jpg",
+            "sourceSeconds": 4.03,
+            "windowSeconds": 2.0300000000000002
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0005.jpg",
+            "sourceSeconds": 4.531,
+            "windowSeconds": 2.5309999999999997
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0006.jpg",
+            "sourceSeconds": 5.032,
+            "windowSeconds": 3.032
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0007.jpg",
+            "sourceSeconds": 5.531,
+            "windowSeconds": 3.5309999999999997
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0008.jpg",
+            "sourceSeconds": 6.03,
+            "windowSeconds": 4.03
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0009.jpg",
+            "sourceSeconds": 6.532,
+            "windowSeconds": 4.532
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0010.jpg",
+            "sourceSeconds": 7.031,
+            "windowSeconds": 5.031
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0011.jpg",
+            "sourceSeconds": 7.53,
+            "windowSeconds": 5.53
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0012.jpg",
+            "sourceSeconds": 8.03,
+            "windowSeconds": 6.029999999999999
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0013.jpg",
+            "sourceSeconds": 8.53,
+            "windowSeconds": 6.529999999999999
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0014.jpg",
+            "sourceSeconds": 9.032,
+            "windowSeconds": 7.032
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0015.jpg",
+            "sourceSeconds": 9.53,
+            "windowSeconds": 7.529999999999999
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-a/frame-0016.jpg",
+            "sourceSeconds": 10.03,
+            "windowSeconds": 8.03
+          }
+        ]
+      },
+      {
+        "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/rail-capture-01/source.webm",
+        "fps": 2,
+        "startSeconds": 22,
+        "endSeconds": 49,
+        "frames": [
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0000.jpg",
+            "sourceSeconds": 22.03,
+            "windowSeconds": 0.030000000000001137
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0001.jpg",
+            "sourceSeconds": 22.529,
+            "windowSeconds": 0.5289999999999999
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0002.jpg",
+            "sourceSeconds": 23.03,
+            "windowSeconds": 1.0300000000000011
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0003.jpg",
+            "sourceSeconds": 23.53,
+            "windowSeconds": 1.5300000000000011
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0004.jpg",
+            "sourceSeconds": 24.03,
+            "windowSeconds": 2.030000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0005.jpg",
+            "sourceSeconds": 24.53,
+            "windowSeconds": 2.530000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0006.jpg",
+            "sourceSeconds": 25.03,
+            "windowSeconds": 3.030000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0007.jpg",
+            "sourceSeconds": 25.53,
+            "windowSeconds": 3.530000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0008.jpg",
+            "sourceSeconds": 26.03,
+            "windowSeconds": 4.030000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0009.jpg",
+            "sourceSeconds": 26.53,
+            "windowSeconds": 4.530000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0010.jpg",
+            "sourceSeconds": 27.029,
+            "windowSeconds": 5.029
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0011.jpg",
+            "sourceSeconds": 27.529,
+            "windowSeconds": 5.529
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0012.jpg",
+            "sourceSeconds": 28.03,
+            "windowSeconds": 6.030000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0013.jpg",
+            "sourceSeconds": 28.53,
+            "windowSeconds": 6.530000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0014.jpg",
+            "sourceSeconds": 29.029,
+            "windowSeconds": 7.029
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0015.jpg",
+            "sourceSeconds": 29.529,
+            "windowSeconds": 7.529
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0016.jpg",
+            "sourceSeconds": 30.029,
+            "windowSeconds": 8.029
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0017.jpg",
+            "sourceSeconds": 30.529,
+            "windowSeconds": 8.529
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0018.jpg",
+            "sourceSeconds": 31.029,
+            "windowSeconds": 9.029
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0019.jpg",
+            "sourceSeconds": 31.53,
+            "windowSeconds": 9.530000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0020.jpg",
+            "sourceSeconds": 32.029,
+            "windowSeconds": 10.029000000000003
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0021.jpg",
+            "sourceSeconds": 32.53,
+            "windowSeconds": 10.530000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0022.jpg",
+            "sourceSeconds": 33.029,
+            "windowSeconds": 11.029000000000003
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0023.jpg",
+            "sourceSeconds": 33.53,
+            "windowSeconds": 11.530000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0024.jpg",
+            "sourceSeconds": 34.029,
+            "windowSeconds": 12.029000000000003
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0025.jpg",
+            "sourceSeconds": 34.53,
+            "windowSeconds": 12.530000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0026.jpg",
+            "sourceSeconds": 35.029,
+            "windowSeconds": 13.029000000000003
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0027.jpg",
+            "sourceSeconds": 35.529,
+            "windowSeconds": 13.529000000000003
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0028.jpg",
+            "sourceSeconds": 36.03,
+            "windowSeconds": 14.030000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0029.jpg",
+            "sourceSeconds": 36.53,
+            "windowSeconds": 14.530000000000001
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0030.jpg",
+            "sourceSeconds": 37.029,
+            "windowSeconds": 15.029000000000003
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0031.jpg",
+            "sourceSeconds": 37.529,
+            "windowSeconds": 15.529000000000003
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0032.jpg",
+            "sourceSeconds": 38.029,
+            "windowSeconds": 16.029000000000003
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0033.jpg",
+            "sourceSeconds": 38.53,
+            "windowSeconds": 16.53
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0034.jpg",
+            "sourceSeconds": 39.029,
+            "windowSeconds": 17.029000000000003
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0035.jpg",
+            "sourceSeconds": 39.529,
+            "windowSeconds": 17.529000000000003
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0036.jpg",
+            "sourceSeconds": 40.03,
+            "windowSeconds": 18.03
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0037.jpg",
+            "sourceSeconds": 40.985,
+            "windowSeconds": 18.985
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0038.jpg",
+            "sourceSeconds": 41.037,
+            "windowSeconds": 19.037
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0039.jpg",
+            "sourceSeconds": 41.529,
+            "windowSeconds": 19.529000000000003
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0040.jpg",
+            "sourceSeconds": 42.029,
+            "windowSeconds": 20.029000000000003
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0041.jpg",
+            "sourceSeconds": 42.529,
+            "windowSeconds": 20.529000000000003
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0042.jpg",
+            "sourceSeconds": 43.013,
+            "windowSeconds": 21.012999999999998
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0043.jpg",
+            "sourceSeconds": 43.513,
+            "windowSeconds": 21.512999999999998
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0044.jpg",
+            "sourceSeconds": 44.012,
+            "windowSeconds": 22.012
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0045.jpg",
+            "sourceSeconds": 44.512,
+            "windowSeconds": 22.512
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0046.jpg",
+            "sourceSeconds": 45.013,
+            "windowSeconds": 23.012999999999998
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0047.jpg",
+            "sourceSeconds": 45.513,
+            "windowSeconds": 23.512999999999998
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0048.jpg",
+            "sourceSeconds": 46.013,
+            "windowSeconds": 24.012999999999998
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0049.jpg",
+            "sourceSeconds": 46.512,
+            "windowSeconds": 24.512
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0050.jpg",
+            "sourceSeconds": 47.013,
+            "windowSeconds": 25.012999999999998
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0051.jpg",
+            "sourceSeconds": 47.513,
+            "windowSeconds": 25.512999999999998
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0052.jpg",
+            "sourceSeconds": 48.013,
+            "windowSeconds": 26.012999999999998
+          },
+          {
+            "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/story-background/source-evidence/rail-selected-b/frame-0053.jpg",
+            "sourceSeconds": 48.512,
+            "windowSeconds": 26.512
+          }
+        ]
+      }
+    ],
+    "visualFindings": "Steady forward rails, passing trains and terrain transitions from green fields into sandy terrain. No menu or reset in selected windows. Final1.8s includes actual deceleration, still13km/h at49s.",
+    "limitations": "A two-window train demo, not a successfully captured parkour take; no continuous playback or listening claim from this scout.",
+    "storyOrNarrationCreated": false
+  },
+  "renderPolicy": {
+    "loop": false,
+    "freezePadding": false,
+    "defaultSpeed": 1,
+    "shorterNarration": "Trim final source window to match speech plus brief ending allowance.",
+    "longerNarration": "Prefer shorter spoken script or new distinct footage; do not loop this source silently."
+  }
+}

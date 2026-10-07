@@ -1,0 +1,86 @@
+{
+  "gameTitle": "40 Ways to Kill a Zombie",
+  "gameUrl": "https://www.astrocade.com/games/40-ways-to-kill-a-zombie/01KNZ88KS7SHE4H82X4R336N9V",
+  "sourcePath": "data/runs/2026-10-07T19-15-45-196Z-b9a7a1/game-01KNZ88KS7SHE4H82X4R336N9V/532148ea-0c5d-4873-b902-df5898d077ad.webm",
+  "sourceSha256": "06fd2f47e12837f2d11a004065a5e4652fd00230ff426182d8efa7f6be173026",
+  "selectionReason": "One existing portrait laboratory recording shows four distinct tool effects with large, central, readable consequences. Ben10 has richer movement but more idle gaps and occlusions; this source can sustain a cohesive tool-by-tool overview without claiming hidden missions or competence.",
+  "chapters": [
+    {
+      "id": "sword",
+      "allowedStart": 40,
+      "allowedEnd": 50,
+      "facts": [
+        {
+          "id": "sandbox",
+          "fact": "The visible interface offers tools for interacting with a centered zombie specimen in a chamber."
+        },
+        {
+          "id": "sword-impact",
+          "fact": "A sword arcs into the zombie around42.9s, producing green particles and ragdoll recoil."
+        },
+        {
+          "id": "sword-result",
+          "fact": "Specimen counter00 becomes01 around46.3s; body pieces fall through the opening floor around48.3s."
+        }
+      ]
+    },
+    {
+      "id": "fire",
+      "allowedStart": 67.5,
+      "allowedEnd": 75.5,
+      "facts": [
+        {
+          "id": "fire-effect",
+          "fact": "A flame column reaches the zombie around69.4s; it changes from green to scorched yellow-brown and slumps. SPECIMENS stays01; no additional completed kill is established."
+        }
+      ]
+    },
+    {
+      "id": "bomb",
+      "allowedStart": 138,
+      "allowedEnd": 145.2,
+      "facts": [
+        {
+          "id": "bomb-effect",
+          "fact": "A lit bomb beneath the zombie erupts around141.64s, scattering its body into a ragdoll burst."
+        },
+        {
+          "id": "bomb-result",
+          "fact": "SPECIMENS advances01 to02 around143.64s and body pieces remain visible."
+        }
+      ]
+    },
+    {
+      "id": "acid",
+      "allowedStart": 165,
+      "allowedEnd": 174.5,
+      "facts": [
+        {
+          "id": "acid-effect",
+          "fact": "The selected ACID tool sends a green stream onto the zombie; its flesh visibly vanishes into an exposed skeleton across165.6\u2013170.5s."
+        },
+        {
+          "id": "acid-result",
+          "fact": "Skeleton collapses and SPECIMENS02 advances to03 around172.26s; remains fall through the floor later."
+        }
+      ]
+    }
+  ],
+  "forbiddenClaims": [
+    "All40 advertised methods shown or tested",
+    "Combat against another player",
+    "A story campaign or mission progression",
+    "Personal playtime or personal enjoyment history",
+    "Fire confirmed another elimination",
+    "Perfect or flawless play",
+    "Any feature not visibly demonstrated"
+  ],
+  "crop": {
+    "x": 30,
+    "y": 0,
+    "width": 660,
+    "height": 1176
+  },
+  "captionSafety": "Use upper-middle empty wall. The reference's central text would cover this game's central zombie/tool action; keep the caption above the actor and below the upper-right counter. No permanent game-name or source-credit overlay.",
+  "captionReview": "Initial upper-middle safe-zone assumption failed briefly for the flying bomb torso. Final v2 uses three-word lower-middle captions at outputy960; actor/face readable, particles may pass behind text and final skeleton approaches it. See actual-output editor-review.json."
+}

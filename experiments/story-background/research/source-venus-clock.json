@@ -1,0 +1,66 @@
+{
+  "id": "venus-clock",
+  "source_type": "primary_informational_source",
+  "title": "The Venus day-versus-year puzzle",
+  "url": "https://spaceplace.nasa.gov/all-about-venus/en/",
+  "author": "NASA Space Place / NASA JPL-Caltech",
+  "community": null,
+  "published_date": "2024-03-15",
+  "date_basis": "NASA Space Place article explicitly says last updated March15,2024; this is an update date, not initial publication.",
+  "accessed_at": "2026-10-07",
+  "content_access": "NASA Space Place primary page re-read October7,2026. It directly distinguishes243-day rotation,225-day orbit,117-day sunrise interval, and reverse rotation. NASA Science corroborates rotation/orbit/direction but its sunset wording is not used here.",
+  "observed_score": null,
+  "engagement_basis": "Not applicable to this informational primary source; no popularity claim",
+  "truth_status": "Scientific facts grounded in NASA; rounded values and day definitions must be preserved",
+  "grounded_beats": [
+    {
+      "id": "rotation",
+      "fact": "Venus completes one rotation in about 243 Earth days."
+    },
+    {
+      "id": "orbit",
+      "fact": "One orbit around the Sun takes about 225 Earth days, so a Venus rotation lasts longer than its year."
+    },
+    {
+      "id": "solar-day",
+      "fact": "A sunrise-to-sunrise day on Venus is different from a rotation: it lasts about 117 Earth days."
+    },
+    {
+      "id": "direction",
+      "fact": "Venus rotates opposite to Earth and most other planets; the Sun would rise in the west and set in the east."
+    },
+    {
+      "id": "definition",
+      "fact": "The claim that Venus has a day longer than its year refers to its rotation period, not its sunrise-to-sunrise day."
+    }
+  ],
+  "forbidden_inventions": [
+    "Sunrise-to-sunrise takes 243 Earth days",
+    "A Venus year is longer than one Venus rotation",
+    "All planets except Venus rotate in the same direction",
+    "Earth-like sunrise visibility through the clouds",
+    "A traveler or observer actually witnessed these events",
+    "Gameplay shows, measures, or simulates Venus",
+    "Exact unrounded periods beyond the supplied approximate values",
+    "An explanation for the cause of Venus's rotation direction",
+    "Calling the day/year statement famous, popular, viral or widely known: there is no sourced popularity evidence."
+  ],
+  "writer_brief": {
+    "target_words": [
+      90,
+      110
+    ],
+    "target_seconds": [
+      35,
+      45
+    ],
+    "voice": "Fresh conversational informational narration, grounded in NASA; no Reddit or personal-account framing",
+    "structure": "Start immediately with the concrete contradiction in one short sentence, then explain why it is true without burying the trick. Distinguish rotation from sunrise-to-sunrise. Deliver the full resolution and finish with the backward-sunrise twist or a crisp definition payoff. No generic intro, research-report cadence, false personal scene, or claim that background gameplay shows Venus. Draft exactly90\u2013110words.",
+    "attribution": "Attribute facts to NASA naturally in speech or off-screen source credit; retain the primary page URL in saved provenance. Community is null because this is not a Reddit source.",
+    "commentary": "One short editorial observation about why definitions matter is allowed, marked separately; do not add scientific claims or a fictional observer",
+    "proposed_retelling_path": null,
+    "editorial_selection": "Internally compare three hook approaches (contradiction, question, challenge); use the most concrete truthful hook and explain selection in rationale. This is a new video, not a revision of mail-merge.",
+    "editorial_refinement": "Avoid school-report phrases such as \"NASA says\", \"different measurement\", \"the famous puzzle works\", or \"that is why definitions matter\". Source credit can remain offscreen. Open in immediately understandable language about a year ending before one complete spin. Explain the exact distinction clearly, then leave the backwards sunrise as the final punchline rather than appending a lesson about definitions. Natural conversational rhythm; concise causal explanation. Every scientific claim still needs a ledger beat.",
+    "revision_feedback": "The previous independent reviewer explicitly rejected the word famous as unsupported popularity. Do not use famous, popular, viral or any popularity claim. Preserve the conversational opening and factual ending; write a fresh complete final draft with no popularity language."
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "id": "golem-plot-armor-v1",
+  "title": "The golem has plot armor",
+  "style": "troll-freeze",
+  "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/runs/2026-10-07T22-06-08-887Z-d66b61/game-01M38GNMGHSB58XT9J7KA8XN2S/8f309f1b-fde7-4877-8760-2ba827497e2d.webm",
+  "start": 190,
+  "end": 468,
+  "fps": 2,
+  "observationWindows": [
+    {
+      "start": 190,
+      "end": 198,
+      "fps": 2
+    },
+    {
+      "start": 231.5,
+      "end": 240,
+      "fps": 2
+    },
+    {
+      "start": 459.5,
+      "end": 468,
+      "fps": 4
+    },
+    {
+      "start": 464.9,
+      "end": 466.4,
+      "fps": 8
+    }
+  ],
+  "minDuration": 18,
+  "maxDuration": 25,
+  "requireNarrativeBeats": true,
+  "audioCatalogPath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/experiments/meme-audio/catalog.json",
+  "brief": "Create a wholly NEW best-quality social meme/phonk edit from this fresh gameplay capture. Real footage reveals a strong surprise that the sparse capture report missed: after several attacks, the Anvil drops onto the Golem, drains nearly all remaining hearts, then around465.3\u2013465.5 a GIANT GOLDEN TOTEM OF UNDYING appears and a full golden heartbar replaces the empty one. That actual revival is the strongest narrative reversal and the PRIMARY drop candidate, not the first Anvil hit. Rank it against earlier Creeper/Wind/anvil contact moments from the supplied evidence. The comedic premise can be the golem having literal plot armor; no invented invincibility, no-damage claim or kill. Show the real native Totem signal and restored health. Distinct forward jumpcuts are allowed across Creeper approach/explosion around193\u2013196, Wind vortex/knockback around233\u2013237, then Anvil selection/descent/contact/draining health around461\u2013465 followed by actualrevival. Nativecurrency/hearts change in gaps, so do not claim continuous exact accumulated damage. Aim18\u201325sec substantive action; start with action/strongshortpremise, strip operator/menuidle, let actualattacks grow, preserve entire Anvil descent/contact\u2192healthdrain\u2192revival so viewer understands the joke. Earlier attacks stayclean/understated; only the Totem restoration gets the mainmusicdrop plus biggestvisual/punch. Anvil contact can have a quiet shortmetalpipe if useful but mustnot feel like the main drop. End shortly after readable restoredhealth, before another action. To improve phone framing, sourcecrop approved specificallyforTHISsource is x100,y120,width590,height1048, zoom1: removes appchrome and uppercurrencyheader but retains full moving heartbar, allGolem/Totem action, fallingAnvil, and readable itemcards. This overrides the generic x30crop suggestion. Its source\u2192outputscale is720/590=1.220339 and y has about.54px centering; headmapping x=(sourceX\u2212100)*1.220339,y=(sourceY\u2212120)*1.220339+.54. Nativeheartbar is requiredoutcomeevidence; topcurrency isnotneeded. No addedgame-name/title/creditwatermark. Up to3shortcomediccaptions, no filler. Headattachmentoptional: use only an exactobservedfreezeframe/tightheadbox, doNOT cover nativegoldhearts/giantTotem/UNDYINGtext or contact. Omit face rather than interfere with this authentic reveal; keepstickers[]. Prefer verybriefdeepfry/contrast atactualrevival thencleanreadability; sustainedB&Wwouldhidegoldenrestorecolor, so usejudgment. Use actualphonk-execution sourceStart14.84 with genuinequietintro audibleearly; its anchor must land atTotemappearance/healthrestoration. Fewrealmemecuesonly; no longcue ducking primarybass. Returncomplete executableplan andnarrativeBeats explainingwhyrevivalisstrongerthanearlierdamage, preciseobservedonset/outputmap andshortnecessarytail."
+}

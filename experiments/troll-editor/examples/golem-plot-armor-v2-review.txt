@@ -1,0 +1,270 @@
+V2 solved pacing and musicintro; preserve its firstfiveclipbounds, actualmusic/SFXchoices/gains and candidate hierarchy. This is a targeted final faceplacement/timing pass, not a redesign. The user wants a brief reaction-face moment if safe; simply omitting it avoids testing their explicit alignment feedback.
+Exactsource465.403 is a suitable observedpostrevivalcandidate. It shows an upright Golem head belowthegoldhealthbar and leftofthegiantTotem. Measured visibleface region is approximately rawsource x331–382,y632–667, excludingthehealthbaraboveandbodybelow. Withapprovedcropx100,y120,w590,h1048, this is output aroundx282,y625,width62,height43. Independentlyinspectthesuppliedframe andreturn a tightheadbox, modestscaleabout1.0–1.05 (overridesgeneric1.1–1.25suggestion), rotation0. The nativegoldbar endsaroundrawy625, so keepoverlaybelowit; nativeTotem beginsrawx460, safelyright. Do not covergoldhearts/Totem/UNDYINGtext. RenderwillbeQAchecked.
+Keep the primaryactualrevival atsource465.154 as the firsttreatedvisualevent/musicanchor. You can replace the old .7freeze onfirstreveal with a shortdeepfryclip465.154→465.403, thena .7clean freeze at465.403 containingtheattachedface, followedbycleanclip465.403→466.754. This retainsfirstreveal/healthrestorationbeforeface, sameoverallsourceendpoint and same.7extraheldtime; calculate eachsegmentrounding. Do not move mainpeak to thelaterface. Originalhead staysaliveonlythisfreezeandoverlay disappearsbeforeregularmotion.
+Importantquantization: exactv2duration is18.0666667 (not18.03 inyourrationale), primarysegmentactuallystarts15.7666667 (not15.73). Set mainmusic.dropAt, primary.outputAt, and strongestpunch.at tothisexact15.7666667 clock. Its genuine14.84introthenbegins.9266667. No newSFX attheprimarydrop. Updatecaptionbounds/rationale toexactcomputedtimeline. Keepallnames/credits offscreen. Returncompleteplan withonlythesetargetedchanges; actualfacefitmaybesafelyomittedONLYifyoufindspecificocclusion inthisframeandexplainit.
+Exactpreviousvalidation:
+{
+  "attempt": 1,
+  "duration": 18.06666666666667,
+  "timeline": [
+    {
+      "index": 0,
+      "kind": "clip",
+      "sourceStart": 193.014,
+      "sourceEnd": 197.031,
+      "outputStart": 0,
+      "outputEnd": 4.033333333333333,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "index": 1,
+      "kind": "clip",
+      "sourceStart": 211.012,
+      "sourceEnd": 215.012,
+      "outputStart": 4.033333333333333,
+      "outputEnd": 8.033333333333333,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "index": 2,
+      "kind": "clip",
+      "sourceStart": 232.528,
+      "sourceEnd": 234.512,
+      "outputStart": 8.033333333333333,
+      "outputEnd": 10.033333333333333,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "index": 3,
+      "kind": "clip",
+      "sourceStart": 459.519,
+      "sourceEnd": 464.919,
+      "outputStart": 10.033333333333333,
+      "outputEnd": 15.433333333333334,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "index": 4,
+      "kind": "clip",
+      "sourceStart": 464.919,
+      "sourceEnd": 465.154,
+      "outputStart": 15.433333333333334,
+      "outputEnd": 15.766666666666667,
+      "speed": 0.7,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "index": 5,
+      "kind": "freeze",
+      "sourceStart": 465.154,
+      "sourceEnd": 465.154,
+      "outputStart": 15.766666666666667,
+      "outputEnd": 16.46666666666667,
+      "speed": 0,
+      "visual": "deepfry",
+      "zoom": 1
+    },
+    {
+      "index": 6,
+      "kind": "clip",
+      "sourceStart": 465.154,
+      "sourceEnd": 466.754,
+      "outputStart": 16.46666666666667,
+      "outputEnd": 18.06666666666667,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    }
+  ],
+  "sourceWindow": [
+    190,
+    468
+  ],
+  "sourceSha256": "97cce92b0e682cd7db25651560be649191b9f67560c90fefb6ffc3047f0138b4",
+  "validatedAt": "2026-10-07T22:25:43.368Z"
+}
+Previouscompleteplan:
+{
+  "version": 1,
+  "id": "golem-plot-armor-v2",
+  "title": "The golem has plot armor",
+  "style": "troll-freeze",
+  "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/runs/2026-10-07T22-06-08-887Z-d66b61/game-01M38GNMGHSB58XT9J7KA8XN2S/8f309f1b-fde7-4877-8760-2ba827497e2d.webm",
+  "sourceCrop": {
+    "x": 100,
+    "y": 120,
+    "width": 590,
+    "height": 1048
+  },
+  "audioCatalogPath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/experiments/meme-audio/catalog.json",
+  "narrativeBeats": {
+    "candidates": [
+      {
+        "sourceAt": 465.154,
+        "significance": "The giant golden Totem appears and a full golden heartbar replaces the near-empty state, creating the decisive visible reversal.",
+        "rank": 1
+      },
+      {
+        "sourceAt": 463.003,
+        "significance": "The falling Anvil reaches the golem and starts the strongest sustained health-loss sequence.",
+        "rank": 2
+      },
+      {
+        "sourceAt": 195.015,
+        "significance": "The Creeper visibly explodes beside the golem, scattering its body and green pickups.",
+        "rank": 3
+      },
+      {
+        "sourceAt": 212.014,
+        "significance": "The Skeleton is present and the golem visibly reacts during the ranged attack sequence.",
+        "rank": 4
+      },
+      {
+        "sourceAt": 233.728,
+        "significance": "The Wind effect visibly strikes and pushes the damaged golem toward the right side.",
+        "rank": 5
+      }
+    ],
+    "setup": {
+      "sourceAt": 193.014,
+      "description": "A Creeper approaches the full-health golem, immediately establishing the resilience question."
+    },
+    "escalation": {
+      "sourceAt": 212.014,
+      "description": "Skeleton fire and a later Wind knockback add distinct attacks before the retained Anvil descent and severe health drain."
+    },
+    "climax": {
+      "segmentIndex": 5,
+      "sourceAt": 465.154,
+      "outputAt": 15.73,
+      "visualSegmentIndex": 5,
+      "punchIndex": 0,
+      "reason": "This exact observed frame introduces both the giant golden Totem and restored golden heartbar, visibly reversing the near-empty condition and resolving the plot-armor premise."
+    },
+    "result": {
+      "sourceAt": 466.754,
+      "description": "The Totem effect has resolved, leaving the golem upright with a completely restored normal red heartbar."
+    },
+    "tailReason": "The 1.60-second clean result tail verifies that the golden reveal becomes a real restored heartbar and upright golem rather than ending on an ambiguous effect frame.",
+    "latePayoffException": ""
+  },
+  "segments": [
+    {
+      "kind": "clip",
+      "start": 193.014,
+      "end": 197.031,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 211.012,
+      "end": 215.012,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 232.528,
+      "end": 234.512,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 459.519,
+      "end": 464.919,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 464.919,
+      "end": 465.154,
+      "speed": 0.7,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "freeze",
+      "at": 465.154,
+      "duration": 0.7,
+      "visual": "deepfry",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 465.154,
+      "end": 466.754,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    }
+  ],
+  "captions": [
+    {
+      "start": 0.3,
+      "end": 2.8,
+      "text": "HOW MUCH CAN HE TAKE?",
+      "position": "top",
+      "emphasis": false
+    },
+    {
+      "start": 15.73,
+      "end": 17.83,
+      "text": "ACTUALLY HAS A TOTEM",
+      "position": "top",
+      "emphasis": true
+    }
+  ],
+  "stickers": [],
+  "faceAttachments": [],
+  "punches": [
+    {
+      "at": 15.73,
+      "duration": 0.35,
+      "strength": 0.9
+    }
+  ],
+  "soundCues": [
+    {
+      "at": 2,
+      "kind": "impact",
+      "assetId": "doge-bonk",
+      "sourceStart": 1.12,
+      "duration": 0.73,
+      "gainDb": -16
+    },
+    {
+      "at": 13.48,
+      "kind": "impact",
+      "assetId": "metal-pipe",
+      "sourceStart": 0,
+      "duration": 1.2,
+      "gainDb": -16
+    }
+  ],
+  "music": {
+    "asset": "troll",
+    "dropAt": 15.73,
+    "assetId": "phonk-execution",
+    "sourceStart": 14.84,
+    "leadInSeconds": 14.84,
+    "leadInGainDb": -22,
+    "gainDb": -12
+  },
+  "rationale": "Candidates ranked: (1) source 465.154, where the giant golden Totem and full golden heartbar visibly replace the near-empty state; this is the strongest event because it reverses the accumulated danger rather than merely adding damage. (2) Anvil contact at 463.003 begins the most severe health drain. (3) Creeper explosion at 195.015 visibly scatters the golem and pickups. (4) Skeleton fire around 212.014 adds a distinct ranged hit/stagger. (5) Wind knockback at 233.728 adds another different physical consequence. Setup begins at 193.014 with the Creeper already approaching; Skeleton and Wind actions escalate without retaining their idle aftermath. The complete Anvil selection, descent, contact, and drain runs from 459.519 through the slowed final approach. Primary source 465.154 maps to output 15.73, where segment 5 begins the brief deep-fried freeze, punch 0 lands, and phonk source anchor 14.84 arrives. The full 14.84-second genuine intro therefore begins at output 0.89. No SFX overlaps the first 0.7 seconds after the drop; the quieter metal-pipe cue belongs only to the earlier Anvil contact. Timing after 1/30-second rounding: 4.00 + 4.00 + 2.00 + 5.40 + 0.33 + 0.70 + 1.60 = 18.03 seconds. The final 1.60-second clean tail is necessary to leave the stylized hold, show the native Totem effect, and confirm the restored heartbar and upright golem. The approved crop retains hearts, attacks, falling Anvil, Totem, native UNDYING text, and controls. Top captions remain in empty wall space; stickers and face attachment are omitted to protect the authentic reveal."
+}

@@ -163,7 +163,8 @@ export function validateEditPlan(input: unknown, sourceDuration: number): { plan
     if (Math.abs(plan.music.dropAt-primary.outputAt)>tolerance) throw new Error('Main music drop must coincide with the declared primary climax');
     if (!treatment || treatment.visual==='clean' || Math.abs(treatment.outputStart-primary.outputAt)>tolerance) throw new Error('Primary visual change must coincide with the declared climax');
     if (!punch || Math.abs(punch.at-primary.outputAt)>tolerance || plan.punches.some(other=>other.strength>punch.strength)) throw new Error('Strongest punch must coincide with the declared primary climax');
-    if ((primary.outputAt/duration<0.7 || duration-primary.outputAt>5) && beats.latePayoffException.trim().length<30) throw new Error('Local climax style expects a late payoff and short result tail; explain any evidence-based exception');
+    // Climax placement follows causal evidence, not a fixed percentage or five-second tail cap.
+    // Fresh phonk jobs additionally require payoff breathing room in agent.ts; historical plans remain renderable.
     const observed=(at:number)=>timeline.some(segment=>at>=segment.sourceStart-1e-6&&at<=segment.sourceEnd+1e-6);
     if ([beats.setup.sourceAt,beats.escalation.sourceAt,beats.result.sourceAt,...beats.candidates.map(candidate=>candidate.sourceAt)].some(at=>!observed(at))) throw new Error('Narrative beat references omitted or unobserved source footage');
     if (!(beats.setup.sourceAt<=beats.escalation.sourceAt && beats.escalation.sourceAt<=primary.sourceAt && primary.sourceAt<=beats.result.sourceAt)) throw new Error('Narrative beats must follow setup, escalation, climax and result chronology');
