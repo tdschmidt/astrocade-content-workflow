@@ -107,3 +107,45 @@ test('incomplete model responses and malformed timestamps fail explicitly', asyn
   assert.equal(seconds('0s'), 0);
   for (const value of ['', '-1s', 'NaN', '00:01.5', '1e3s']) assert.throws(() => seconds(value));
 });
+
+test('JSON, speech, and transcription do not retry a transient provider response', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'google-retry-fixture-'));
+  try {
+    const path = join(directory, 'speech.wav');
+    await writeFile(path, wave());
+    let requests = 0;
+    t.mock.method(globalThis, 'fetch', async () => {
+      requests++;
+      return Response.json({ error: { code: 503, message: 'Fixture unavailable', status: 'UNAVAILABLE' } }, { status: 503 });
+    });
+    const google = new GoogleServices(settings);
+    await assert.rejects(google.json('fixture', z.object({ usable: z.boolean() })));
+    assert.equal(requests, 1);
+    await assert.rejects(google.speak('fixture', join(directory, 'unused.wav')));
+    assert.equal(requests, 2);
+    await assert.rejects(google.transcribe(path));
+    assert.equal(requests, 3);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('upload handshake and body each receive the 45-second deadline and no HTTP retries', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'google-upload-fixture-'));
+  try {
+    const path = join(directory, 'synthetic.webm');
+    await writeFile(path, 'LOCAL TRANSPORT FIXTURE, NOT A VIDEO');
+    t.mock.method(globalThis, 'fetch', async () => assert.fail('A canceled upload must not start a request'));
+    await assert.rejects(new GoogleServices(settings).withVideo(path, async () => assert.fail('Canceled analysis'), AbortSignal.abort()));
+    for (const failAt of [1, 2]) {
+      let requests = 0;
+      t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+        requests++;
+        const request = input instanceof Request ? input : new Request(input, init);
+        assert.equal(request.headers.get('x-server-timeout'), '45');
+        if (requests < failAt) return new Response('', { headers: { 'x-goog-upload-url': 'https://fixture.invalid/upload' } });
+        return Response.json({ error: { code: 503, message: 'Fixture unavailable' } }, { status: 503 });
+      });
+      await assert.rejects(new GoogleServices(settings).withVideo(path, async () => assert.fail('Failed uploads must not enter analysis')));
+      assert.equal(requests, failAt);
+    }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
