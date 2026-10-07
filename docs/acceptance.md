@@ -133,6 +133,16 @@ Two explicitly directed engineering probes reduced the upward displacement to `0
 
 Evidence: `data/experiments/variety-2026-10-07/archer-calibration/{probe-01,probe-02}/` contains each exact profile, native source recording, before/after screenshots, input trace, capture metadata, source SHA-256 and provenance. The parent `report.md`, `summary.json` and `probe.ts` retain the comparison and bounded procedure. No game code, hidden state, clock or storage was changed. This verifies the tested Level 1 first-shot configuration; it does not establish autonomous angle discovery, repeated-angle adjustment semantics, later-level performance or general reflex control. Future captures still require footage review.
 
+## Variety batch in progress (2026-10-07)
+
+The current independently reviewed set has **10 rendered edits across five distinct games**: Rendang Cooking Simulator (three), Kick the buddy x IronGolem (two), Halloween Stylist (two), Stickman Archer (two), and MORAL PANIC (one). These are local editorial comparisons, not published audience tests; they do not yet satisfy the requested ten-game set. Exact paths, hashes, phone-size frames and source-reuse provenance are retained in `data/experiments/variety-2026-10-07/results.md` and `editorial-review-latest.md`.
+
+The preferred short premises include “the floor hit him so hard his eyes changed fonts,” “the chili's final form is confetti,” “candy corn breached goth security,” and “stickman archery needs guardrails.” The accepted MORAL PANIC comparison lasts 22.73 seconds to retain actual question/result reading time. Its longer result hold remains a trimming opportunity. The fresh Archer production run won with 90 remaining health, so its captions do not claim an untouched win.
+
+Failures led to bounded general fixes: observe HTML tools around the canvas and native tutorial pages; distinguish active quiz answers from Start; preserve right-click aim under pointer lock; and give text choices real pre-submission reading time. Minecraft run 23 did place blocks, as dense source review confirms, but did not make a well-framed continuous barrier. Melody's first tiny mark demonstrated input registration, not a finished episode. MORAL run 25 was rejected because its question disappeared too soon; a longer result cannot repair missing setup. These are excluded from accepted game coverage.
+
+Latest checks after these changes: `npm run check` passed 143 tests with 61 opt-in skips; the complete native input file passed 12/12, including real pointer lock on both canvas and whole-iframe surfaces. Three new semantic-menu cases passed. A prior HTML feedback fixture missed its target once; two later concurrent reproduction batches passed 6/6 each, but the original cause remains unproven. The fixture now retains native event targets, geometry, controller errors and a screenshot if that failure recurs.
+
 ## Changes driven by measured failures
 
 - Loading overlays intercepted Start; bounded actionability checks and displayed frame geometry fixed repeated capture and HUD cropping.
