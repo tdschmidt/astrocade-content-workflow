@@ -52,13 +52,13 @@ test('SYNTHETIC workflow renders both formats, preserves caption-only edits, and
       const body = JSON.parse(input instanceof Request ? await input.clone().text() : String(init?.body));
       let content: unknown[];
       if (body.model === config.get().reasoningModel) {
-        const highlight = String(body.input[0].text).includes('Create a highlight');
+        const highlight = !!body.response_format.schema.properties.eventIndex;
         calls.push(highlight ? 'highlight script' : 'recommendation script');
-        content = [{ type: 'text', text: JSON.stringify({
-          hook: 'SYNTHETIC TEST — moving shapes', narration: highlight ? '' : narration,
+        const shared = { hook: 'SYNTHETIC TEST — moving shapes', rationale: 'Tests orchestration with a generated pattern, not content quality.' };
+        content = [{ type: 'text', text: JSON.stringify(highlight ? { ...shared, eventIndex: 0 } : {
+          ...shared, narration,
           caption: `SYNTHETIC fixture only; not live gameplay. ${gameUrl}`,
-          cuts: [{ startSeconds: 0, endSeconds: highlight ? 4 : 12 }],
-          rationale: 'Tests orchestration with a generated pattern, not content quality.', claims: [],
+          cuts: [{ startSeconds: 0, endSeconds: 12 }], claims: [],
         }) }];
       } else if (body.model === config.get().speechModel) {
         calls.push('speech'); assert.equal(body.input[0].text, narration);
@@ -81,7 +81,7 @@ test('SYNTHETIC workflow renders both formats, preserves caption-only edits, and
       assert.equal(draft.status, 'ready'); assert.ok(draft.videoPath); assert.ok(draft.assetSha256);
       const media = await probeMedia(draft.videoPath, config.mediaTools);
       assert.deepEqual([media.video?.codec, media.video?.width, media.video?.height, media.video?.frameRate], ['h264', 1080, 1920, 30]);
-      assert.ok(Math.abs(media.durationSeconds - (draft.format === 'highlight' ? 4 : 12)) < 0.15);
+      assert.ok(Math.abs(media.durationSeconds - 12) < 0.15);
       assert.equal(await fileSha256(draft.videoPath), draft.assetSha256);
     }
     const highlight = drafts.find(draft => draft.format === 'highlight')!;
