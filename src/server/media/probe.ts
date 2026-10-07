@@ -12,7 +12,7 @@ export interface MediaTools {
 export interface MediaInfo {
   durationSeconds: number;
   sizeBytes: number;
-  video?: { width: number; height: number; codec: string; pixelFormat?: string };
+  video?: { width: number; height: number; codec: string; pixelFormat?: string; frameRate?: number };
   audio?: { codec: string; sampleRate: number; channels: number };
 }
 
@@ -45,7 +45,7 @@ export async function preflightMediaTools(tools: MediaTools = {}, requireCaption
 
 interface ProbeResult {
   format?: { duration?: string; size?: string };
-  streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number; pix_fmt?: string; sample_rate?: string; channels?: number; duration?: string }>;
+  streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number; pix_fmt?: string; avg_frame_rate?: string; sample_rate?: string; channels?: number; duration?: string }>;
 }
 
 export async function probeMedia(path: string, tools: MediaTools = {}, signal?: AbortSignal): Promise<MediaInfo> {
@@ -63,16 +63,19 @@ export async function probeMedia(path: string, tools: MediaTools = {}, signal?: 
     const times = values.map(packet => ({ pts: Number(packet.pts_time), duration: Number(packet.duration_time) })).filter(packet => Number.isFinite(packet.pts)).sort((a, b) => a.pts - b.pts);
     const last = times.at(-1);
     if (last) {
-      const intervals = times.slice(-11).slice(1).map((packet, index) => packet.pts - times.slice(-11)[index]!.pts).filter(value => value > 0).sort((a, b) => a - b);
+      const tail = times.slice(-11);
+      const intervals = tail.slice(1).map((packet, index) => packet.pts - tail[index]!.pts).filter(value => value > 0).sort((a, b) => a - b);
       const finalDuration = last.duration > 0 ? last.duration : (intervals[Math.floor(intervals.length / 2)] ?? 0);
       durationSeconds = last.pts + finalDuration - Math.min(0, times[0]!.pts);
     }
   }
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || (!video && !audio)) throw new Error('Media has no usable duration or streams');
+  const [numerator, denominator] = video?.avg_frame_rate?.split('/').map(Number) ?? [];
+  const frameRate = numerator && denominator ? numerator / denominator : undefined;
   return {
     durationSeconds,
     sizeBytes: Number(data.format?.size) || (await stat(path)).size,
-    ...(video ? { video: { width: video.width ?? 0, height: video.height ?? 0, codec: video.codec_name ?? 'unknown', pixelFormat: video.pix_fmt } } : {}),
+    ...(video ? { video: { width: video.width ?? 0, height: video.height ?? 0, codec: video.codec_name ?? 'unknown', pixelFormat: video.pix_fmt, frameRate } } : {}),
     ...(audio ? { audio: { codec: audio.codec_name ?? 'unknown', sampleRate: Number(audio.sample_rate), channels: audio.channels ?? 0 } } : {}),
   };
 }
