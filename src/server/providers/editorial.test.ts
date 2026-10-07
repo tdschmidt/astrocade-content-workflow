@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { analyzeFootage, draftScript, mapWindowEvents, phraseCaptions, shortenScript, storyMode, transcriptWarnings, validateCuts } from './editorial.js';
+import type { ContentAssessment } from '../../shared/content.js';
 import type { Capture } from '../../shared/domain.js';
 import type { GoogleServices } from './google.js';
 
@@ -40,11 +41,13 @@ test('transcript comparison ignores punctuation but flags changed negations and 
   assert.equal(storyMode('A factual story about a real event'), 'factual');
 });
 
+const content: ContentAssessment = { angle: 'prediction', clarity: 3, participation: 2, payoff: 2, readability: 3, distinctiveness: 1, evidence: 'Visible gap, jump and landing.', textPlacement: 'upper', placementReason: 'Decorative sky above the action.' };
+
 const capture: Capture = {
   id: 'capture', runId: 'run', profileId: 'profile', path: '/fixture.webm', durationSeconds: 80,
   width: 1280, height: 720, createdAt: '2026-10-06T12:00:00Z',
   game: { id: 'game', title: 'Jump', titleSource: 'visible_text', url: 'https://www.astrocade.com/games/jump', metrics: [], observations: [] },
-  analysis: { usable: true, reason: 'Visible action', mechanic: 'Jumping', visualScore: 4, events: [{ startSeconds: 0, endSeconds: 30, event: 'Jump across platforms', evidence: 'Avatar jumps and lands', outcome: 'Reaches a platform' }] },
+  analysis: { usable: true, reason: 'Visible action', mechanic: 'Jumping', visualScore: 4, content, events: [{ startSeconds: 0, endSeconds: 30, event: 'Jump across platforms', evidence: 'Avatar jumps and lands', outcome: 'Reaches a platform' }] },
 };
 
 function googleFixture(responses: unknown[], sampled: number[] = []): GoogleServices {
@@ -114,15 +117,25 @@ test('long analysis keeps a late high-priority payoff when earlier windows produ
   assert.equal(result.events.at(-1)!.outcome, payoff.outcome, 'early actions must not evict the verified completion');
 });
 
+const review = { approved: true, reason: 'The visible jump supports the question; sky is unobstructed.', hook: 'would you make that jump?', caption: 'Pick your landing before the jump.', position: 'upper' };
+const choiceFor = (eventIndexes: number[]) => ({ eventIndexes, alternatives: [
+  { angle: 'prediction', hook: review.hook, caption: review.caption, evidence: 'A visible jump and landing.', tradeoff: 'Simple decision.' },
+  { angle: 'escalation', hook: 'that landing is getting smaller', caption: 'The platforms leave little room.', evidence: 'Small platform is visible.', tradeoff: 'Needs scale to read.' },
+  { angle: 'novelty', hook: 'this gap has trust issues', caption: 'A suspiciously narrow landing.', evidence: 'Gap and narrow landing.', tradeoff: 'Less direct participation.' },
+], selectedIndex: 0, position: 'upper', rationale: 'The viewer can choose before the jump.', durationReason: 'A complete decision and readable landing without padding.' });
+
 const script = { hook: 'Watch the landing', narration: 'The tiny explorer found a way home.', caption: 'A short story.', cuts: [{ startSeconds: 0, endSeconds: 25 }], rationale: 'Visible jumps', claims: [] };
 
 test('a highlight preserves the whole context of a single selected event', async () => {
   const shortCapture = { ...capture, durationSeconds: 12.948, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, startSeconds: 2, endSeconds: 6.6 }] } };
-  const choice = { eventIndexes: [0], hook: script.hook, rationale: script.rationale };
-  const result = await draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([choice]));
+  const choice = choiceFor([0]);
+  const result = await draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([choice, review]));
   assert.deepEqual(result.cuts, [{ startSeconds: 2, endSeconds: 6.6 }]);
   assert.equal(result.narration, '');
-  assert.equal(result.caption, `${shortCapture.game.title}\n${shortCapture.analysis.events[0]!.outcome}\nPlay: ${shortCapture.game.url}`, 'caption uses the selected observation without another invented claim');
+  assert.equal(result.caption, `${review.caption}\n${shortCapture.game.title} · Astrocade\nPlay: ${shortCapture.game.url}`);
+  assert.equal(result.editorial?.alternatives.length, 3);
+  assert.equal(result.overlays?.[0]?.text, review.hook);
+  assert.ok(result.overlays![0]!.endSeconds < 4.6, 'the payoff is free of the opening text');
   await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, eventIndexes: [1] }])), /unknown observed event/);
   await assert.rejects(draftScript({ capture: shortCapture, format: 'highlight', topic: '' }, googleFixture([{ ...choice, eventIndexes: [0, 0] }])), /duplicate observed events/);
   for (const eventIndexes of [[], [0, 1, 2, 3], [-1], [0.5]]) {
@@ -133,7 +146,7 @@ test('a highlight preserves the whole context of a single selected event', async
   }
 });
 
-test('a highlight joins overlapping transformation phases once and captions them chronologically', async () => {
+test('a highlight joins overlapping transformation phases once and preserves reviewed copy', async () => {
   const phases = [
     { startSeconds: 11, endSeconds: 14, event: 'Earned result panel', evidence: 'A three-star panel appears after the customer leaves', outcome: 'The result panel shows three stars.' },
     { startSeconds: 1, endSeconds: 5, event: 'Dirty before-state and first wash', evidence: 'Dirt covers the car before soap spreads', outcome: 'Soap spreads across the dirty car.' },
@@ -142,25 +155,25 @@ test('a highlight joins overlapping transformation phases once and captions them
   const transformationCapture = { ...capture, analysis: { ...capture.analysis!, events: phases } };
   const original = structuredClone(transformationCapture);
   const result = await draftScript({ capture: transformationCapture, format: 'highlight', topic: '' }, googleFixture([
-    { eventIndexes: [0, 2, 1], hook: 'A dirty car earns three stars', rationale: 'Shows the dirty setup, cleaning and visible result.' },
+    choiceFor([0, 2, 1]), review,
   ]));
   assert.deepEqual(result.cuts, [{ startSeconds: 1, endSeconds: 14 }], 'overlapping verified phases never repeat source frames');
-  assert.equal(result.caption, `${capture.game.title}\n${phases[1]!.outcome}\n${phases[2]!.outcome}\n${phases[0]!.outcome}\nPlay: ${capture.game.url}`);
+  assert.equal(result.caption, `${review.caption}\n${capture.game.title} · Astrocade\nPlay: ${capture.game.url}`);
   assert.deepEqual(transformationCapture, original, 'selection must not reorder or merge the saved observations');
 });
 
 test('a highlight orders separate verified phases without filling gaps or exceeding 40 seconds', async () => {
   const event = capture.analysis!.events[0]!;
-  const choice = { eventIndexes: [1, 0], hook: script.hook, rationale: script.rationale };
+  const choice = choiceFor([1, 0]);
   const separated = { ...capture, analysis: { ...capture.analysis!, events: [
     { ...event, startSeconds: 1, endSeconds: 10 }, { ...event, startSeconds: 20, endSeconds: 25 },
   ] } };
-  const result = await draftScript({ capture: separated, format: 'highlight', topic: '' }, googleFixture([choice]));
+  const result = await draftScript({ capture: separated, format: 'highlight', topic: '' }, googleFixture([choice, review]));
   assert.deepEqual(result.cuts, [{ startSeconds: 1, endSeconds: 10 }, { startSeconds: 20, endSeconds: 25 }]);
   const overlap = { ...capture, analysis: { ...capture.analysis!, events: [
     { ...event, startSeconds: 0, endSeconds: 30 }, { ...event, startSeconds: 20, endSeconds: 40 },
   ] } };
-  const forty = await draftScript({ capture: overlap, format: 'highlight', topic: '' }, googleFixture([choice]));
+  const forty = await draftScript({ capture: overlap, format: 'highlight', topic: '' }, googleFixture([choice, review]));
   assert.deepEqual(forty.cuts, [{ startSeconds: 0, endSeconds: 40 }], 'the duration budget counts overlapping frames only once');
   const tooLong = { ...capture, analysis: { ...capture.analysis!, events: [{ ...event, startSeconds: 0, endSeconds: 40.01 }] } };
   await assert.rejects(draftScript({ capture: tooLong, format: 'highlight', topic: '' }, googleFixture([{ ...choice, eventIndexes: [0] }])), /40-second edit target/);
@@ -188,4 +201,17 @@ test('factual stories require actual source evidence and shortening preserves ed
   assert.deepEqual(shortened.cuts, script.cuts);
   assert.equal(shortened.caption, script.caption);
   await assert.rejects(shortenScript(script, 6, googleFixture([{ narration: script.narration }])), /still too long/);
+});
+
+
+test('visual review can correct a hook and placement but cannot approve unsupported footage', async () => {
+  const corrected = { ...review, hook: 'which platform would you pick?', position: 'lower', reason: 'Upper overlay would cover the target; lower scenery is clear.' };
+  const result = await draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), corrected]));
+  assert.equal(result.hook, corrected.hook);
+  assert.equal(result.overlays![0]!.position, 'lower');
+  assert.equal(result.editorial!.review, corrected.reason);
+  await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), { ...review, approved: false, reason: 'No visible landing supports this promise.' }])), /visual editorial review rejected.*No visible landing/);
+  await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), { ...review, caption: 'Visit https:\/\/unrelated.example' }])), /external link/);
+  const tiny = { ...capture, analysis: { ...capture.analysis!, events: [{ ...capture.analysis!.events[0]!, endSeconds: 2 }] } };
+  await assert.rejects(draftScript({ capture: tiny, format: 'highlight', topic: '' }, googleFixture([choiceFor([0]), review])), /too short to read/);
 });
