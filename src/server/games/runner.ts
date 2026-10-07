@@ -91,7 +91,10 @@ export async function runCaptureAttempt(options: {
       for (const step of profile.setup) await executor.step(step);
       await withAbort(locate(page, profile.ready).waitFor({ state: 'visible', timeout: 10000 }), options.signal);
       await withAbort(locate(page, profile.surface).waitFor({ state: 'visible', timeout: 10000 }), options.signal);
-    } catch (error) { throw new GameCaptureError('missing_controls', 'The configured game surface or ready/start controls were not found.', { cause: error }); }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message.split('\n')[0]!.slice(0, 500) : 'Unknown control error.';
+      throw new GameCaptureError('missing_controls', `Game setup could not reach its ready controls: ${detail}`, { cause: error });
+    }
     options.onProgress?.({ stage: 'ready', message: 'Game surface is visible; starting recording before gameplay.' });
     lastBounds = await gameBounds(page, profile.surface);
     await session.start();

@@ -14,6 +14,11 @@ test('scaled iframe bounds, native controls and screenshots share the displayed 
   const executor = new InputExecutor(page, surface);
   const bounds = await gameBounds(page, surface);
   assert.deepEqual(bounds, { x: 43, y: 63, width: 540, height: 720 });
+  await page.evaluate(() => {
+    const loading = document.createElement('div'); loading.setAttribute('aria-label', 'Loading');
+    loading.style.cssText = 'position:fixed;inset:0;z-index:10'; document.body.append(loading);
+    setTimeout(() => loading.remove(), 250);
+  });
   await executor.step({ type: 'click', target: { selector: '#start', frames: ['#game'] } });
   assert.equal(await frame.locator('body').getAttribute('data-clicked'), 'true');
   await executor.execute({ type: 'tap', point: { x: 0.5, y: 0.5 } });
@@ -28,6 +33,11 @@ test('scaled iframe bounds, native controls and screenshots share the displayed 
   assert.deepEqual(await gameBounds(page, surface), bounds);
 
   await page.evaluate(() => { const cover = document.createElement('div'); cover.id = 'cover'; cover.style.cssText = 'position:fixed;inset:0;background:white;z-index:10'; document.body.append(cover); });
+  const abort = new AbortController();
+  const waiting = new InputExecutor(page, surface, abort.signal).step({ type: 'click', target: surface });
+  const cancellation = setTimeout(() => abort.abort(new Error('Stop waiting for the covered control')), 150);
+  await assert.rejects(waiting, /Stop waiting|aborted/i);
+  clearTimeout(cancellation);
   await assert.rejects(executor.step({ type: 'click', target: surface }), /covered/);
   await page.locator('#cover').evaluate(element => element.remove());
   await page.locator('iframe').evaluate(element => { element.style.top = '-100px'; });

@@ -3,6 +3,7 @@ import type { FrameLocator, Locator, Page } from 'playwright';
 import { inputActionSchema, type InputAction, type SurfaceLocator, type UiStep } from './schema.js';
 
 export type GameBounds = { x: number; y: number; width: number; height: number };
+class ControlNotReadyError extends Error {}
 
 export function locate(page: Page, target: SurfaceLocator): Locator {
   let scope: Page | FrameLocator = page;
@@ -36,11 +37,11 @@ function assertInside(bounds: GameBounds, viewport: { width: number; height: num
 }
 
 async function assertHit(locator: Locator, bounds: GameBounds) {
-  const visible = await locator.evaluate((element, point) => {
+  const result = await locator.evaluate((element, point) => {
     const hit = document.elementFromPoint(point.x, point.y);
-    return hit !== null && (hit === element || element.contains(hit));
+    return { visible: hit !== null && (hit === element || element.contains(hit)), blocker: hit?.getAttribute('aria-label') || hit?.tagName || 'outside the document' };
   }, { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
-  if (!visible) throw new Error('The requested game control is covered by another element.');
+  if (!result.visible) throw new ControlNotReadyError(`The requested game control is covered by ${result.blocker.slice(0, 100)}.`);
 }
 
 async function composedBounds(page: Page, target: SurfaceLocator, checkHit = false): Promise<GameBounds> {
@@ -139,9 +140,22 @@ export class InputExecutor {
     if (step.type === 'click') {
       const target = locate(this.page, step.target);
       await withAbort(target.waitFor({ state: 'visible', timeout: 5000 }), this.signal);
-      if (!await target.isEnabled()) throw new Error('The requested game control is disabled.');
-      const bounds = await withAbort(composedBounds(this.page, step.target, true), this.signal);
+      const deadline = performance.now() + 5000;
+      let bounds: GameBounds;
+      for (;;) {
+        this.signal?.throwIfAborted();
+        try {
+          if (!await target.isEnabled()) throw new ControlNotReadyError('The requested game control is disabled.');
+          bounds = await withAbort(composedBounds(this.page, step.target, true), this.signal);
+          break;
+        } catch (error) {
+          if (!(error instanceof ControlNotReadyError)) throw error;
+          if (performance.now() >= deadline) throw new Error(`Control ${step.target.selector} did not become actionable within 5 seconds: ${error.message}`, { cause: error });
+          await delay(100, undefined, { signal: this.signal });
+        }
+      }
       this.signal?.throwIfAborted();
+      // Only readiness is retried. Once input is dispatched, never replay the click.
       await this.page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
     }
     else if (step.type === 'waitFor') await withAbort(locate(this.page, step.target).waitFor({ state: 'visible', timeout: 5000 }), this.signal);
