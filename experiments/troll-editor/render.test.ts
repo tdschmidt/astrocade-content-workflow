@@ -139,10 +139,16 @@ test('AAC segment boundaries cannot advance the music or truncate its closing fa
       '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-t', '17', 'mixed.mp4'], { cwd: dir });
     await runProcess(ffmpeg, ['-v', 'error', '-i', join(dir, 'mixed.mp4'), '-map', '0:a:0', '-ac', '1', '-ar', '48000', '-f', 'f32le', join(dir, 'samples.f32')]);
     const bytes = await readFile(join(dir, 'samples.f32')), samples = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.length / 4);
-    assert.equal(samples.length, 17 * 48000, 'The whole fade must survive AAC segment priming and the final encode');
+    const intendedSamples = 17 * 48000;
+    // Some FFmpeg decoders expose the remainder of the final 1024-sample AAC
+    // packet. Padding may follow the endpoint, but no intended audio may vanish.
+    assert.ok(samples.length >= intendedSamples && samples.length < intendedSamples + 1024,
+      `Expected the complete soundtrack plus at most one partial AAC packet, received ${samples.length} samples`);
     const rms = (start: number, end: number) => { const part = samples.subarray(start, end); return Math.sqrt(part.reduce((sum, sample) => sum + sample * sample, 0) / part.length); };
     assert.ok(rms(10 * 48000, 11 * 48000) > 0.04, 'The post-cut music remains audible');
-    assert.ok(rms(samples.length - 240, samples.length) < 0.003, 'The last 5ms resolves the fade instead of cutting active music');
+    assert.ok(rms(intendedSamples - 240, intendedSamples) < 0.003, 'The last intended 5ms resolves the fade instead of relying on trailing codec padding');
+    const stream = JSON.parse((await runProcess('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=duration', '-of', 'json', join(dir, 'mixed.mp4')])).stdout).streams[0] as { duration: string };
+    assert.ok(Math.abs(Number(stream.duration) - 17) < 1 / 48000, 'The encoded soundtrack duration stays on the intended sample clock');
     const packets = JSON.parse((await runProcess('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_packets', '-show_entries', 'packet=pts_time,duration_time', '-of', 'json', join(dir, 'mixed.mp4')])).stdout).packets as Array<{ pts_time: string; duration_time: string }>;
     assert.ok(packets.slice(0, -1).every(packet => Math.abs(Number(packet.duration_time) - 1024 / 48000) < 0.000002), 'AAC packets use a continuous sample clock, without zero-length or stretched packets');
   } finally { await rm(dir, { recursive: true, force: true }); }
