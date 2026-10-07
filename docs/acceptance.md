@@ -1,8 +1,8 @@
 # Core workflow: acceptance evidence
 
-Updated 2026-10-06 (America/Los_Angeles). Scope: [PLAN.md](../PLAN.md), branch `codex/core-workflow`. The current deliverable is **discover → learn/play/capture → edit**, operated through the CLI. Account creation/publication are manual follow-through and are not current automation gates.
+Updated 2026-10-07 (America/Los_Angeles). Scope: [PLAN.md](../PLAN.md), branch `codex/core-workflow`. The current deliverable is **discover → learn/play/capture → edit**, operated through the CLI. Account creation/publication are manual follow-through and are not current automation gates.
 
-**Current status:** the three-stage workflow has produced a verified real short from a live, automatically shortlisted three-game run. Capture, analysis, event selection, hook/caption creation and rendering were automatic; an explicit model change/resume recovered from provider quota limits. The result meets functional and conservative editorial acceptance. It does not establish viral performance or universal gameplay. The trimmed codebase passed a clean install, typecheck, doctor and all 79 retained opt-in tests.
+**Current status:** the three-stage workflow has produced real shorts from live games, with repeated gameplay and later editorial comparisons recorded below. The initial automatically shortlisted three-game run established the functional path; subsequent Car Wash and Sort experiments improve the actual content. Neither establishes viral performance or universal gameplay. Earlier outputs and test counts are historical snapshots, retained to explain the changes.
 
 ## Evidence by stage
 
@@ -103,15 +103,15 @@ The feedback mode is deliberately for slow/input-paced games. These results do n
 
 - Loading overlays intercepted Start; bounded actionability checks and displayed frame geometry fixed repeated capture and HUD cropping.
 - Multi-pass analysis was slow and sometimes returned incorrect window-relative timestamps. Recordings up to 45s now use one full 8 FPS review with absolute source times and strict bounds.
-- Tight impact-only cuts produced a rushed 2.1s edit. Analysis now reports an unobscured playable span separately; code retains up to 2s before and 1s after the impact within that span. The writer selects an event index and cannot trim away its context.
-- Model numeric readings and creative captions have been wrong. Numeric uncertainty stays explicit; current highlight captions copy the selected observed outcome plus attribution/link. This prevents another creative paraphrase, but still requires checking the observation against footage.
+- Tight impact-only cuts produced a rushed 2.1s edit. Analysis reports an unobscured playable span separately; code retains up to 2s before and 1s after the impact within that span. Later D89 permits concise trims within verified windows, with a visual review of causality and payoff readability.
+- Model numeric readings and creative captions have been wrong. The early conservative captions copied observed outcomes plus attribution/link. D83 supersedes that presentation with three hook concepts and a separate visual review; numeric uncertainty and evidence requirements remain.
 - Provider control-plan schemas omit wire-level `maxItems` and convert literal `const` to singleton `enum`, while retaining the original Zod limits on decoded output. Malformed or unsupported control proposals do not execute.
 - A candidate's invalid analysis formerly stopped the entire batch. Schema/content-validation failures now save that candidate's error and allow other usable footage to proceed; provider/authentication failures still stop the run.
 - Completed-run resume formerly retried failed candidates and could require a model key just to reuse output. Regression-tested behavior now validates/reuses completed media, freezes candidate work once a script exists, and reconstructs missing final caption text.
 
 ## Verification and practical limits
 
-After a clean `npm ci`, strict TypeScript checks, doctor and the full retained opt-in suite passed: **79 tests, zero failures, zero skips**. This verifies the final trimmed code, including real FFmpeg/layout and browser/capture checks. The earlier larger codebase passed 118 tests before removed features and their tests were trimmed. This branch has no GUI build step.
+At the initial scope-trimming checkpoint, a clean `npm ci`, strict TypeScript checks, doctor and the full retained opt-in suite passed: **79 tests, zero failures, zero skips**. That checkpoint included real FFmpeg/layout and browser/capture checks; later sections report checks for subsequent changes. The earlier larger codebase passed 118 tests before removed features and their tests were trimmed. This branch has no GUI build step.
 
 Browser/media checks use pinned Playwright 1.63.0 / Chromium 153 and FFmpeg 9.0.2 with libass on macOS. They cover native input, recording flush/cancellation, decoded output, unobscured top/bottom game regions, schema/timestamp bounds, provider wire contracts and artifact reuse. Tests use fixtures and temporary data; they do not establish live model accuracy. Reproduce them using [README](../README.md).
 
