@@ -7,8 +7,11 @@ import { test } from 'node:test';
 import { z } from 'zod';
 import type { Capture } from '../shared/domain.js';
 import type { Inference } from '../server/providers/inference.js';
-import { narrationWindows, assertNarratedSelection, overviewLedger, validateOverviewInspection, runNarratedAgentStage, verifySavedNarration } from './narrated.js';
-import { mapOverviewChapters } from '../../experiments/game-overview/prepare-chapters.js';
+import { narrationWindows, narrationSampleChunks, assertNarratedSelection, overviewLedger, validateOverviewInspection, runNarratedAgentStage, verifySavedNarration } from './narrated.js';
+import { mapOverviewChapters, prepareOverviewChapters } from '../../experiments/game-overview/prepare-chapters.js';
+import { runProcess } from '../server/media/process.js';
+import { extractVideoFrames } from '../server/media/frames.js';
+import { mediaExecutables } from '../server/media/probe.js';
 import type { EvidenceWindow } from './windows.js';
 
 const capture: Capture = { id: 'sample', runId: 'run', profileId: 'profile', game: { id: 'g', title: 'Example', titleSource: 'visible_text', url: 'https://example.com/game', metrics: [], observations: [] }, path: '/tmp/source.mp4', durationSeconds: 100, width: 720, height: 1280, createdAt: '2026-10-07',
@@ -94,4 +97,36 @@ test('fractional-frame quantization preserves nominal evidence containment witho
   assert.ok(16 - chapters[0]!.sourceShots[0]!.originalEnd < 1 / 30);
   selected.facts[0]!.end = 16.01;
   assert.throws(() => validateOverviewInspection(capture, selected, windows), /must actually appear/);
+});
+
+test('prepared chapter concatenation keeps the exact frame grid through the final sample', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'overview-grid-'));
+  const sourcePath = join(folder, 'source.mp4');
+  try {
+    await runProcess(mediaExecutables().ffmpeg, [
+      '-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-f', 'lavfi', '-i',
+      'testsrc2=size=160x240:rate=30:duration=8', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', sourcePath,
+    ], { timeoutMs: 30_000 });
+    const sourceSha256 = createHash('sha256').update(await readFile(sourcePath)).digest('hex');
+    const prepared = await prepareOverviewChapters({ sourcePath, sourceSha256, output: join(folder, 'prepared'), chapters: [
+      { id: 'first', shots: [{ start: 0.05, end: 1.9 }, { start: 2.1, end: 3.8 }] },
+      { id: 'second', shots: [{ start: 4.05, end: 5.8 }, { start: 6, end: 7.8 }] },
+    ] });
+    const end = prepared.mapping.at(-1)!.derivedEnd;
+    assert.ok(Math.abs(prepared.durationSeconds - end) <= 1e-6);
+    const frames = await extractVideoFrames(prepared.path, join(folder, 'frames'), { fps: 2, end_offset: `${end}s` });
+    assert.ok(frames.frames.at(-1)!.sourceSeconds < end);
+    assert.ok(frames.frames.at(-1)!.sourceSeconds >= end - 0.5);
+  } finally { await rm(folder, { recursive: true, force: true }); }
+});
+
+test('dense story review splits long selections without gaps, repeats or source-clock changes', () => {
+  const chunks = narrationSampleChunks([{ start: 1.25, end: 57.75 }, { start: 70, end: 74 }]);
+  assert.deepEqual(chunks, [
+    { start: 1.25, end: 31.25, selectionIndex: 0 },
+    { start: 31.25, end: 57.75, selectionIndex: 0 },
+    { start: 70, end: 74, selectionIndex: 1 },
+  ]);
+  assert.equal(chunks.reduce((duration, chunk) => duration + chunk.end - chunk.start, 0), 60.5);
+  assert.ok(chunks.every(chunk => (chunk.end - chunk.start) * 8 <= 360));
 });

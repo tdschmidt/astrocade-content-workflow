@@ -86,12 +86,13 @@ export async function prepareOverviewChapters(options: {
   const path = join(output, 'selected-source.mp4');
   await runProcess(ffmpeg, [
     '-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-f', 'concat', '-safe', '1', '-i', 'concat.txt',
-    '-c', 'copy', '-movflags', '+faststart', path,
+    '-an', '-vf', 'setpts=N/(30*TB)', '-r', '30', '-c:v', 'libx264', '-preset', 'fast', '-crf', '16',
+    '-pix_fmt', 'yuv420p', '-video_track_timescale', '90000', '-movie_timescale', '90000', '-movflags', '+faststart', path,
   ], { cwd: output, timeoutMs: 120_000, signal: options.signal });
   const media = await probeMedia(path, tools, options.signal), sourceSha256 = await hashFile(path);
   const duration = mapping.at(-1)!.derivedEnd;
-  if (Math.abs(media.durationSeconds - duration) > 1 / 30) {
-    throw new Error('Derived overview source timing differs from its original-source map.');
+  if (Math.abs(media.durationSeconds - duration) > 1e-6) {
+    throw new Error(`Derived overview source timing ${media.durationSeconds}s differs from its original-source map ${duration}s.`);
   }
   const provenancePath = join(output, 'provenance.json');
   await writeFile(provenancePath, JSON.stringify({

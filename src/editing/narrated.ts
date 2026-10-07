@@ -80,11 +80,22 @@ const BackgroundSelection = z.object({ usable: z.boolean(), reason: z.string(), 
 const StoryLedger = z.object({ id: Id, source_type: z.enum(['public_reddit_post', 'primary_informational_source']), title: z.string().min(1), url: z.url().startsWith('https://'),
   grounded_beats: z.array(z.object({ id: z.string().min(1), fact: z.string().min(1) })).min(1), forbidden_inventions: z.array(z.string()).default([]) }).passthrough();
 
+/** Keep every dense-review interval under the decoder cap without skipping source time. */
+export function narrationSampleChunks(ranges: Array<{ start: number; end: number }>) {
+  return ranges.flatMap((range, index) => {
+    const chunks: Array<{ start: number; end: number; selectionIndex: number }> = [];
+    for (let start = range.start; start < range.end; start += 30) {
+      chunks.push({ start, end: Math.min(start + 30, range.end), selectionIndex: index });
+    }
+    return chunks;
+  });
+}
+
 async function samples(source: string, ranges: Array<{ start: number; end: number }>, output: string, fps: 2 | 8, signal?: AbortSignal) {
   await mkdir(output, { recursive: true });
   const media: MediaInput[] = [], descriptions: string[] = [], records: VideoFrames[] = [];
   let timeline = 0;
-  for (const [index, range] of ranges.entries()) {
+  for (const [index, range] of narrationSampleChunks(ranges).entries()) {
     const path = join(output, `window-${index}.json`);
     // Reusing images is allowed only inside an input-fingerprinted run, and keeps retries from decoding again.
     const record: VideoFrames = await exists(path) ? JSON.parse(await readFile(path, 'utf8')) as VideoFrames : await extractVideoFrames(source, join(output, `window-${index}`), { fps, start_offset: `${range.start}s`, end_offset: `${range.end}s` }, storyTools(), signal);
@@ -93,7 +104,7 @@ async function samples(source: string, ranges: Array<{ start: number; end: numbe
     records.push(record);
     for (const frame of record.frames) {
       media.push({ type: 'image', mime_type: 'image/jpeg', data: (await readFile(frame.path)).toString('base64') });
-      descriptions.push(`Image ${media.length}: window ${index + 1}, source ${frame.sourceSeconds.toFixed(6)}s; selected timeline ${(timeline + frame.sourceSeconds - range.start).toFixed(6)}s.`);
+      descriptions.push(`Image ${media.length}: window ${range.selectionIndex + 1}, source ${frame.sourceSeconds.toFixed(6)}s; selected timeline ${(timeline + frame.sourceSeconds - range.start).toFixed(6)}s.`);
     }
     timeline += range.end - range.start;
   }
