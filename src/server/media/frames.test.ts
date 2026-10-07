@@ -17,7 +17,7 @@ async function fixture(t: TestContext, rate = 30, duration = 2) {
 }
 
 test('invalid sampling inputs and prior cancellation fail before accessing media', async () => {
-  await assert.rejects(extractVideoFrames('/missing', '/unused', { fps: 4 as 1 }), /only 1, 2 or 8/);
+  await assert.rejects(extractVideoFrames('/missing', '/unused', { fps: 3 as 1 }), /only 1, 2, 4 or 8/);
   await assert.rejects(extractVideoFrames('/missing', '/unused', { fps: 8, start_offset: '-1s' }), /nonnegative seconds/);
   await assert.rejects(extractVideoFrames('/missing', '/unused', { fps: 8, end_offset: '1;rm' }), /nonnegative seconds/);
   await assert.rejects(extractVideoFrames('/missing', '/unused', { fps: 8 }, {}, AbortSignal.abort(new Error('Stop now'))), /Stop now/);
@@ -40,6 +40,10 @@ test('8 FPS windows retain actual frame times, nonzero offsets, and an exclusive
   const review = await extractVideoFrames(source, join(directory, 'review'), { fps: 2, start_offset: '0.5s', end_offset: '1.5s' });
   assert.deepEqual(review.frames.map(frame => frame.sourceSeconds), [0.5, 1]);
   assert.equal(review.fps, 2);
+  const reel = await extractVideoFrames(source, join(directory, 'reel-review'), { fps: 4, start_offset: '0.5s', end_offset: '1.5s' });
+  assert.deepEqual(reel.frames.map(frame => frame.sourceSeconds), [0.5, 0.767, 1, 1.267]);
+  assert.equal(reel.fps, 4);
+  assert.ok(reel.frames.every(frame => frame.sourceSeconds < 1.5));
   const betweenFrames = await extractVideoFrames(source, join(directory, 'offset'), { fps: 1, start_offset: '0.53', end_offset: '1.53' });
   assert.equal(betweenFrames.frames.length, 1);
   assert.equal(betweenFrames.frames[0]!.sourceSeconds, 0.533);

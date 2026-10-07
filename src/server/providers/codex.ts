@@ -149,7 +149,7 @@ export class CodexServices implements Inference {
           imagePaths.push(path);
           context.push(`Image ${imagePaths.length}: supplied screenshot.`);
         } else {
-          if (input.processing.fps !== 1 && input.processing.fps !== 2 && input.processing.fps !== 8) throw new Error('Codex footage sampling supports only 1, 2 or 8 FPS.');
+          if (input.processing.fps !== 1 && input.processing.fps !== 2 && input.processing.fps !== 4 && input.processing.fps !== 8) throw new Error('Codex footage sampling supports only 1, 2, 4 or 8 FPS.');
           const video = await extractVideoFrames(input.uri, join(directory, `video-${index}`), { ...input.processing, fps: input.processing.fps }, this.options.mediaTools, requestSignal);
           context.push(`Video ${index + 1}: actual sampled frames; absolute source window ${video.startSeconds}s to ${video.endSeconds}s. Images are not continuous video. Use only observed evidence. The task specifies whether output timestamps are absolute or window-relative.`);
           for (const frame of video.frames) {

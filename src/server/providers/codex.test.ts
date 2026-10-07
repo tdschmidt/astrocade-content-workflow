@@ -7,12 +7,34 @@ import { z } from 'zod';
 import { inputActionSchema, plannedInputActionSchema } from '../games/schema.js';
 import { codexEnvironment, CodexServices, executeCodex, type CodexExecutor } from './codex.js';
 import type { InferenceProgressEvent } from './inference.js';
+import { mediaExecutables } from '../media/probe.js';
+import { runProcess } from '../media/process.js';
 
 const schema = z.object({ usable: z.boolean() });
 const options = { reasoningModel: 'fixture-model' };
 const login = { stdout: '', stderr: 'Logged in using ChatGPT\n' };
 const completed = { stdout: '{"type":"turn.completed","usage":{"input_tokens":12,"output_tokens":3}}', stderr: '' };
 const outputFile = (args: string[]) => args[args.indexOf('--output-last-message') + 1]!;
+
+test('Codex passes four real source frames for a 4 FPS reel review without invoking a live model', { skip: process.env.RUN_FRAME_TESTS !== '1' }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'astrocade-codex-reel-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const source = join(directory, 'source.mkv');
+  await runProcess(mediaExecutables().ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-f', 'lavfi', '-i', 'testsrc2=size=160x90:rate=8', '-t', '1', '-c:v', 'ffv1', source]);
+  let inferenceCalls = 0;
+  const provider = new CodexServices(options, undefined, async command => {
+    if (command.args[0] === 'login') return login;
+    inferenceCalls++;
+    const images = command.args.flatMap((arg, index) => arg === '--image' ? [command.args[index + 1]!] : []);
+    assert.equal(images.length, 4);
+    for (const image of images) assert.deepEqual([...(await readFile(image)).subarray(0, 2)], [0xff, 0xd8]);
+    for (const stamp of ['0.000000', '0.250000', '0.500000', '0.750000']) assert.ok(command.stdin!.includes(`source ${stamp}s`));
+    await writeFile(outputFile(command.args), '{"usable":true}');
+    return completed;
+  });
+  assert.deepEqual(await provider.json('Review this reel.', schema, [{ type: 'video', uri: source, mime_type: 'video/x-matroska', processing: { type: 'static', fps: 4, start_offset: '0s', end_offset: '1s' } }]), { usable: true });
+  assert.equal(inferenceCalls, 1);
+});
 
 test('Codex uses ChatGPT, isolated input files and schema output, retaining only safe usage totals', async () => {
   const events: InferenceProgressEvent[] = [];

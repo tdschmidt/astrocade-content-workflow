@@ -3,10 +3,10 @@ import { dirname, join, resolve } from 'node:path';
 import { mediaExecutables, probeMedia, type MediaTools } from './probe.js';
 import { runProcess } from './process.js';
 
-export interface VideoFrameProcessing { fps: 1 | 2 | 8; start_offset?: string; end_offset?: string }
+export interface VideoFrameProcessing { fps: 1 | 2 | 4 | 8; start_offset?: string; end_offset?: string }
 export interface VideoFrames {
   sourcePath: string;
-  fps: 1 | 2 | 8;
+  fps: 1 | 2 | 4 | 8;
   startSeconds: number;
   endSeconds: number;
   /** Actual presentation times, never nominal frame index / requested FPS. */
@@ -30,7 +30,7 @@ export async function extractVideoFrames(
 ): Promise<VideoFrames> {
   signal?.throwIfAborted();
   const fps = processing.fps;
-  if (fps !== 1 && fps !== 2 && fps !== 8) throw new Error('Frame sampling supports only 1, 2 or 8 FPS.');
+  if (fps !== 1 && fps !== 2 && fps !== 4 && fps !== 8) throw new Error('Frame sampling supports only 1, 2, 4 or 8 FPS.');
   const sourcePath = resolve(path), directory = resolve(outputDir);
   // Trim operates on AVTB microseconds. Normalize the requested window once so
   // floating point sums use the same bounds in FFmpeg, validation, and output.
