@@ -52,17 +52,14 @@ export function Setup(props: ScreenProps) {
   return (
     <div className="screen-stack">
       <div className="setup-intro">
-        <span className="setup-number">01—03</span>
+        <span className="setup-number">01—02</span>
         <p>
           Connect the tools, prepare the account, and check the workspace.
           <br />
           Your settings stay with this local studio.
         </p>
       </div>
-      <div className="setup-grid">
-        <ToolConnections {...props} />
-        <AccessSettings {...props} />
-      </div>
+      <ToolConnections {...props} />
       <AccountSettings {...props} />
       <section className="panel">
         <SectionHeading
@@ -92,36 +89,38 @@ export function Setup(props: ScreenProps) {
           </p>
         ) : (
           <div className="check-list">
-            {checks.map((item) => (
-              <div className="readiness-check" key={item.name}>
-                <span className={`check-symbol ${item.status}`}>
-                  {item.status === "ready" ? (
-                    <Icon name="check" size={15} />
-                  ) : (
-                    "!"
-                  )}
-                </span>
-                <div>
-                  <strong>{item.name}</strong>
-                  <p>{item.message}</p>
-                </div>
-                <Badge
-                  tone={
-                    item.status === "ready"
-                      ? "good"
+            {checks
+              .filter((item) => item.name !== "Shared access")
+              .map((item) => (
+                <div className="readiness-check" key={item.name}>
+                  <span className={`check-symbol ${item.status}`}>
+                    {item.status === "ready" ? (
+                      <Icon name="check" size={15} />
+                    ) : (
+                      "!"
+                    )}
+                  </span>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <p>{item.message}</p>
+                  </div>
+                  <Badge
+                    tone={
+                      item.status === "ready"
+                        ? "good"
+                        : item.status === "failed"
+                          ? "bad"
+                          : "warn"
+                    }
+                  >
+                    {item.status === "ready"
+                      ? "Ready"
                       : item.status === "failed"
-                        ? "bad"
-                        : "warn"
-                  }
-                >
-                  {item.status === "ready"
-                    ? "Ready"
-                    : item.status === "failed"
-                      ? "Needs attention"
-                      : "Not configured"}
-                </Badge>
-              </div>
-            ))}
+                        ? "Needs attention"
+                        : "Not configured"}
+                  </Badge>
+                </div>
+              ))}
           </div>
         )}
       </section>
@@ -339,66 +338,6 @@ function ModelSettings({
   );
 }
 
-function AccessSettings({ state, busy, mutate }: ScreenProps) {
-  const [password, setPassword] = useState("");
-  const save = async (event: FormEvent) => {
-    event.preventDefault();
-    if (await mutate("/api/settings", { workbenchPassword: password }))
-      setPassword("");
-  };
-  return (
-    <section className="panel access-panel">
-      <SectionHeading eyebrow="02 / YOUR WORKSPACE" title="Shared access" />
-      <Badge
-        tone={
-          configured(state.settings, "workbenchPassword") ? "good" : "neutral"
-        }
-      >
-        {configured(state.settings, "workbenchPassword")
-          ? "Password enabled"
-          : "Local access only"}
-      </Badge>
-      <p>
-        Set a shared password before opening the studio through a public tunnel.
-        Anyone you share it with can operate this workspace.
-      </p>
-      <form className="form-stack" onSubmit={save}>
-        <Field
-          label="Workbench password"
-          hint="Saving a new password signs you out. Use the new password to return."
-        >
-          <input
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={8}
-            maxLength={200}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="At least 8 characters"
-          />
-        </Field>
-        <button
-          className="button secondary align-start"
-          disabled={busy || password.length < 8}
-        >
-          {configured(state.settings, "workbenchPassword")
-            ? "Change password"
-            : "Set password"}
-        </button>
-      </form>
-      <div className="setup-aside">
-        <Icon name="star" size={22} />
-        <p>
-          The studio does the assembly.
-          <br />
-          You keep the final say.
-        </p>
-      </div>
-    </section>
-  );
-}
-
 function AccountSettings({ state, busy, mutate }: ScreenProps) {
   const [changes, setChanges] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
@@ -449,7 +388,7 @@ function AccountSettings({ state, busy, mutate }: ScreenProps) {
   return (
     <section className="panel account-panel">
       <SectionHeading
-        eyebrow="03 / YOUR PUBLISHING HOME"
+        eyebrow="02 / YOUR PUBLISHING HOME"
         title="A fresh Instagram account"
       >
         <Badge

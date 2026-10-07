@@ -1,6 +1,6 @@
 # Design decisions and rationale
 
-Updated 2026-10-06. This record distinguishes user decisions from engineering choices and superseded proposals. The local application is implemented; [acceptance evidence](acceptance.md) separates tested local behavior from unverified live integrations. The current architecture is an Instagram browser workflow; earlier Meta API prerequisites are no longer part of v1.
+Updated 2026-10-06. This record distinguishes user decisions from engineering choices and superseded proposals. The local application is implemented; [acceptance evidence](acceptance.md) separates tested local behavior from unverified live integrations. The current architecture is an Instagram browser workflow; earlier Meta API prerequisites are no longer part of v1. The user's latest scope decision, D48, takes precedence over earlier optional additions: finish the initial brief's core workflow first.
 
 ## Requirements and user choices
 
@@ -12,7 +12,7 @@ Updated 2026-10-06. This record distinguishes user decisions from engineering ch
 | D04 | Retain highlights, narrated recommendations, and original-story or factual-explainer backgrounds. | Different formats have different footage requirements; implement recipes over one pipeline. |
 | D05 | Record growth hypotheses without building experiment infrastructure. | Two published posts cannot establish statistical performance conclusions. |
 | D06 | Use successful storytelling structures as inspiration for original scripts. | Preserve distinct characters, events, and resolution; do not lightly rewrite someone else's story or falsely label fiction as a real anecdote. |
-| D07 | Provide a local web workbench shared through ngrok. | Reviewers can exercise the system on the user's running laptop. The user keeps it awake. |
+| D07 | Superseded by D48: a workbench shared through ngrok was an earlier preference. | Shared access is no longer a delivery requirement. Keep the local workbench for operating the core workflow. |
 | D08 | Use hybrid gameplay for v1; broad generic visual play is a later direction. | Models interpret; local code performs bounded time-sensitive input. |
 | D09 | Original game sound is useful but optional. | Silent gameplay plus generated narration is an acceptable baseline. |
 | D10 | Prefer TypeScript and ordinary, well-supported tools. | Keep UI, orchestration, browser automation, and validation in one language. |
@@ -28,6 +28,7 @@ Updated 2026-10-06. This record distinguishes user decisions from engineering ch
 | D29 | Investigate unattended creation first; allow human checkpoints if it is too difficult for v1. | The workflow still starts account creation, retains progress, resumes, and verifies the new identity. An exceptional handoff is reported explicitly. |
 | D30 | Superseded by D41: an existing inbox was the initial verification direction. | The user later requested trying programmatic mailbox creation first, with configurable email as a fallback. |
 | D31 | Use Instagram browser signup and browser publishing. Do not require Facebook or Meta developer signup. | The user starts without those identities and explicitly ruled out developer enrollment. Native upload of a local video removes that dependency chain. |
+| D48 | Prioritize the simplest working implementation of the initial brief: find suitable Astrocade games, capture gameplay, create short videos, create a fresh Instagram account, publish at least two approved videos, and hand over the complete code. | The user explicitly deprioritized shared access and frills. This overrides earlier optional scope: additional research controls, format comparisons, model configuration, and hosted review must not delay the core outcome or become acceptance requirements. Remove the shared-access/password section and its setup reminder; retain the existing backend local-access boundary without a separate rewrite. Model overrides remain collapsed for resolving actual provider access issues. Code quality, truthful evidence, and explicit publication approval still apply. |
 
 ## Engineering decisions supported by research
 
@@ -65,7 +66,7 @@ These are selected implementation defaults, subject to the explicit feasibility 
 | --- | --- | --- |
 | Owner creates the Instagram account before running the application | The user explicitly rejected externalizing fresh account creation. | Accurate recovery details and exceptional identity checks may still require the owner. |
 | Official Instagram Login publishing through a new Meta app | It introduced Facebook/developer prerequisites the user does not have and has ruled out for v1. | It remains background comparison evidence, not a fallback the implementer should quietly build. |
-| D18 signed public video URLs and Meta ingestion hosting | Browser publishing uploads the local MP4 directly. | Shared-password protection for the ngrok workbench remains appropriate. |
+| D18 signed public video URLs and Meta ingestion hosting | Browser publishing uploads the local MP4 directly. D48 also removes shared hosting from delivery scope. | The existing backend local-access boundary stays in place; no sharing setup is needed for the core workflow. |
 | D25 API container IDs and `is_ai_generated` request fields | These belong to the removed API publisher. | Exact-revision approval and appropriate disclosure remain; the actual browser controls must be inspected. |
 | A generic CLI directly executing alongside the web server | It would violate the single-writer assumption and create avoidable races. | A diagnostic CLI or thin client of the server is compatible. |
 | Fixed 25 fps final export based on recorder or API behavior | Browser/Reels Help calls for a 30 fps minimum. | Source cadence must still be measured honestly. |
