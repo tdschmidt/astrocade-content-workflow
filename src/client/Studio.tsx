@@ -33,7 +33,7 @@ export function Studio(props: ScreenProps) {
     formats: ["highlight"],
     comparison: "same-game",
     profileIds: [],
-    topic: "An original short fictional story",
+    topic: "",
   });
   const [profileJson, setProfileJson] = useState("");
   const [profileError, setProfileError] = useState("");

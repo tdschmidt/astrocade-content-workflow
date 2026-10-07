@@ -24,10 +24,10 @@ export const researchSchema = z.object({
 export type ResearchSnapshot = z.infer<typeof researchSchema>;
 export const runOptionsSchema = z.object({
   mode: selectionModeSchema.default('balanced'),
-  formats: z.array(formatSchema).min(1).max(3).default(['highlight', 'recommendation']),
-  comparison: z.enum(['best-fit', 'same-game']).default('best-fit'),
+  formats: z.array(formatSchema).min(1).max(3).default(['highlight']),
+  comparison: z.enum(['best-fit', 'same-game']).default('same-game'),
   profileIds: z.array(z.string()).max(6).default([]),
-  topic: z.string().max(500).default('An original short fictional story'),
+  topic: z.string().max(500).default(''),
 });
 export type RunOptions = z.infer<typeof runOptionsSchema>;
 export const runSchema = z.object({
