@@ -12,7 +12,9 @@ export interface WordTiming { text: string; startSeconds: number; endSeconds: nu
 
 export function seconds(value?: string): number {
   if (!value || !/^\d+(?:\.\d+)?s?$/.test(value)) throw new Error('Transcription returned an invalid timestamp.');
-  return Number(value.replace(/s$/, ''));
+  const parsed = Number(value.replace(/s$/, ''));
+  if (!Number.isFinite(parsed)) throw new Error('Transcription returned an invalid timestamp.');
+  return parsed;
 }
 
 export class GoogleServices {
@@ -56,7 +58,7 @@ export class GoogleServices {
     const response = await this.client.interactions.create({
       model: this.settings.speechModel, store: false, stream: false,
       input: [{ type: 'text', text, annotations: [{ type: 'speech_metadata', style: 'Clear, warm, conversational, lively but never shouting. Read the exact words.' }] }],
-      response_format: { type: 'audio' },
+      response_format: { type: 'audio', mime_type: 'audio/wav', delivery: 'inline' },
       generation_config: { speech_config: [{ voice: this.settings.voice }] },
     }, { signal: boundedSignal(signal, 120_000), timeout_ms: 120_000 });
     signal?.throwIfAborted();
@@ -71,7 +73,7 @@ export class GoogleServices {
     const response = await this.client.interactions.create({
       model: this.settings.transcriptionModel, store: false, stream: false,
       input: [{ type: 'audio', mime_type: 'audio/wav', data: (await readFile(path)).toString('base64') }],
-      generation_config: { transcription_config: { mode: 'verbatim', timestamp_granularities: ['word'] } },
+      generation_config: { transcription_config: { mode: { type: 'verbatim', timestamp_granularities: ['word'] } } },
     }, { signal: boundedSignal(signal, 120_000), timeout_ms: 120_000 });
     signal?.throwIfAborted();
     const words: WordTiming[] = [];
