@@ -40,6 +40,27 @@ test('nomination gives the provider a bounded editorial brief and controller lim
   await assert.rejects(nominateGames([candidate], [], provider, 6), /Shortlist size/);
 });
 
+test('reel briefs reach nomination while saved briefs preserve an absent editing style', async () => {
+  const { editingStyle: _, ...legacyBrief } = defaultContentBrief;
+  assert.equal(contentBriefSchema.parse(legacyBrief).editingStyle, undefined);
+  assert.equal(contentBriefSchema.safeParse({ ...legacyBrief, editingStyle: 'unbounded-montage' }).success, false);
+  for (const brief of [legacyBrief, { ...legacyBrief, editingStyle: 'episode' as const }, defaultContentBrief]) {
+    let briefData: unknown;
+    const provider = { json: async (prompt: string) => {
+      // Inspect the serialized contract rather than asserting editorial prompt wording.
+      briefData = JSON.parse(prompt.split('\n').find(line => line.startsWith('{"audience":'))!);
+      return { games: [nomination] };
+    } } as unknown as Inference;
+    await nominateGames([candidate], [], provider, 1, undefined, 'auto', brief);
+    assert.deepEqual(briefData, {
+      audience: brief.audience, voice: brief.voice,
+      ...('editingStyle' in brief ? { editingStyle: brief.editingStyle } : {}),
+      hookExamples: brief.hookExamples, sources: brief.sources, activeTrends: [],
+    });
+  }
+  assert.equal(defaultContentBrief.editingStyle, 'reel');
+});
+
 const assessment: ContentAssessment = {
   angle: 'prediction', clarity: 3, participation: 2, payoff: 3, readability: 3, distinctiveness: 1,
   evidence: 'Two readable routes lead to visibly different outcomes.', textPlacement: 'upper', placementReason: 'The lower screen contains both route labels and the player.',
