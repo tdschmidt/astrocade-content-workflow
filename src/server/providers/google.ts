@@ -27,7 +27,7 @@ function httpStatus(error: unknown): number | undefined {
   return Number.isInteger(status) && status >= 100 && status <= 599 ? status : undefined;
 }
 
-/** Decline a retry when the server asks for more than our bounded wait. */
+/** The caller checks this delay against the shared request deadline. */
 export function retryDelayMs(error: unknown, attempt: number, now = Date.now(), random = Math.random()): number | undefined {
   if (![429, 503].includes(httpStatus(error) ?? 0) || attempt >= 3) return undefined;
   const headers = Reflect.get(error as object, 'headers');
@@ -39,7 +39,7 @@ export function retryDelayMs(error: unknown, attempt: number, now = Date.now(), 
     if (Number.isFinite(date)) serverDelay = Math.max(0, date - now);
   }
   const delay = Math.max(serverDelay, Math.round(1000 * 2 ** (attempt - 1) * (0.75 + 0.25 * random)));
-  return delay <= 15_000 ? delay : undefined;
+  return Number.isFinite(delay) ? delay : undefined;
 }
 
 function safeFailure(error: unknown, aborted = false): string {
@@ -80,12 +80,13 @@ export class GoogleServices {
         return result;
       } catch (error) {
         const delay = retryDelayMs(error, attempt);
-        const details = { httpStatus: httpStatus(error), message: safeFailure(error, requestSignal.aborted) };
-        if (requestSignal.aborted || delay === undefined || Date.now() + delay >= deadline) {
+        const exceedsDeadline = delay !== undefined && Date.now() + delay >= deadline;
+        const details = { httpStatus: httpStatus(error), retryAfterMs: delay, message: safeFailure(error, requestSignal.aborted) + (exceedsDeadline ? ' The retry delay exceeds the remaining deadline.' : '') };
+        if (requestSignal.aborted || delay === undefined || exceedsDeadline) {
           emit({ status: 'failed', ...details });
           throw error;
         }
-        emit({ status: 'retrying', retryAfterMs: delay, ...details });
+        emit({ status: 'retrying', ...details });
         try { await setTimeout(delay, undefined, { signal: requestSignal }); }
         catch (error) { emit({ status: 'failed', message: safeFailure(error, requestSignal.aborted) }); throw error; }
       }
@@ -106,7 +107,9 @@ export class GoogleServices {
   }
 
   async json<T>(prompt: string, schema: z.ZodType<T>, media: MediaInput[] = [], signal?: AbortSignal): Promise<T> {
-    const jsonSchema = z.toJSONSchema(schema);
+    // Gemini rejects the full control-plan grammar with maxItems. Enforce those
+    // limits through the original Zod schema after decoding the response.
+    const jsonSchema = z.toJSONSchema(schema, { override: ({ jsonSchema }) => { delete jsonSchema.maxItems; } });
     delete jsonSchema.$schema;
     return this.modelRequest('json', this.settings.reasoningModel, async options => {
       const response = await this.client.interactions.create({

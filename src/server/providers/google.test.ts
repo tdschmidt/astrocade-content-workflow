@@ -184,19 +184,64 @@ test('overload stops after three total attempts, with no hidden SDK retries', as
   assert.equal(requests, 3);
 });
 
-test('Retry-After is honored within the wait limit and long waits stop immediately', async t => {
+test('Retry-After can exceed 15 seconds but cannot exceed the shared deadline', async t => {
   const error = (value: string, status = 503) => ({ status, headers: new Headers({ 'retry-after': value }) });
   assert.equal(retryDelayMs(error('10'), 1, 0, 0), 10_000);
   assert.equal(retryDelayMs(error('Thu, 01 Jan 1970 00:00:10 GMT'), 1, 0, 0), 10_000);
   assert.equal(retryDelayMs(error('Thu, 01 Jan 1970 00:00:00 GMT'), 1, 1000, 0), 750);
   for (const value of ['invalid', '-1', '1.5']) assert.equal(retryDelayMs(error(value), 1, 0, 0), 750);
-  assert.equal(retryDelayMs(error('16'), 1, 0, 0), undefined);
+  assert.equal(retryDelayMs(error('60'), 1, 0, 0), 60_000);
+  assert.equal(retryDelayMs(error('90'), 1, 0, 0), 90_000);
   assert.equal(retryDelayMs(error('1'), 3, 0, 0), undefined);
   assert.equal(retryDelayMs(error('1', 403), 1, 0, 0), undefined);
   let requests = 0;
-  t.mock.method(globalThis, 'fetch', async () => { requests++; return Response.json({ error: { code: 429, message: 'Fixture quota' } }, { status: 429, headers: { 'retry-after': '60' } }); });
-  await assert.rejects(new GoogleServices(settings).json('fixture', z.object({ usable: z.boolean() })));
+  const events: GoogleProgressEvent[] = [];
+  t.mock.method(globalThis, 'fetch', async () => { requests++; return Response.json({ error: { code: 429, message: 'Fixture quota' } }, { status: 429, headers: { 'retry-after': '120' } }); });
+  await assert.rejects(new GoogleServices(settings, event => events.push(event)).json('fixture', z.object({ usable: z.boolean() })));
   assert.equal(requests, 1);
+  assert.equal(events.at(-1)?.retryAfterMs, 120_000);
+  assert.match(events.at(-1)!.message!, /remaining deadline/);
+});
+
+test('a 60-second Retry-After enters cancellable backoff instead of failing immediately', async t => {
+  const controller = new AbortController();
+  const events: GoogleProgressEvent[] = [];
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    requests++;
+    return Response.json({ error: { code: 503, message: 'Fixture overloaded' } }, { status: 503, headers: { 'retry-after': '60' } });
+  });
+  const google = new GoogleServices(settings, event => {
+    events.push(event);
+    if (event.status === 'retrying') controller.abort();
+  });
+  await assert.rejects(google.json('fixture', z.object({ usable: z.boolean() }), [], controller.signal));
+  assert.equal(requests, 1);
+  assert.equal(events.find(event => event.status === 'retrying')?.retryAfterMs, 60_000);
+});
+
+test('wire schema omits nested maxItems while local bounds still reject oversized model output', async t => {
+  const schema = z.object({ plans: z.array(z.object({ actions: z.array(z.object({ seconds: z.number().min(0).max(2) })).min(1).max(2) })).max(1) });
+  const valid = { plans: [{ actions: [{ seconds: 1 }] }] };
+  let output: unknown = valid;
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+    requests++;
+    const body = JSON.parse(input instanceof Request ? await input.clone().text() : String(init?.body));
+    const plans = body.response_format.schema.properties.plans;
+    assert.equal(plans.maxItems, undefined);
+    assert.equal(plans.items.properties.actions.maxItems, undefined);
+    assert.equal(plans.items.properties.actions.minItems, 1);
+    assert.equal(plans.items.properties.actions.items.properties.seconds.maximum, 2);
+    return Response.json({ id: 'fixture', status: 'completed', steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify(output) }] }] });
+  });
+  const google = new GoogleServices(settings);
+  assert.deepEqual(await google.json('fixture', schema), valid);
+  output = { plans: [{ actions: [{ seconds: 1 }, { seconds: 1 }, { seconds: 1 }] }] };
+  await assert.rejects(google.json('fixture', schema), z.ZodError);
+  output = { plans: [valid.plans[0], valid.plans[0]] };
+  await assert.rejects(google.json('fixture', schema), z.ZodError);
+  assert.equal(requests, 3, 'invalid structured responses must not be retried');
 });
 
 test('cancellation during backoff prevents another attempt', async t => {
