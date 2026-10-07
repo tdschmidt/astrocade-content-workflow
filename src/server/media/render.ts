@@ -100,7 +100,7 @@ export function validateOverlayCues(cues: readonly CaptionCue[], duration: numbe
     if (cue.endSeconds - cue.startSeconds < 0.8 - 1e-9) throw new Error('Visual overlays need at least 0.8 seconds of reading time');
     const words = cue.text.trim().split(/\s+/u);
     const lines = captionLines(cue.text);
-    if (cue.text.length > 84 || words.length > 12 || words.some(word => word.length > 22) || lines.length > 3 || lines.some(line => textWidth(line, 64) > 760)) throw new Error('Shorten caption text: at most 12 words, 84 characters, and three short lines; no word over 22 characters');
+    if (cue.text.length > 84 || words.length > 12 || words.some(word => word.length > 22) || lines.length > 3 || lines.some(line => textWidth(line, 64) > 760)) throw new Error(`Shorten caption text: at most 12 words, 84 characters, and three short lines; no word over 22 characters. Current layout: ${lines.length} lines, ${words.length} words, ${cue.text.length} characters; wrapped lines ${JSON.stringify(lines)}.`);
   }
 }
 

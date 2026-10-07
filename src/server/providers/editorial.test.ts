@@ -403,7 +403,7 @@ test('conversational hooks retain their wording with measured reading time and a
   }
   const overBudget = 'one two three four five six seven eight nine ten eleven twelve thirteen';
   await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([
-    choiceFor([0]), { ...review, hook: overBudget }, { hook: 'one two three four five six seven eight nine ten eleven twelve a', reason: 'Still thirteen words.' },
+    choiceFor([0]), { ...review, hook: overBudget }, { hook: 'a b c d e f g h i j k l m', reason: 'Still thirteen words.' },
   ])), /one hook-shortening repair.*hook is too long/);
 });
 
@@ -420,6 +420,7 @@ test('one repair fits a visually approved hook to the renderer without changing 
   assert.ok(result.editorial!.review.includes(JSON.stringify(hook)));
   assert.ok(result.editorial!.review.includes(JSON.stringify(repair.hook)));
   assert.match(result.editorial!.review, /three short lines/);
+  assert.match(result.editorial!.review, /Current layout: \d+ lines.*wrapped lines/);
   assert.ok(result.editorial!.review.endsWith(repair.reason));
 });
 
@@ -428,7 +429,7 @@ test('an invalid shortening ends after one repair and cannot override visual rej
   const stillWide = 'the fact that someone actually sat down and made it playable';
   await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([
     choiceFor([0]), { ...review, hook }, { hook: stillWide, reason: 'Removed one short word, but still too wide.' },
-  ])), /one hook-shortening repair.*three short lines/, 'a second invalid line fails locally without another model call');
+  ])), /<=46 characters/, 'the stricter repair budget rejects a token shortening without another model call');
   await assert.rejects(draftScript({ capture, format: 'highlight', topic: '' }, googleFixture([
     choiceFor([0]), { ...review, hook, approved: false, reason: 'Both anchors obscure the decisive action.' },
   ])), /visual editorial review rejected.*Both anchors/, 'a wide rejected line must never enter the repair flow');
