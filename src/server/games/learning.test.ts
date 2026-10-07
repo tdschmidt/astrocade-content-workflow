@@ -40,6 +40,23 @@ test('learning builds an unverified profile from observed selectors and saves it
   assert.equal(assessment.confidence, 'high');
 });
 
+test('a timed simultaneous-key plan preserves keyboard focus and counts the shared hold once', async t => {
+  const { candidate, inspection, proposal } = await fixture(t);
+  inspection.text = 'Hold W to move and Space to fly.';
+  const action = { type: 'keys' as const, keys: ['KeyW', 'Space'], durationMs: 6000 };
+  const provider = { json: async (prompt: string) => {
+    assert.match(prompt, /keys holds 2–3 unique observed keys simultaneously for 20–6000ms/);
+    assert.match(prompt, /"type":"keys","keys":\["KeyW","Space"\],"durationMs":3000/);
+    assert.doesNotMatch(prompt, /simultaneous key combinations are unavailable/);
+    return { ...proposal, actions: [action], evidence: ['The visible instructions establish W movement and Space flight.'] };
+  } } as unknown as Pick<GoogleServices, 'json'>;
+  const learned = await learnGameProfile(inspection, candidate, provider, undefined, { maxDurationMs: 9000 });
+  assert.equal(learned.profile?.focus, 'click', 'a plan containing only simultaneous keys still needs the keyboard focus path');
+  assert.equal(learned.profile?.maxDurationMs, 9000);
+  assert.equal(learned.profile?.verification, 'unverified');
+  assert.deepEqual(learned.profile?.controller, { type: 'timed', repetitions: 1, actions: [action] });
+});
+
 test('low-confidence controls are skipped rather than promoted to a runnable plan', async t => {
   const { candidate, inspection, proposal, google } = await fixture(t);
   proposal.confidence = 'low';

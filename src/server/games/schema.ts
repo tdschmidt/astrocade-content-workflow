@@ -32,12 +32,13 @@ const pointerButtonSchema = z.enum(['left', 'right']).optional();
 export const keySchema = z.string().regex(/^(Arrow(Up|Down|Left|Right)|Space|Enter|Escape|Tab|Backspace|Key[A-Z]|Digit[0-9])$/);
 
 export const inputActionSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('key'), key: keySchema, durationMs: z.number().int().min(20).max(2000) }),
+  z.object({ type: z.literal('key'), key: keySchema, durationMs: z.number().int().min(20).max(6000) }),
   z.object({ type: z.literal('tap'), point: pointSchema, button: pointerButtonSchema }),
   z.object({ type: z.literal('drag'), from: pointSchema, to: pointSchema, durationMs: z.number().int().min(50).max(2000), button: pointerButtonSchema }),
   z.object({ type: z.literal('path'), points: z.array(pointSchema).min(2).max(32), durationMs: z.number().int().min(50).max(2000), button: pointerButtonSchema }),
   z.object({ type: z.literal('wait'), durationMs: z.number().int().min(20).max(5000) }),
   z.object({ type: z.literal('look'), dx: z.number().min(-200).max(200), dy: z.number().min(-200).max(200), durationMs: z.number().int().min(50).max(2000) }).strict(),
+  z.object({ type: z.literal('keys'), keys: z.array(keySchema).min(2).max(3).refine(keys => new Set(keys).size === keys.length, 'Simultaneous keys must be unique.'), durationMs: z.number().int().min(20).max(6000) }).strict(),
 ]);
 export type InputAction = z.infer<typeof inputActionSchema>;
 
@@ -50,6 +51,7 @@ export const plannedInputActionSchema = z.discriminatedUnion('type', [
   inputActionSchema.options[3].required({ button: true }).strict(),
   inputActionSchema.options[4].strict(),
   inputActionSchema.options[5].strict(),
+  inputActionSchema.options[6].strict(),
 ]);
 
 export const surfaceLocatorSchema = z.object({
@@ -79,11 +81,11 @@ export const gameProfileSchema = z.object({
   reset: z.array(uiStepSchema).max(20).default([]),
   focus: z.enum(['click', 'focus']).default('click'),
   objective: z.string().min(1).max(1000),
-  maxDurationMs: z.number().int().min(1000).max(175000).default(60000),
+  maxDurationMs: z.number().int().min(1000).max(600000).default(60000),
   controller: z.discriminatedUnion('type', [
     z.object({ type: z.literal('timed'), actions: z.array(inputActionSchema).min(1).max(60), repetitions: z.number().int().min(1).max(20).default(1) }),
     z.object({
-      type: z.literal('sparse'), maxDecisions: z.number().int().min(1).max(20).default(6),
+      type: z.literal('sparse'), maxDecisions: z.number().int().min(1).max(60).default(6),
       instructions: z.string().max(3000).default(''),
       allowedKeys: z.array(keySchema).max(20).default([]),
       allowPointer: z.boolean().default(false),

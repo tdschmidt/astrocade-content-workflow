@@ -254,9 +254,9 @@ test('literal action types use singleton enums on the wire and invalid aliases s
     requests++;
     const body = JSON.parse(input instanceof Request ? await input.clone().text() : String(init?.body));
     const alternatives = body.response_format.schema.properties.actions.items.oneOf;
-    assert.deepEqual(alternatives.map((branch: any) => branch.properties.type.enum), [['key'], ['tap'], ['drag'], ['path'], ['wait'], ['look']]);
+    assert.deepEqual(alternatives.map((branch: any) => branch.properties.type.enum), [['key'], ['tap'], ['drag'], ['path'], ['wait'], ['look'], ['keys']]);
     assert.ok(alternatives.every((branch: any) => branch.properties.type.const === undefined));
-    assert.equal(alternatives[0].properties.durationMs.maximum, 2000);
+    assert.equal(alternatives[0].properties.durationMs.maximum, 6000);
     const look = alternatives[5];
     for (const axis of ['dx', 'dy']) {
       assert.equal(look.properties[axis].minimum, -200);
@@ -266,6 +266,11 @@ test('literal action types use singleton enums on the wire and invalid aliases s
     assert.equal(look.properties.durationMs.maximum, 2000);
     assert.equal(look.properties.button, undefined);
     assert.deepEqual([...look.required].sort(), ['durationMs', 'dx', 'dy', 'type']);
+    const keys = alternatives[6];
+    assert.equal(keys.properties.durationMs.maximum, 6000);
+    assert.equal(keys.properties.keys.minItems, 2);
+    assert.equal(keys.properties.keys.maxItems, undefined, 'provider sanitizer omits maxItems; local schema still enforces the limit');
+    assert.deepEqual([...keys.required].sort(), ['durationMs', 'keys', 'type']);
     return Response.json({ id: 'fixture', status: 'completed', steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify(output) }] }] });
   });
   const google = new GoogleServices(settings);
@@ -274,7 +279,11 @@ test('literal action types use singleton enums on the wire and invalid aliases s
   await assert.rejects(google.json('fixture', schema), z.ZodError);
   output = { actions: [{ type: 'tap', index: 0 }] };
   await assert.rejects(google.json('fixture', schema), z.ZodError);
-  assert.equal(requests, 3);
+  output = { actions: [{ type: 'keys', keys: ['KeyW', 'Space'], durationMs: 6000 }] };
+  assert.deepEqual(await google.json('fixture', schema), output);
+  output = { actions: [{ type: 'keys', keys: ['KeyW', 'KeyW'], durationMs: 100 }] };
+  await assert.rejects(google.json('fixture', schema), z.ZodError);
+  assert.equal(requests, 5);
 });
 
 test('cancellation during backoff prevents another attempt', async t => {

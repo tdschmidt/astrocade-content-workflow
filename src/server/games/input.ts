@@ -124,9 +124,12 @@ export class InputExecutor {
     this.signal?.throwIfAborted();
     try {
       if (action.type === 'wait') await delay(action.durationMs, undefined, { signal: this.signal });
-      if (action.type === 'key') {
-        this.keys.add(action.key);
-        await this.page.keyboard.down(action.key);
+      if (action.type === 'key' || action.type === 'keys') {
+        for (const key of action.type === 'key' ? [action.key] : action.keys) {
+          this.signal?.throwIfAborted();
+          this.keys.add(key);
+          await this.page.keyboard.down(key);
+        }
         await delay(action.durationMs, undefined, { signal: this.signal });
       }
       if (action.type === 'tap') {

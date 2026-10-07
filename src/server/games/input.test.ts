@@ -16,6 +16,44 @@ test('canceling a held native key releases it before the action rejects', async 
   assert.equal(events.length, 2);
 });
 
+test('simultaneous keys are unique, bounded and compatible with old single-key actions', () => {
+  const action = { type: 'keys', keys: ['KeyW', 'Space'], durationMs: 6000 };
+  assert.deepEqual(inputActionSchema.parse(action), action);
+  assert.deepEqual(plannedInputActionSchema.parse({ ...action, keys: ['KeyW', 'Space', 'KeyX'] }), { ...action, keys: ['KeyW', 'Space', 'KeyX'] });
+  assert.ok(inputActionSchema.safeParse({ type: 'key', key: 'KeyW', durationMs: 6000 }).success);
+  assert.ok(inputActionSchema.safeParse({ type: 'key', key: 'KeyW', durationMs: 100 }).success);
+  for (const invalid of [
+    { ...action, keys: ['KeyW'] }, { ...action, keys: ['KeyW', 'KeyW'] },
+    { ...action, keys: ['KeyW', 'Space', 'KeyX', 'KeyC'] }, { ...action, keys: ['KeyW', 'Shift'] },
+    { ...action, durationMs: 19 }, { ...action, durationMs: 6001 }, { ...action, durationMs: 20.5 },
+    { ...action, button: 'left' }, { ...action, key: 'KeyW' },
+  ]) {
+    assert.equal(inputActionSchema.safeParse(invalid).success, false);
+    assert.equal(plannedInputActionSchema.safeParse(invalid).success, false);
+  }
+});
+
+for (const failure of ['abort', 'input error'] as const) test(`${failure} while pressing simultaneous keys releases every attempted key`, async () => {
+  const events: string[] = [];
+  const abort = new AbortController();
+  const page = { keyboard: {
+    down: async (key: string) => {
+      events.push(`down:${key}`);
+      if (key === 'Space') {
+        if (failure === 'abort') abort.abort(new Error('Stop the chord'));
+        else throw new Error('Native input failed');
+      }
+    },
+    up: async (key: string) => { events.push(`up:${key}`); },
+  } } as unknown as Page;
+  const executor = new InputExecutor(page, { selector: 'canvas', frames: [] }, abort.signal);
+  await assert.rejects(executor.execute({ type: 'keys', keys: ['KeyW', 'Space', 'KeyX'], durationMs: 6000 }));
+  assert.deepEqual(events, ['down:KeyW', 'down:Space', 'up:KeyW', 'up:Space']);
+  assert.equal(executor.executed, 0);
+  await executor.releaseAll();
+  assert.equal(events.length, 4);
+});
+
 test('normalized coordinates include the frame offset exactly once and stay inside the surface', () => {
   assert.deepEqual(withinGame({ x: 120, y: 110, width: 600, height: 400 }, { x: 0.5, y: 0.5 }), { x: 420, y: 310 });
   assert.deepEqual(withinGame({ x: 120, y: 110, width: 600, height: 400 }, { x: 1, y: 1 }), { x: 719, y: 509 });
