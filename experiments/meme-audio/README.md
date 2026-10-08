@@ -1,6 +1,6 @@
 # Real audio experiment library
 
-Eight downloaded source recordings replace the earlier procedural demonstration sounds: six recognizable meme effects and two creator-supplied phonk tracks. This directory is a local editing experiment; the main pipeline is unchanged. The music is a licensed stylistic option, not a verified match to the Instagram reference or a claim that these tracks are famous meme hits.
+Eight downloaded source recordings replace the earlier procedural demonstration sounds: six recognizable meme effects and two creator-supplied phonk tracks. The integrated meme pipeline uses this catalog by default; `--audio-catalog` selects a separately reviewed subset for a particular run. The music is a licensed stylistic option, not a verified match to the Instagram reference or a claim that these tracks are famous meme hits.
 
 `catalog.json` is the interface. Resolve `assets[].id` to its absolute `path`; use `relativePath` for a relocatable workspace. Each entry includes source/download URLs, uploader versus verified creator, SHA-256, duration, suggested trim, cue, mood, gain, permission status and attribution. The first seven IDs are stable; `badly` is the second music option.
 
@@ -32,3 +32,7 @@ Sources were inspected on 2026-10-07. Individual MP3 links were exposed by the s
 Run `python3 experiments/meme-audio/build-catalog.py` after changing source files to refresh hashes and durations. It does not download or publish. FFmpeg and FFprobe must be installed. `validation.json` records checks of file existence, hashes, trim bounds, permission flags and full FFmpeg decoding. `audio-analysis.json` records the SFX onset measurements.
 
 Begin around the catalog's suggested gain, duck music for vocal effects, and use a final limiter. Several source recordings are already loud; increasing their gain or stacking impact effects can clip. Use the sound that completes the visual joke, then leave space for it to register.
+
+## Publication candidates
+
+The final-candidate follow-up uses a separate local catalog containing creator-authorized music for credited organic posts and Kenney CC0 impacts. Preview-only effects remain available only in the historical experiment catalog. See [the selection report](../../docs/publication-finalists-2026-10-07.md) for exact run provenance, required credits and review limits. Do not replace a catalog inside an in-progress or saved run: its hash is part of the immutable editorial input.

@@ -2,6 +2,19 @@
 
 The previous checkpoint has been resumed, retired product scope removed, and the completed editing prototype integrated. **Eleven selected candidate videos were generated through the main CLI:** eight categories, a narrated overview, a sourced story and an additional fresh Golem test. Their local source/picture/media checks and final code review are complete. Earlier recordings, failed attempts and alternative edits remain preserved. All owned model, capture and render jobs have ended; only the optional local review server remains.
 
+## Final publication follow-up completed
+
+The user requested a couple of stronger final videos after the core goal. A broader scan, two fresh native captures (Pokémon and Zombie), narrated comparisons and multiple main-CLI meme revisions produced the selected pair below. These supersede the eleven-video gallery **for this final selection**; earlier artifacts remain intact. All generation and final QA jobs have ended.
+
+| Final file under `data/experiments/publication-final-2026-10-07/final/` | Length | Completed pipeline run |
+| --- | --- | --- |
+| `01-golem-plot-armor.mp4` | 16.67s | `2026-10-08T00-26-48-235Z-941112` |
+| `02-ben10-omnitrix-power-trip.mp4` | 15.27s | `2026-10-08T00-40-55-554Z-70e43f` |
+
+The local package includes exact post captions/music credits, a SHA-256 manifest and independent QA references. Copies match the pipeline renders byte for byte. These final edits exclude preview-only audio effects; selected music permits attributed organic social posts, not paid ads without another license. Nothing was posted. Automatic approval review blocked the requested Gemini audio transfer for lack of explicit authorization; no audio was sent. Actual listening remains a final user review step.
+
+Additional pushed code commits: `bb572a4` (hashed publication audio catalog), `c23fd20` (complete actionable overview repair feedback), `e016ddd` (short chapter audio policy). All passed GitHub Actions. The Pokémon closing WAV now passes duration validation unchanged but still correctly fails the separate excessive-retiming gate; that candidate is not selected. See [final selection, comparisons and verification](docs/publication-finalists-2026-10-07.md).
+
 ## Current scope
 
 The deliverable ends at **local candidate videos**. No GUI, Instagram uploading, account/email creation, publishing service, database or job queue. GitHub commits/pushes to the existing project repository and model analysis of gameplay are authorized. External publishing and outreach are not authorized.

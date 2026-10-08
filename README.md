@@ -108,3 +108,5 @@ node --import tsx --test --test-concurrency=1 'src/**/*.test.ts'
 ```
 
 CI runs core and editing checks. The decision log records scope changes and observed failures. Keep `.env`, local credentials, model weights and unselected run data private; hand over the source, lockfile, setup instructions and selected output/evidence artifacts.
+
+The [final publication candidate report](docs/publication-finalists-2026-10-07.md) records the broader comparison, selected local deliverables, audio credits and pipeline fixes found during production. Media stays local under `data/`; it is not part of the GitHub checkout.
