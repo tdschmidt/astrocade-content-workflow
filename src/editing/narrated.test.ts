@@ -50,6 +50,21 @@ test('whole-game overview facts retain original hash/time evidence and opening e
   assert.throws(() => validateOverviewInspection(capture, { ...inspection(), usable: false }, windows), /Inadequate overview/);
 });
 
+test('one overview repair receives every chapter evidence mismatch', () => {
+  const selected = inspection();
+  selected.facts[0]!.end = 16.2;
+  selected.facts[1]!.end = 46.5;
+  assert.throws(() => validateOverviewInspection(capture, selected, windows), error => {
+    assert.ok(error instanceof Error);
+    assert.match(error.message, /Chapter opening evidence flight/);
+    assert.match(error.message, /Chapter building evidence wall/);
+    return true;
+  });
+  selected.chapters[0]!.shots[0]!.end = 16.2;
+  selected.chapters[1]!.shots[0]!.end = 46.5;
+  assert.equal(validateOverviewInspection(capture, selected, windows).length, 2);
+});
+
 test('a semantic rejection stops after one call and cannot turn into approval on resume', async () => {
   const out = await mkdtemp(join(tmpdir(), 'narrated-rejection-')); let calls = 0;
   const schema = z.object({ approved: z.boolean(), issues: z.array(z.string()) });

@@ -26,8 +26,9 @@ export function draftIssues(draft:Draft,ledger:Ledger,requireHook=false):string[
  const speech=draft.chapters.map(c=>c.narration).join(' ').toLowerCase();
  if(ledger.avoidSpokenGameTitle&&speech.includes(ledger.gameTitle.toLowerCase()))issues.push('Game title must stay in metadata, not narration');
  for(const phrase of ledger.spokenAvoidPhrases)if(speech.includes(phrase.toLowerCase()))issues.push(`Forbidden editorial phrasing: ${phrase}`);
- const count=draft.chapters.map(c=>c.narration).join(' ').trim().split(/\s+/u).length;
- if(count<ledger.wordRange[0]||count>ledger.wordRange[1])issues.push(`Total words ${count}, expected ${ledger.wordRange.join('–')}`);
+ const chapterCounts=draft.chapters.map(c=>({id:c.id,words:c.narration.trim().split(/\s+/u).length}));
+ const count=chapterCounts.reduce((sum,c)=>sum+c.words,0);
+ if(count<ledger.wordRange[0]||count>ledger.wordRange[1])issues.push(`Total words ${count}, expected ${ledger.wordRange.join('–')}; counts use whitespace, so an em dash without spaces does not separate words. Chapter counts: ${JSON.stringify(chapterCounts)}.`);
  if(draft.chapters.length!==ledger.chapters.length)issues.push('Chapter count differs from ledger');
  draft.chapters.forEach((c,i)=>{const l=ledger.chapters[i];if(!l){issues.push('Unexpected chapter');return;}if(l.maxSpokenWords&&c.narration.trim().split(/\s+/u).length>l.maxSpokenWords)issues.push(`${c.id} exceeds its ${l.maxSpokenWords}-word footage budget`);if(l.preserveFullWindow&&(Math.abs(c.sourceStart-l.allowedStart)>1e-6||Math.abs(c.sourceEnd-l.allowedEnd)>1e-6))issues.push(`${c.id} must preserve its preselected complete action window`);if(c.id!==l.id||c.sourceStart<l.allowedStart-1e-6||c.sourceEnd>l.allowedEnd+1e-6||c.sourceStart>=c.sourceEnd)issues.push(`Invalid ${c.id} identity/window`);if(!c.claims.length||c.claims.some(claim=>!claim.opinion&&(!claim.factIds.length||claim.factIds.some(id=>!ids.has(id)))))issues.push(`Ungrounded ${c.id} claim`);});
  if(requireHook||draft.hooks||draft.selectedHookId){
@@ -36,7 +37,7 @@ export function draftIssues(draft:Draft,ledger:Ledger,requireHook=false):string[
   if(new Set(draft.hooks.map(h=>h.id)).size!==3)issues.push('Hook IDs must be unique');
   for(const h of draft.hooks){
    if(h.factIds.some(id=>!ids.has(id)))issues.push('Hook claim references unknown game facts');
-   if(h.firstShotFactIds.some(id=>!openingIds.has(id)))issues.push('First-shot evidence references unknown or non-opening facts');
+   if(h.firstShotFactIds.some(id=>!openingIds.has(id)))issues.push(`Hook ${h.id}: First-shot evidence references unknown or non-opening facts. Choose only exact opening-chapter IDs: ${JSON.stringify([...openingIds])}; game-wide IDs are not interchangeable.`);
   }
   const selected=draft.hooks.find(h=>h.id===draft.selectedHookId);
   const score=(h:z.infer<typeof Hook>)=>Object.values(h.scores).reduce((a,b)=>a+b,0);

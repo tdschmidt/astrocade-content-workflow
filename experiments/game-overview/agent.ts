@@ -22,7 +22,7 @@ for(const chapter of ledger.chapters){
  for(const f of frames.frames){media.push({type:'image',mime_type:'image/jpeg',data:(await readFile(f.path)).toString('base64')});timestamps.push(`Image${media.length}: ${chapter.id}, absolute source${f.sourceSeconds.toFixed(6)}s`);}
 }
 const feedback=options.feedbackPath?await readFile(resolve(options.feedbackPath),'utf8'):'';
-const prompt=`${system}\n\nCONTENT BRIEF\n${JSON.stringify(options.brief??{})}\n\nLEDGER\n${ledgerText}\n\nIMAGE TIMESTAMPS\n${timestamps.join('\n')}\n\nEDITORIAL REVIEW TO APPLY\n${feedback}`;
+const prompt=`${system}\n\nOUTPUT CHECKS\nAll three hooks must use firstShotFactIds from these exact opening-chapter IDs: ${JSON.stringify(ledger.chapters[0]!.facts.map(f=>f.id))}. General hook factIds may still draw on the whole game ledger. Count narration words by whitespace; punctuation without spaces does not create another word.\n\nCONTENT BRIEF\n${JSON.stringify(options.brief??{})}\n\nLEDGER\n${ledgerText}\n\nIMAGE TIMESTAMPS\n${timestamps.join('\n')}\n\nEDITORIAL REVIEW TO APPLY\n${feedback}`;
 await writeFile(resolve(output,'prompt.txt'),prompt);
 await writeFile(resolve(output,'request.json'),JSON.stringify({ledgerPath,ledgerSha256:createHash('sha256').update(ledgerText).digest('hex'),sourcePath,sourceHash,frameCount:media.length,provider:'CodexServices',modelSetting:options.model??'default',promptSha256:createHash('sha256').update(prompt).digest('hex')},null,2));
 const events:unknown[]=[];const provider=new CodexServices({reasoningModel:options.model??'default'},e=>{events.push(e);process.stderr.write(JSON.stringify(e)+'\n');});

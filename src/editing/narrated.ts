@@ -146,22 +146,27 @@ export function validateOverviewInspection(capture: Capture, inspected: z.infer<
   const mapping = mapOverviewChapters(inspected.chapters, capture.durationSeconds);
   const facts = new Map(inspected.facts.map(fact => [fact.id, fact]));
   if (facts.size !== inspected.facts.length) throw new Error('Overview evidence IDs must be unique.');
+  const evidenceIssues: string[] = [];
   for (const fact of inspected.facts) {
     const window = windows.find(candidate => candidate.id === fact.windowId);
     if (!window || fact.start < window.start || fact.end > window.end || fact.end <= fact.start) {
-      throw new Error(`Overview fact ${fact.id} cites unseen source or an unknown evidence window.`);
+      evidenceIssues.push(`Overview fact ${fact.id} cites unseen source or an unknown evidence window.`);
     }
   }
-  return inspected.chapters.map(chapter => {
-    const chapterFacts = chapter.factIds.map(id => {
+  for (const chapter of inspected.chapters) {
+    for (const id of chapter.factIds) {
       const fact = facts.get(id);
       // Validate the model's nominal source interval. Encoding rounds its end down by less
       // than one 30fps frame; that quantization must not reject identical selected ranges.
       if (!fact || !chapter.shots.some(shot => fact.start >= shot.start && fact.end <= shot.end)) {
-        throw new Error(`Chapter ${chapter.id} evidence ${id} (${fact?.start}–${fact?.end}s) must actually appear inside one of its selected original-source shots: ${JSON.stringify(chapter.shots)}.`);
+        evidenceIssues.push(`Chapter ${chapter.id} evidence ${id} (${fact?.start}–${fact?.end}s) must actually appear inside one of its selected original-source shots: ${JSON.stringify(chapter.shots)}.`);
       }
-      return { id: `${chapter.id}-${id}`.slice(0, 41), fact: fact.fact };
-    });
+    }
+  }
+  // One bounded repair must see every mismatch, not consume a retry per chapter.
+  if (evidenceIssues.length) throw new Error(evidenceIssues.join('\n'));
+  return inspected.chapters.map(chapter => {
+    const chapterFacts = chapter.factIds.map(id => ({ id: `${chapter.id}-${id}`.slice(0, 41), fact: facts.get(id)!.fact }));
     const shots = mapping.filter(shot => shot.chapterId === chapter.id);
     const start = shots[0]!.derivedStart, end = shots.at(-1)!.derivedEnd;
     return {
