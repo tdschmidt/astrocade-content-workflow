@@ -11,7 +11,7 @@ const { values } = parseArgs({ options: {
   provider: { type: 'string' }, stage: { type: 'string', default: 'all' }, resume: { type: 'string' }, model: { type: 'string' },
   game: { type: 'string' }, candidates: { type: 'string', default: '3' }, help: { type: 'boolean', short: 'h' },
   format: { type: 'string' }, style: { type: 'string' }, narration: { type: 'string' },
-  'source-windows': { type: 'string' }, 'edit-feedback': { type: 'string' }, 'story-source': { type: 'string' },
+  'source-windows': { type: 'string' }, 'edit-feedback': { type: 'string' }, 'story-source': { type: 'string' }, 'audio-catalog': { type: 'string' },
   play: { type: 'string' }, 'capture-seconds': { type: 'string' }, 'capture-goal': { type: 'string' }, brief: { type: 'string' }, 'from-run': { type: 'string' }, presenter: { type: 'string' },
 } });
 
@@ -30,6 +30,7 @@ Default: Codex-authenticated inference, thorough native gameplay exploration, th
 --stage discover|capture|analyze|edit|all (default all). Analysis needs --from-run or --resume with saved capture. A stage preserves its artifacts for continuation.
 --play timed|feedback|auto (default auto for new reels); --candidates 1-5 (default3); --capture-goal TEXT (max800 characters, explicit --game required). Recording budget includes model latency; slow feedback cannot provide reflex play.
 --style auto|troll-freeze|ironic-fail|velocity applies to meme editing. --source-windows JSON supplies source-hashed review leads; the agent freshly inspects them and chooses the actual cuts. --edit-feedback TEXT_FILE requests an evidence-based revision.
+--audio-catalog JSON supplies a reviewed asset subset for meme edits, such as music/effects suitable for an intended publication. Its file and asset hashes are verified; inclusion is not an automatic rights clearance.
 --narration local|gemini defaults local (Kokoro + real Faster Whisper recognition; see local-speech setup). --story-source supplies a grounded fact ledger and is required for story. Existing audio/model assets are verified; missing prerequisites fail explicitly.
 --brief JSON supplies the audience and voice. --model MODEL changes the selected inference model. --presenter VIDEO is supported only with --format legacy.
 
@@ -56,7 +57,7 @@ Codex: install Codex CLI and sign in with ChatGPT. Gemini: configure GEMINI_API_
     const contentBrief = values.brief ? contentBriefSchema.parse(JSON.parse(await readFile(resolve(values.brief), 'utf8'))) : undefined;
     const provider = (values.provider ?? saved?.provider ?? 'codex') as 'gemini' | 'codex';
     const model = values.model ?? (saved?.provider === provider ? saved.model : provider === 'codex' ? 'gpt-5.6-sol' : 'gemini-3.5-flash');
-    const editorialFlags = values.format || values.style || values.narration || values['source-windows'] || values['edit-feedback'] || values['story-source'];
+    const editorialFlags = values.format || values.style || values.narration || values['source-windows'] || values['edit-feedback'] || values['story-source'] || values['audio-catalog'];
     let editor: EditorRequest | undefined;
     if (!values.resume || editorialFlags) {
       const settings = editorSettingsSchema.pick({ format: true, style: true, narration: true }).parse({
@@ -65,7 +66,8 @@ Codex: install Codex CLI and sign in with ChatGPT. Gemini: configure GEMINI_API_
       });
       editor = { ...settings, windowsPath: values['source-windows'] ?? (values.resume ? saved?.editor?.windows?.path : undefined),
         feedbackPath: values['edit-feedback'] ?? (values.resume ? saved?.editor?.feedback?.path : undefined),
-        storySourcePath: values['story-source'] ?? (values.resume ? saved?.editor?.storySource?.path : undefined) };
+        storySourcePath: values['story-source'] ?? (values.resume ? saved?.editor?.storySource?.path : undefined),
+        audioCatalogPath: values['audio-catalog'] ?? (values.resume ? saved?.editor?.audioCatalog?.path : undefined) };
     }
     const run = await runPipeline({ directory, model, provider, editor, stage: values.stage as CoreStage, game: values.game, captureGoal: values['capture-goal'], playMode: values.play as 'timed' | 'feedback' | 'auto' | undefined, contentBrief, captureSeconds: values['capture-seconds'] === undefined ? undefined : Number(values['capture-seconds']), fromRun: values['from-run'], presenterPath: values.presenter, shortlistSize: Number(values.candidates), signal: abort.signal }, config);
     console.log(`\n${run.status === 'complete' ? 'Ready' : 'Stage complete'}: ${directory}/report.md`);

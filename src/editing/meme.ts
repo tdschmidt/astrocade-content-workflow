@@ -30,7 +30,7 @@ async function rendererSnapshot(catalogPath: string, audioPaths: string[]) {
 
 export interface MemeEditOptions {
   capture: Capture; sourceSha256: string; runPath: string; output: string; model: string;
-  brief?: ContentBrief; feedbackPath?: string; windowsPath?: string; captureFeedbackPath?: string;
+  brief?: ContentBrief; feedbackPath?: string; windowsPath?: string; captureFeedbackPath?: string; audioCatalogPath?: string;
   style?: 'auto' | EditPlan['style']; prepareOnly?: boolean; signal?: AbortSignal;
 }
 export async function renderMeme(options: MemeEditOptions) {
@@ -47,7 +47,7 @@ export async function renderMeme(options: MemeEditOptions) {
   if (!Object.values(sourceCrop).every(Number.isInteger) || sourceCrop.x < 0 || sourceCrop.y < 0 || sourceCrop.width <= 0 || sourceCrop.height <= 0 || sourceCrop.x + sourceCrop.width > info.video.width || sourceCrop.y + sourceCrop.height > info.video.height) throw new Error('Saved gameplay crop is invalid.');
   const scale = Math.min(720 / sourceCrop.width, 1280 / sourceCrop.height);
   const projection = { scale, offsetX: (720 - sourceCrop.width * scale) / 2, offsetY: (1280 - sourceCrop.height * scale) / 2, instructions: 'Raw source images are uncropped. Before zoom: outputX=(sourceX-crop.x)*scale+offsetX, outputY=(sourceY-crop.y)*scale+offsetY; width/height *= scale. Prefer zoom=1 for face attachments and HUD evidence. For segment zoom>1, renderer scales to even dimensions ceil(720*zoom/2)*2 and ceil(1280*zoom/2)*2, then center crops720x1280; apply those exact axis scales and half-size crop offsets to the head box.' };
-  const audioCatalogPath = resolve(lab, 'meme-audio/catalog.json');
+  const audioCatalogPath = resolve(options.audioCatalogPath ?? join(lab, 'meme-audio/catalog.json'));
   const catalog = catalogSchema.parse(JSON.parse(await readFile(audioCatalogPath, 'utf8')));
   if (new Set(catalog.assets.map(asset => asset.id)).size !== catalog.assets.length) throw new Error('Reviewed audio IDs must be unique.');
   for (const asset of catalog.assets) if (await fileHash(asset.path) !== asset.sha256) throw new Error(`Reviewed audio changed: ${asset.id}`);

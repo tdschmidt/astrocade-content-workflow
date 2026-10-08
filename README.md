@@ -51,6 +51,8 @@ npm run pipeline -- --game PUBLIC_ASTROCADE_GAME_URL --format story \
 
 Meme `--style auto|troll-freeze|ironic-fail|velocity` chooses a specific treatment. Credits stay off the video; native game HUD remains when needed for meaning. Reaction faces attach only to an observed head during a frozen frame. Neither technical validation nor a model's approval predicts audience performance.
 
+For final publication candidates, `--audio-catalog REVIEWED_CATALOG.json` lets the meme agent choose only from that reviewed subset. The catalog and asset hashes are verified and retained on resume. Keep preview-only effects out of a publication catalog and include the required music credit in the eventual post description; selecting a catalog does not itself establish usage rights or publish anything.
+
 ## Continue or revise
 
 ```sh

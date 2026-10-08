@@ -14,7 +14,7 @@ export async function editGameplay(options: {
   };
   if (settings.format === 'legacy') throw new Error('Legacy edits use the original renderer.');
   const result = settings.format === 'meme'
-    ? await renderMeme({ ...common, style: settings.style })
+    ? await renderMeme({ ...common, style: settings.style, audioCatalogPath: settings.audioCatalog?.path })
     : await (await import('./narrated.js')).renderNarrated({ ...common, format: settings.format,
       narration: settings.narration, storySourcePath: settings.storySource?.path });
   await verifyEditorInputs(settings);
