@@ -1,0 +1,33 @@
+{
+  "created": "2026-10-07",
+  "method": "Original deterministic synthesizer tools/make-audio.mjs; no external samples, vocals, or copied melodies.",
+  "purpose": "Style audition beds, not the named commercial reference songs.",
+  "sampleRate": 48000,
+  "channels": 2,
+  "tracks": [
+    {
+      "file": "troll.wav",
+      "bpm": 132,
+      "durationSeconds": 36,
+      "dropSeconds": 0
+    },
+    {
+      "file": "ironic.wav",
+      "bpm": 116,
+      "durationSeconds": 36,
+      "dropSeconds": 0
+    },
+    {
+      "file": "velocity.wav",
+      "bpm": 144,
+      "durationSeconds": 36,
+      "dropSeconds": 0
+    }
+  ],
+  "sfx": [
+    "impact.wav",
+    "record-stop.wav",
+    "whoosh.wav",
+    "ping.wav"
+  ]
+}

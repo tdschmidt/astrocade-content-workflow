@@ -2,6 +2,7 @@ import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 import { abortError, runProcess } from './process.js';
 import { ensureNewOutput, mediaExecutables, preflightMediaTools, probeMedia, promoteMedia, validateVideo, type MediaInfo, type MediaTools } from './probe.js';
+import { sourceSeekArgs, sourceWindowVideoFilter } from './source-window.js';
 
 export interface VideoCut {
   path: string;
@@ -10,7 +11,7 @@ export interface VideoCut {
   crop?: { x: number; y: number; width: number; height: number };
 }
 
-export interface CaptionCue { startSeconds: number; endSeconds: number; text: string }
+export interface CaptionCue { startSeconds: number; endSeconds: number; text: string; position?: 'upper' | 'lower' }
 
 export interface PortraitRender {
   outputPath: string;
@@ -18,6 +19,8 @@ export interface PortraitRender {
   hook: string;
   attribution?: string;
   subtitles?: CaptionCue[];
+  overlays?: CaptionCue[];
+  presenter?: { path: string };
   narrationPath?: string;
   ffmpeg?: MediaTools;
   signal?: AbortSignal;
@@ -48,11 +51,7 @@ export function validateTimeline(cuts: readonly VideoCut[], media: ReadonlyMap<s
   }
   if (narrationSeconds !== undefined && (!Number.isFinite(narrationSeconds) || narrationSeconds <= 0)) throw new Error('Narration has no usable duration');
   if (narrationSeconds !== undefined && narrationSeconds > duration) throw new NarrationOverrunError(narrationSeconds, duration);
-  let previousEnd = 0;
-  for (const cue of subtitles) {
-    if (![cue.startSeconds, cue.endSeconds].every(Number.isFinite) || cue.startSeconds < previousEnd || cue.endSeconds <= cue.startSeconds || cue.endSeconds > duration || !cue.text.trim()) throw new Error('Caption timing is invalid, overlapping, or outside the video');
-    previousEnd = cue.endSeconds;
-  }
+  validateCaptionTiming(subtitles, duration);
   return duration;
 }
 
@@ -61,37 +60,103 @@ function assTime(seconds: number): string {
   return `${Math.floor(ticks / 360000)}:${String(Math.floor(ticks / 6000) % 60).padStart(2, '0')}:${String(Math.floor(ticks / 100) % 60).padStart(2, '0')}.${String(ticks % 100).padStart(2, '0')}`;
 }
 
-function assText(text: string, lineLength: number): string {
+function literalText(text: string): string {
   // ASS braces/backslashes introduce styling commands; keep user text literal.
-  const words = text.replaceAll('\\', '＼').replaceAll('{', '｛').replaceAll('}', '｝').trim().split(/\s+/u);
+  return text.replaceAll('\\', '＼').replaceAll('{', '｛').replaceAll('}', '｝').trim().replace(/\s+/gu, ' ');
+}
+
+function textWidth(text: string, size: number): number {
+  // Conservative Noto Sans width budget; explicit line breaks prevent libass
+  // from reflowing an otherwise valid short phrase into an extra line.
+  return [...text].reduce((width, character) => width + size * (
+    /[MWmw@%]/u.test(character) ? 1.06 : /[ilI1.,:'!| ]/u.test(character) ? 0.4 :
+      /[A-Z]/u.test(character) ? 0.82 : /[a-z0-9]/u.test(character) ? 0.69 : 1.1
+  ), 0);
+}
+
+function captionLines(text: string): string[] {
+  const words = literalText(text).split(' ');
   const lines: string[] = [];
   for (const word of words) {
     const last = lines.at(-1);
-    if (last && last.length + word.length + 1 <= lineLength) lines[lines.length - 1] += ` ${word}`;
+    if (last && textWidth(`${last} ${word}`, 64) <= 760) lines[lines.length - 1] += ` ${word}`;
     else lines.push(word);
   }
-  return lines.join('\\N');
+  return lines;
 }
 
-export function makeSubtitles(hook: string, attribution: string | undefined, cues: readonly CaptionCue[], duration: number, fontFamily: string): string {
-  if (!hook.trim() || hook.length > 120) throw new Error('Hook must contain 1–120 characters');
+function validateCaptionTiming(cues: readonly CaptionCue[], duration: number): void {
+  if (!Number.isFinite(duration) || duration <= 0) throw new Error('Caption timeline needs a positive duration');
+  let previousEnd = 0;
+  for (const cue of cues) {
+    if (![cue.startSeconds, cue.endSeconds].every(Number.isFinite) || cue.startSeconds < previousEnd || cue.endSeconds <= cue.startSeconds || cue.endSeconds > duration || !cue.text.trim()) throw new Error('Caption timing is invalid, overlapping, or outside the video');
+    if (cue.position !== undefined && !['upper', 'lower'].includes(cue.position)) throw new Error('Caption position must be upper or lower');
+    previousEnd = cue.endSeconds;
+  }
+}
+
+export function validateOverlayCues(cues: readonly CaptionCue[], duration: number): void {
+  validateCaptionTiming(cues, duration);
+  for (const cue of cues) {
+    if (cue.endSeconds - cue.startSeconds < 0.8 - 1e-9) throw new Error('Visual overlays need at least 0.8 seconds of reading time');
+    const words = cue.text.trim().split(/\s+/u);
+    const lines = captionLines(cue.text);
+    if (cue.text.length > 84 || words.length > 12 || words.some(word => word.length > 22) || lines.length > 3 || lines.some(line => textWidth(line, 64) > 760)) throw new Error(`Shorten caption text: at most 12 words, 84 characters, and three short lines; no word over 22 characters. Current layout: ${lines.length} lines, ${words.length} words, ${cue.text.length} characters; wrapped lines ${JSON.stringify(lines)}.`);
+  }
+}
+
+export function makeSubtitles(hook: string, attribution: string | undefined, cues: readonly CaptionCue[], duration: number, fontFamily: string, overlays?: readonly CaptionCue[], presenter = false): string {
   if (/[\r\n,]/u.test(fontFamily) || !fontFamily.trim()) throw new Error('Invalid caption font family');
-  const header = `[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 0\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Hook,${fontFamily},64,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,8,90,170,140,1\nStyle: Caption,${fontFamily},58,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,90,170,330,1\nStyle: Credit,${fontFamily},28,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,0,0,0,0,100,100,0,0,1,2,0,1,72,170,240,1\n\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n`;
-  const event = (start: number, end: number, style: string, text: string, lineLength: number) => `Dialogue: 0,${assTime(start)},${assTime(end)},${style},,0,0,0,,${assText(text, lineLength)}`;
-  const lines = [event(0, Math.min(4, duration), 'Hook', hook, 28)];
-  if (attribution?.trim()) lines.push(event(0, duration, 'Credit', attribution, 60));
-  for (const cue of cues) lines.push(event(cue.startSeconds, cue.endSeconds, 'Caption', cue.text, 32));
+  const legacyHook: CaptionCue = { startSeconds: 0, endSeconds: Math.min(4, duration), text: hook, position: 'upper' };
+  validateOverlayCues(overlays ?? [legacyHook], duration);
+  if (overlays === undefined) validateCaptionTiming(cues, duration);
+  const schedule = overlays ?? [legacyHook, ...cues];
+  // The source fills its entire fitted canvas. These are text anchors only,
+  // not reserved bands. The planner chooses a position away from live HUDs.
+  const header = `[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Overlay,${fontFamily},64,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,5,2,8,120,180,240,1\nStyle: Credit,${fontFamily},26,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,0,0,0,0,100,100,0,0,1,2,1,1,80,180,240,1\n\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n`;
+  const gameTop = presenter ? 480 : 0, gameHeight = 1920 - gameTop;
+  const lines = schedule.map(cue => `Dialogue: 1,${assTime(cue.startSeconds)},${assTime(cue.endSeconds)},Overlay,,0,0,0,,{\\an${cue.position === 'upper' ? 8 : 2}\\pos(510,${gameTop + gameHeight * (cue.position === 'upper' ? 0.125 : 0.8)})}${captionLines(cue.text).join('\\N')}`);
+  if (presenter) lines.push(`Dialogue: 2,0:00:00.00,${assTime(duration)},Credit,,0,0,0,,{\\an1\\pos(80,400)\\fs32\\b1}AI commentator`);
+  if (attribution?.trim()) {
+    let credit = literalText(attribution);
+    if (textWidth(credit, 26) > 820) {
+      while (textWidth(`${credit}…`, 26) > 820) credit = credit.slice(0, -1);
+      credit = `${credit.trimEnd()}…`;
+    }
+    lines.push(`Dialogue: 0,0:00:00.00,${assTime(duration)},Credit,,0,0,0,,{\\an1\\pos(80,1680)}${credit}`);
+  }
   return `${header}${lines.join('\n')}\n`;
 }
 
-function makeFilter(cuts: readonly VideoCut[], narration: boolean, duration: number): string {
+function makeFilter(cuts: readonly VideoCut[], narration: boolean, duration: number, presenter: boolean): string {
+  const gameHeight = presenter ? 1440 : 1920;
   const filters = cuts.map((cut, index) => {
     const crop = cut.crop ? `,crop=${cut.crop.width}:${cut.crop.height}:${cut.crop.x}:${cut.crop.y}` : '';
-    return `[${index}:v]trim=start=${cut.startSeconds}:end=${cut.endSeconds},setpts=PTS-STARTPTS${crop},setsar=1,fps=30,split[bg${index}][fg${index}];\n[bg${index}]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=24,eq=brightness=-0.16:saturation=0.65[blur${index}];\n[fg${index}]scale=1080:1920:force_original_aspect_ratio=decrease[sharp${index}];\n[blur${index}][sharp${index}]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1[cut${index}]`;
+    return `[${index}:v]${sourceWindowVideoFilter(cut.endSeconds - cut.startSeconds)}${crop},setsar=1,split[bg${index}][fg${index}];\n[bg${index}]scale=1080:${gameHeight}:force_original_aspect_ratio=increase,crop=1080:${gameHeight},gblur=sigma=24,eq=brightness=-0.16:saturation=0.65[blur${index}];\n[fg${index}]scale=1080:${gameHeight}:force_original_aspect_ratio=decrease[sharp${index}];\n[blur${index}][sharp${index}]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1[cut${index}]`;
   });
-  filters.push(`${cuts.map((_, index) => `[cut${index}]`).join('')}concat=n=${cuts.length}:v=1:a=0,subtitles=captions.ass:fontsdir=fonts,format=yuv420p[video]`);
-  if (narration) filters.push(`[${cuts.length}:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${duration}[audio]`);
+  filters.push(`${cuts.map((_, index) => `[cut${index}]`).join('')}concat=n=${cuts.length}:v=1:a=0[gameplay]`);
+  if (presenter) {
+    filters.push(`[${cuts.length}:v]setpts=PTS-STARTPTS,trim=start=0:end=${duration},setsar=1,fps=30,scale=1080:480:force_original_aspect_ratio=increase,crop=1080:480[host]`);
+    filters.push('[host][gameplay]vstack=inputs=2:shortest=1[composite]');
+  }
+  filters.push(`[${presenter ? 'composite' : 'gameplay'}]subtitles=captions.ass:fontsdir=fonts,format=yuv420p[video]`);
+  if (narration) filters.push(`[${cuts.length + Number(presenter)}:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${duration}[audio]`);
   return filters.join(';\n');
+}
+
+export async function presenterVideoDuration(path: string, tools: MediaTools = {}, signal?: AbortSignal): Promise<number> {
+  const info = await probeMedia(path, tools, signal);
+  if (!info.video || info.video.width <= 0 || info.video.height <= 0) throw new Error('Presenter source has no usable video');
+  // Audio can outlast the video stream, so container duration alone is not proof
+  // of enough moving footage. Never pad a short presenter with a frozen frame.
+  const result = await runProcess(mediaExecutables(tools).ffprobe, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'packet=pts_time,duration_time', '-of', 'json', path], { signal, timeoutMs: 20_000 });
+  const packets = (JSON.parse(result.stdout) as { packets?: Array<{ pts_time?: string; duration_time?: string }> }).packets ?? [];
+  const times = packets.map(packet => ({ start: Number(packet.pts_time), duration: Number(packet.duration_time) })).filter(packet => Number.isFinite(packet.start));
+  const start = Math.min(...times.map(packet => packet.start));
+  const end = Math.max(...times.map(packet => packet.start + (packet.duration > 0 ? packet.duration : 1 / (info.video!.frameRate ?? 30))));
+  const available = end - start;
+  if (!times.length || !Number.isFinite(available) || available <= 0) throw new Error('Presenter source has no usable video duration');
+  return available;
 }
 
 export async function renderPortrait(options: PortraitRender): Promise<RenderArtifact> {
@@ -104,18 +169,26 @@ export async function renderPortrait(options: PortraitRender): Promise<RenderArt
   for (const cut of options.cuts) if (!sources.has(cut.path)) sources.set(cut.path, await probeMedia(cut.path, tools, options.signal));
   const narration = options.narrationPath ? await probeMedia(options.narrationPath, tools, options.signal) : undefined;
   if (narration && !narration.audio) throw new Error('Narration file contains no audio');
-  const duration = validateTimeline(options.cuts, sources, options.subtitles, narration?.durationSeconds);
+  const duration = validateTimeline(options.cuts, sources, options.overlays === undefined ? options.subtitles : [], narration?.durationSeconds);
+  if (options.overlays) validateOverlayCues(options.overlays, duration);
+  if (options.presenter) {
+    const available = await presenterVideoDuration(options.presenter.path, tools, options.signal);
+    if (available + 1e-6 < duration) throw new Error(`Presenter video is too short: ${available.toFixed(2)}s available for ${duration.toFixed(2)}s of gameplay. Generate a longer presenter or select a shorter edit.`);
+  }
   await mkdir(dirname(options.outputPath), { recursive: true });
   const directory = await mkdtemp(join(dirname(options.outputPath), '.render-'));
   const partial = join(directory, 'render.mp4');
   try {
     await mkdir(join(directory, 'fonts'));
     await copyFile(preflight.fontPath!, join(directory, 'fonts', `caption${extname(preflight.fontPath!)}`));
-    await writeFile(join(directory, 'captions.ass'), makeSubtitles(options.hook, options.attribution, options.subtitles ?? [], duration, tools.fontFamily ?? process.env.FONT_FAMILY ?? 'Noto Sans'));
+    await writeFile(join(directory, 'captions.ass'), makeSubtitles(options.hook, options.attribution, options.subtitles ?? [], duration, tools.fontFamily ?? process.env.FONT_FAMILY ?? 'Noto Sans', options.overlays, !!options.presenter));
     const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n'];
-    for (const cut of options.cuts) args.push('-i', cut.path);
+    // Native recordings can resize. Keep trim/concat state intact when a later
+    // input frame changes dimensions instead of resetting the entire graph.
+    for (const cut of options.cuts) args.push(...sourceSeekArgs(cut.startSeconds), '-reinit_filter', '0', '-i', cut.path);
+    if (options.presenter) args.push('-reinit_filter', '0', '-i', options.presenter.path);
     if (options.narrationPath) args.push('-i', options.narrationPath);
-    args.push('-filter_complex_threads', '1', '-filter_complex', makeFilter(options.cuts, !!narration, duration), '-map', '[video]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', '30', '-fps_mode', 'cfr');
+    args.push('-filter_complex_threads', '1', '-filter_complex', makeFilter(options.cuts, !!narration, duration, !!options.presenter), '-map', '[video]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', '30', '-fps_mode', 'cfr');
     if (narration) args.push('-map', '[audio]', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2');
     else args.push('-an');
     args.push('-t', String(duration), '-movflags', '+faststart', partial);

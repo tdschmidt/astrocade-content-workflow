@@ -1,0 +1,175 @@
+The prior plan correctly chose the real Totem restoration at465.154 and kept the nativegoldheartbar readable. Keep that narrativeprimarychoice and this sourcecrop; no face is required because the nativeTotem is the visualpayoff. But best-quality review found three concrete issues to fix in a new plan:
+1. Wind sequence231.513–239.528 spends its latter4seconds on nearlystationary Golem after attack. Cut the staticafter235–235.5. Newjob now supplies distinctSkeleton arrow action210.5–218 to replacepadding with actualnewescalation. Select3–4seconds of real shooting/hits/stagger. KeepCreeper setup readable but avoididle before its approach. Anvilselection/descent/contact mustremaincausallylegible throughhealthdrain; stopendingonceTotem/fullhealthconfirmed. Make18–22substantiveseconds ratherthan padding to25. Briefanticipation slowdown isallowed when useful.
+2. You used only4sec genuinephonk lead-in, leavingfirst13.63sec mostlysilent. Use fullavailable14.84sec actualintro before sourceanchor14.84. Shortermeaningfulsetup withprimarynear15–16sec canbeginrealintro withinfirst0–1.2sec. The mainnarrativeevent is alreadychosen; do not substituteanothermoment tofitmusic. Do not leave a long silentfront.
+3. You stacked a1.175secVineBoom exactlyattheprimarydrop; rendererducksphonkto.28duringit, swallowingbassarrival. Remove thisprimarycue. Letactualphonk+primaryvisual sellTotem. Keepatmost2–3 familiarSFX on earlierrealattacks orshortanticipation, and noSFX spanningthefirst.7sec aftermainmusicdrop. Avoidspendinglargestpunch/visual onanyearlierattack.
+A naturalshortopening that setsup thequestionofGolemresilience isbetterthan a generic techlabel if you can improveit; finalcaptionmayname the surprisingrealTotem withoutcoveringnativeUNDYINGtext. SourceonsetQA:465.100stillnear-emptyhealth,465.133firstgiantgoldTotem/fullgoldheartbar. SuppliedexactPTS465.154iswithinoneframeandappropriateanchor. Everytime mustuse exactrendererquantizedoutput arithmetic. Priorplan:
+{
+  "version": 1,
+  "id": "golem-plot-armor-v1",
+  "title": "The golem has plot armor",
+  "style": "troll-freeze",
+  "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/runs/2026-10-07T22-06-08-887Z-d66b61/game-01M38GNMGHSB58XT9J7KA8XN2S/8f309f1b-fde7-4877-8760-2ba827497e2d.webm",
+  "sourceCrop": {
+    "x": 100,
+    "y": 120,
+    "width": 590,
+    "height": 1048
+  },
+  "audioCatalogPath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/experiments/meme-audio/catalog.json",
+  "narrativeBeats": {
+    "candidates": [
+      {
+        "sourceAt": 465.154,
+        "significance": "Giant golden Totem appears as the nearly empty heartbar is replaced by a full golden bar; this is the decisive visible reversal.",
+        "rank": 1
+      },
+      {
+        "sourceAt": 463.003,
+        "significance": "The falling Anvil reaches the golem and begins the strongest sustained health-loss sequence.",
+        "rank": 2
+      },
+      {
+        "sourceAt": 195.015,
+        "significance": "The Creeper visibly explodes beside the golem, knocking it apart and releasing green pickups.",
+        "rank": 3
+      },
+      {
+        "sourceAt": 233.013,
+        "significance": "The Wind attack begins pushing the already-damaged golem toward the right wall.",
+        "rank": 4
+      }
+    ],
+    "setup": {
+      "sourceAt": 192.014,
+      "description": "The golem stands with a full heartbar as the first distinct attack sequence begins."
+    },
+    "escalation": {
+      "sourceAt": 231.513,
+      "description": "A later Wind sequence continues the physical punishment, followed by the retained Anvil selection, descent, contact, and health drain."
+    },
+    "climax": {
+      "segmentIndex": 4,
+      "sourceAt": 465.154,
+      "outputAt": 17.63,
+      "visualSegmentIndex": 4,
+      "punchIndex": 0,
+      "reason": "This exact observed frame introduces the giant golden Totem and restored golden heartbar, reversing the near-death state and resolving the plot-armor premise."
+    },
+    "result": {
+      "sourceAt": 466.754,
+      "description": "The golem is upright again with a completely restored normal red heartbar after the Totem effect."
+    },
+    "tailReason": "The 1.60-second clean tail is required to leave the stylized hold, show the Totem effect fading, and verify the restored heartbar and upright golem as the true consequence.",
+    "latePayoffException": ""
+  },
+  "segments": [
+    {
+      "kind": "clip",
+      "start": 192.014,
+      "end": 197.514,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 231.513,
+      "end": 239.528,
+      "speed": 1.25,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 459.519,
+      "end": 464.919,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 464.919,
+      "end": 465.154,
+      "speed": 0.7,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "freeze",
+      "at": 465.154,
+      "duration": 0.7,
+      "visual": "deepfry",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 465.154,
+      "end": 466.754,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    }
+  ],
+  "captions": [
+    {
+      "start": 0.3,
+      "end": 2.8,
+      "text": "PLOT ARMOR: LOADING",
+      "position": "top",
+      "emphasis": false
+    },
+    {
+      "start": 17.63,
+      "end": 19.7,
+      "text": "SCRIPT SAID NO",
+      "position": "top",
+      "emphasis": true
+    }
+  ],
+  "stickers": [],
+  "faceAttachments": [],
+  "punches": [
+    {
+      "at": 17.63,
+      "duration": 0.35,
+      "strength": 0.85
+    }
+  ],
+  "soundCues": [
+    {
+      "at": 3,
+      "kind": "impact",
+      "assetId": "doge-bonk",
+      "sourceStart": 1.12,
+      "duration": 0.73,
+      "gainDb": -16
+    },
+    {
+      "at": 15.38,
+      "kind": "impact",
+      "assetId": "metal-pipe",
+      "sourceStart": 0,
+      "duration": 1.2,
+      "gainDb": -15
+    },
+    {
+      "at": 17.63,
+      "kind": "impact",
+      "assetId": "vine-boom",
+      "sourceStart": 0.065,
+      "duration": 1.175,
+      "gainDb": -10
+    }
+  ],
+  "music": {
+    "asset": "troll",
+    "dropAt": 17.63,
+    "assetId": "phonk-execution",
+    "sourceStart": 14.84,
+    "leadInSeconds": 4,
+    "leadInGainDb": -22,
+    "gainDb": -12
+  },
+  "rationale": "Ranked candidates: (1) the giant golden Totem and full golden heartbar appearing at 465.154, the strongest reversal because it visibly replaces near-empty health; (2) Anvil contact near 463.003, which causes the late damage spiral but does not resolve it; (3) Creeper explosion near 195.015, an earlier readable collision; (4) Wind knockback beginning near 233.013, which escalates the golem's physical abuse. Setup at 192.014 establishes the golem before the Creeper approaches; escalation at 231.513 adds Wind, then 459.519 begins the Anvil sequence. The primary climax is source 465.154 at output 17.63: a brief deep-fried freeze, strongest punch, Vine Boom, and phonk rise all align to the observed Totem/health restoration. The genuine music lead-in starts four seconds earlier at source 10.84 and reaches its measured source anchor 14.84 on that reveal. Deep fry is brief rather than grayscale so the decisive gold color remains legible; the following clean 1.60-second tail shows the authentic restored bar and fading Totem. Timing: 5.50 + 6.40 + 5.40 + 0.33 + 0.70 + 1.60 = 19.93 seconds after 1/30-second rounding. Forward jump cuts remove idle/operator gaps without implying continuous damage totals. The approved crop retains the heartbar, falling Anvil, golem, Totem, native UNDYING signal, and item cards. Top captions avoid contact and reward evidence; stickers and face attachment are omitted so neither the golden bar nor Totem is covered."
+}

@@ -1,0 +1,40 @@
+{
+  "reviewed_at": "2026-10-07",
+  "draft_path": "data/experiments/story-background/mail-merge-draft-v2/draft.json",
+  "draft_sha256": "4dc0739a889f2a6f7e67a4547f5a5393fb90369ba3d94019b8d9c3a47675e341",
+  "source_path": "experiments/story-background/research/source-mail-merge.json",
+  "primary_post": "https://www.reddit.com/r/MaliciousCompliance/comments/uop6jc/mail_merge_documents_will_waste_printer_ink/",
+  "narration_word_count": 105,
+  "word_count_method": "Whitespace-separated tokens, including hyphenated words as single tokens",
+  "factual_status": "pass",
+  "metadata_status": "pass",
+  "creative_status": "pass",
+  "required_changes": [],
+  "unsupported_story_claims": [],
+  "qualification": {
+    "status": "pass",
+    "reason": "Sentence two naturally frames the narrative as what a Reddit user says. The draft does not imply independent verification or identify the narrator as the poster."
+  },
+  "attribution": {
+    "status": "pass",
+    "author_and_community": "Correct in draft attribution",
+    "permalink": "The complete permalink is retained in the saved request.json source ledger; draft attribution no longer contains a broken https fragment."
+  },
+  "sentence_review": [
+    {"sentence_number": 1, "status": "supported", "note": "The ink objection is grounded in conflict; shortcut is supported by the successful process in action/payoff. Referencing payoff as well would make the evidence map more complete, but the text needs no factual correction."},
+    {"sentence_number": 2, "status": "supported_and_attributed", "beat_ids": ["setup"]},
+    {"sentence_number": 3, "status": "supported", "beat_ids": ["conflict"], "note": "The primary post explicitly proposed at least printing the repeated information."},
+    {"sentence_number": 4, "status": "supported", "beat_ids": ["action"]},
+    {"sentence_number": 5, "status": "supported", "beat_ids": ["payoff"], "note": "Paperwork context is clear; do not reuse this sentence as a standalone claim about all office work."},
+    {"sentence_number": 6, "status": "supported", "beat_ids": ["ending"]},
+    {"sentence_number": 7, "status": "permitted_commentary", "note": "A general editorial observation, correctly marked as commentary; it does not add a manager reaction or later consequence."}
+  ],
+  "hook_and_payoff": {
+    "hook": "Clear objection establishes the contradiction without spoiling the last-day action.",
+    "payoff": "The printed workload and departure resolve the account within the video.",
+    "ending": "Natural spoken commentary replaces the prior production-note wording. It is somewhat reflective but usable.",
+    "pacing": "Within target length. Duration must be measured from the generated narration."
+  },
+  "minor_metadata_note": "Rationale states 103 words; this review counts 105. Both are within the requested range, so this does not require another writing pass.",
+  "scope_limit": "Text/source review only. Audio quality, transcription, captions, and video playback were not assessed. Draft was not modified."
+}

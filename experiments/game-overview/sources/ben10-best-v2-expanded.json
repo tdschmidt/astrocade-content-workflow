@@ -1,0 +1,208 @@
+{
+  "gameTitle": "BEN 10 OPEN World",
+  "gameUrl": "https://www.astrocade.com/games/ben-10-open-world/01M32NFPAH709Z7CT0YXSTM73W",
+  "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/game-overview/best-v2/source-expanded/selected-feature-source.mp4",
+  "sourceSha256": "2e63794cfc50c9fc4be2b5cda4eb42560aeec2aa440aa67b79b6f322353b8afd",
+  "crop": {
+    "x": 30,
+    "y": 0,
+    "width": 660,
+    "height": 1176
+  },
+  "sourceProvenance": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/game-overview/best-v2/source-expanded/provenance.json",
+  "angle": "A compact progression showing how the Omnitrix changes the player\u2019s available actions: Fasttrack creates a cyclone and sprints, Cannonbolt transforms and rolls, then Four Arms delivers repeated ground pounds.",
+  "openingReason": "Fasttrack\u2019s cyclone supplies immediate motion in the first second, with expanding wind rings and airborne blocks, before the sequence pivots into clear transformation context and increasingly forceful active abilities.",
+  "wordRange": [
+    80,
+    88
+  ],
+  "avoidSpokenGameTitle": false,
+  "spokenAvoidPhrases": [
+    "sampled abilities",
+    "recorded sessions",
+    "overview montage",
+    "without demonstrating",
+    "cyan-and-white",
+    "pale ring",
+    "close-range tools",
+    "with a circular burst",
+    "as another way to travel",
+    "the payoff",
+    "pure impact",
+    "actions you can try",
+    "advances, then does it again"
+  ],
+  "chapters": [
+    {
+      "id": "fasttrack",
+      "allowedStart": 0,
+      "allowedEnd": 7.866666666666667,
+      "shots": [
+        {
+          "id": "cyclone",
+          "kind": "action",
+          "derivedStart": 0,
+          "derivedEnd": 2.6666666666666665,
+          "originalStart": 143.45,
+          "originalEnd": 146.11666666666665
+        },
+        {
+          "id": "sprint",
+          "kind": "action",
+          "derivedStart": 2.6666666666666665,
+          "derivedEnd": 7.866666666666667,
+          "originalStart": 162,
+          "originalEnd": 167.2
+        }
+      ],
+      "facts": [
+        {
+          "id": "fasttrack-cyclone",
+          "fact": "Fasttrack activates a cyclone: large wind rings surround him and loose blocks lift and scatter."
+        },
+        {
+          "id": "fasttrack-travel",
+          "fact": "Fasttrack moves down the street with a bright trailing streak; the power animation and travel differ from ordinary walking."
+        },
+        {
+          "id": "alien-choice-context",
+          "fact": "The native watch offers selectable alien forms with different powers, and these three forms are actually used in this recording."
+        }
+      ],
+      "framing": "Open on the cyclone\u2019s instant wind-ring and debris motion, then show Fasttrack\u2019s distinct bright-trail street travel. Expanded second shot runs through167.2s; keep the observed sprint through at least166.5s so its speed is clear. The final writer chooses within this expanded source. Keep opening20\u201323words.",
+      "spokenWordTarget": [
+        20,
+        23
+      ],
+      "unsupportedClaims": [
+        "No enemy hit, damage dealt or victory confirmed.",
+        "Do not claim indefinite cyclone or a measured speed advantage."
+      ],
+      "maxSpokenWords": 23,
+      "preserveFullWindow": false
+    },
+    {
+      "id": "cannonbolt",
+      "allowedStart": 7.866666666666667,
+      "allowedEnd": 21.46666666666667,
+      "shots": [
+        {
+          "id": "cannon-choice",
+          "kind": "menu",
+          "derivedStart": 7.866666666666667,
+          "derivedEnd": 10.366666666666667,
+          "originalStart": 412.5,
+          "originalEnd": 415
+        },
+        {
+          "id": "cannon-morph",
+          "kind": "menu",
+          "derivedStart": 10.366666666666667,
+          "derivedEnd": 12.666666666666668,
+          "originalStart": 427,
+          "originalEnd": 429.3
+        },
+        {
+          "id": "curl",
+          "kind": "action",
+          "derivedStart": 12.666666666666668,
+          "derivedEnd": 14.866666666666667,
+          "originalStart": 460.3,
+          "originalEnd": 462.5
+        },
+        {
+          "id": "roll",
+          "kind": "action",
+          "derivedStart": 14.866666666666667,
+          "derivedEnd": 21.46666666666667,
+          "originalStart": 477.4,
+          "originalEnd": 484
+        }
+      ],
+      "facts": [
+        {
+          "id": "cannonbolt-choice",
+          "fact": "The native Omnitrix roster highlights Cannonbolt, then selecting transform changes the character into him."
+        },
+        {
+          "id": "cannonbolt-curl",
+          "fact": "Cannonbolt curls into an armored ball, with a circular burst around him."
+        },
+        {
+          "id": "cannonbolt-roll",
+          "fact": "While curled, Cannonbolt rolls across the ground and past a structure; it is another way to travel."
+        }
+      ],
+      "framing": "The brief native selection and morph explain that choosing another alien changes the character, followed by the complete curl-to-rolling demonstration.",
+      "spokenWordTarget": [
+        28,
+        33
+      ],
+      "unsupportedClaims": [
+        "No destination, obstacle solution, enemy hit or resistance test proved."
+      ],
+      "maxSpokenWords": 33,
+      "preserveFullWindow": true
+    },
+    {
+      "id": "fourarms",
+      "allowedStart": 21.46666666666667,
+      "allowedEnd": 33.16666666666667,
+      "shots": [
+        {
+          "id": "arms-choice",
+          "kind": "menu",
+          "derivedStart": 21.46666666666667,
+          "derivedEnd": 25.06666666666667,
+          "originalStart": 501,
+          "originalEnd": 504.6
+        },
+        {
+          "id": "pound",
+          "kind": "action",
+          "derivedStart": 25.06666666666667,
+          "derivedEnd": 27.36666666666667,
+          "originalStart": 526.8,
+          "originalEnd": 529.0999999999999
+        },
+        {
+          "id": "advance-pound",
+          "kind": "action",
+          "derivedStart": 27.36666666666667,
+          "derivedEnd": 33.16666666666667,
+          "originalStart": 547.7,
+          "originalEnd": 553.5
+        }
+      ],
+      "facts": [
+        {
+          "id": "fourarms-choice",
+          "fact": "The native watch selects Four Arms and the character changes to the four-armed form."
+        },
+        {
+          "id": "fourarms-pound",
+          "fact": "Four Arms raises his fists and pounds the ground, sending out a broad ring and throwing loose blocks upward."
+        },
+        {
+          "id": "fourarms-followup",
+          "fact": "The character advances through the open area and uses another pound, with fresh blocks tossed into the air."
+        },
+        {
+          "id": "distinct-playstyles",
+          "fact": "The demonstrated choices change the actions a player can try: cyclone/fast travel, curling/rolling, and ground pound."
+        }
+      ],
+      "framing": "A short Four Arms selection establishes the final switch, then two ground pounds provide an active finish with broad rings and freshly launched blocks.",
+      "spokenWordTarget": [
+        26,
+        32
+      ],
+      "unsupportedClaims": [
+        "No target damage, enemy kill or mission accomplishment proved."
+      ],
+      "maxSpokenWords": 32,
+      "preserveFullWindow": true
+    }
+  ],
+  "editorialBrief": "One engaging idea about choosing how to play: movement and power change with the alien. No list of eight names. Open on the actual first-shot action with a curiosity hook the video answers; explain native choice briefly, then deliver distinct consequences. Natural conversational voice at1x; respect per-chapter word targets because footage cannot be frozen to cover long speech. No audit/production language, health/color inventories, invented combat goals, or fake personal experience. Existing native menu/aim text is not a renderer overlay. Metadata holds caveats, narration names actions positively. Explain the player-facing appeal of these choices, not a motion-by-motion audit. In Cannonbolt and Four Arms chapters, choice language belongs with the native menu/morph at the beginning, followed by the power description when it happens. End naturally; no production vocabulary."
+}

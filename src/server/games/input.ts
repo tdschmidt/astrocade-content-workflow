@@ -75,6 +75,19 @@ export async function gameBounds(page: Page, target: SurfaceLocator): Promise<Ga
   return composedBounds(page, target);
 }
 
+export async function gameHasPointerLock(page: Page, surface: SurfaceLocator): Promise<boolean> {
+  const target = locate(page, surface);
+  // Read the browser's input mode, never game state. New profiles use the whole
+  // iframe; older profiles locate a canvas inside its document.
+  const documentRoot = await target.evaluate(element => element.tagName === 'IFRAME')
+    ? target.contentFrame().locator(':root') : target;
+  return documentRoot.evaluate(element => element.ownerDocument.pointerLockElement !== null);
+}
+
+// Setup and gameplay use separate executors on the same page. Retain only our
+// own native cursor position; a relative look must never guess its origin.
+const nativeMousePositions = new WeakMap<Page, { x: number; y: number }>();
+
 export function withinGame(bounds: GameBounds, point: { x: number; y: number }): { x: number; y: number } {
   // Composed bounds include every iframe's displayed scale and border offset.
   return { x: bounds.x + Math.min(bounds.width - 1, point.x * bounds.width), y: bounds.y + Math.min(bounds.height - 1, point.y * bounds.height) };
@@ -94,41 +107,92 @@ export async function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): P
 /** A single owner executes native inputs; no action leaves a held input behind. */
 export class InputExecutor {
   private readonly keys = new Set<string>();
-  private pointerDown = false;
+  private heldPointerButton: 'left' | 'right' | undefined;
   executed = 0;
 
   constructor(readonly page: Page, readonly surface: SurfaceLocator, readonly signal?: AbortSignal) {}
+
+  private async moveMouse(x: number, y: number): Promise<void> {
+    try {
+      await this.page.mouse.move(x, y);
+      nativeMousePositions.set(this.page, { x, y });
+    } catch (error) { nativeMousePositions.delete(this.page); throw error; }
+  }
 
   async execute(value: InputAction): Promise<void> {
     const action = inputActionSchema.parse(value);
     this.signal?.throwIfAborted();
     try {
       if (action.type === 'wait') await delay(action.durationMs, undefined, { signal: this.signal });
-      if (action.type === 'key') {
-        this.keys.add(action.key);
-        await this.page.keyboard.down(action.key);
+      if (action.type === 'key' || action.type === 'keys') {
+        for (const key of action.type === 'key' ? [action.key] : action.keys) {
+          this.signal?.throwIfAborted();
+          this.keys.add(key);
+          await this.page.keyboard.down(key);
+        }
         await delay(action.durationMs, undefined, { signal: this.signal });
       }
-      if (action.type === 'tap') {
-        const point = withinGame(await gameBounds(this.page, this.surface), action.point);
-        await this.page.mouse.move(point.x, point.y);
-        this.pointerDown = true;
-        await this.page.mouse.down();
+      if (action.type === 'tap' || action.type === 'taps') {
+        const count = action.type === 'taps' ? action.count : 1;
+        const interval = action.type === 'taps' ? action.durationMs / count : 0;
+        for (let index = 0; index < count; index++) {
+          this.signal?.throwIfAborted();
+          // Recompute the displayed surface each time, never replay stale pixels.
+          const point = withinGame(await gameBounds(this.page, this.surface), action.point);
+          // In mouse-look mode the button acts on the current crosshair.
+          if (!await gameHasPointerLock(this.page, this.surface)) await this.moveMouse(point.x, point.y);
+          this.signal?.throwIfAborted();
+          let started = performance.now();
+          try {
+            this.heldPointerButton = action.button ?? 'left';
+            await this.page.mouse.down({ button: this.heldPointerButton });
+            started = performance.now();
+          } finally { await this.releaseAll(); }
+          // Release before waiting, including the last interval. Do not catch up
+          // slow native calls by dispatching later taps in a faster burst.
+          const wait = interval - (performance.now() - started);
+          if (wait > 0) await delay(wait, undefined, { signal: this.signal });
+        }
       }
-      if (action.type === 'drag') {
-        const bounds = await gameBounds(this.page, this.surface);
-        const from = withinGame(bounds, action.from);
-        const to = withinGame(bounds, action.to);
-        await this.page.mouse.move(from.x, from.y);
-        this.pointerDown = true;
-        await this.page.mouse.down();
-        const steps = Math.max(2, Math.ceil(action.durationMs / 40));
+      if (action.type === 'look') {
+        const origin = nativeMousePositions.get(this.page);
+        if (!await gameHasPointerLock(this.page, this.surface)) throw new Error('Relative look requires active pointer lock in the game.');
+        if (!origin) throw new Error('Relative look requires a native mouse position established by this executor.');
         const started = performance.now();
+        const steps = Math.ceil(action.durationMs / 40);
         for (let index = 1; index <= steps; index++) {
           this.signal?.throwIfAborted();
           const wait = started + action.durationMs * index / steps - performance.now();
           if (wait > 0) await delay(wait, undefined, { signal: this.signal });
-          await this.page.mouse.move(from.x + (to.x - from.x) * index / steps, from.y + (to.y - from.y) * index / steps);
+          // Lock can be lost while a menu opens or the user presses Escape.
+          if (!await gameHasPointerLock(this.page, this.surface)) throw new Error('Pointer lock was lost during relative look.');
+          this.signal?.throwIfAborted();
+          await this.moveMouse(origin.x + action.dx * index / steps, origin.y + action.dy * index / steps);
+        }
+      }
+      if (action.type === 'drag' || action.type === 'path') {
+        const bounds = await gameBounds(this.page, this.surface);
+        const points = (action.type === 'drag' ? [action.from, action.to] : action.points).map(point => withinGame(bounds, point));
+        const lengths = points.slice(1).map((point, index) => Math.hypot(point.x - points[index]!.x, point.y - points[index]!.y));
+        const totalLength = lengths.reduce((sum, length) => sum + length, 0);
+        await this.moveMouse(points[0]!.x, points[0]!.y);
+        this.heldPointerButton = action.button ?? 'left';
+        await this.page.mouse.down({ button: this.heldPointerButton });
+        const started = performance.now();
+        let elapsed = 0;
+        for (let segment = 0; segment < lengths.length; segment++) {
+          const from = points[segment]!, to = points[segment + 1]!;
+          // Proportional timing keeps speed steady and visits every waypoint.
+          // A stationary path retains its bounded hold without dividing by zero.
+          const duration = action.durationMs * (totalLength ? lengths[segment]! / totalLength : 1 / lengths.length);
+          const steps = Math.max(1, Math.ceil(duration / 40));
+          for (let index = 1; index <= steps; index++) {
+            this.signal?.throwIfAborted();
+            const wait = started + elapsed + duration * index / steps - performance.now();
+            if (wait > 0) await delay(wait, undefined, { signal: this.signal });
+            await this.moveMouse(from.x + (to.x - from.x) * index / steps, from.y + (to.y - from.y) * index / steps);
+          }
+          elapsed += duration;
         }
       }
       this.executed++;
@@ -156,7 +220,11 @@ export class InputExecutor {
       }
       this.signal?.throwIfAborted();
       // Only readiness is retried. Once input is dispatched, never replay the click.
-      await this.page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      const point = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+      try {
+        await this.page.mouse.click(point.x, point.y);
+        nativeMousePositions.set(this.page, point);
+      } catch (error) { nativeMousePositions.delete(this.page); throw error; }
     }
     else if (step.type === 'waitFor') await withAbort(locate(this.page, step.target).waitFor({ state: 'visible', timeout: 5000 }), this.signal);
     else await this.execute(step);
@@ -165,7 +233,7 @@ export class InputExecutor {
   async releaseAll(): Promise<void> {
     for (const key of this.keys) await this.page.keyboard.up(key).catch(() => {});
     this.keys.clear();
-    if (this.pointerDown) await this.page.mouse.up().catch(() => {});
-    this.pointerDown = false;
+    if (this.heldPointerButton) await this.page.mouse.up({ button: this.heldPointerButton }).catch(() => {});
+    this.heldPointerButton = undefined;
   }
 }

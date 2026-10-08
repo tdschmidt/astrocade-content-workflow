@@ -4,13 +4,14 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "jsx": "react-jsx",
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noEmit": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node", "vite/client"],
+    "types": ["node"],
     "resolveJsonModule": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src"]
 }

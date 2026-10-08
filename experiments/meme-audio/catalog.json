@@ -1,0 +1,403 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-07",
+  "purpose": "Local experiments with actual downloaded meme sound effects and creator-supplied phonk, replacing procedural demo audio.",
+  "assets": [
+    {
+      "id": "vine-boom",
+      "name": "Vine boom",
+      "kind": "sfx",
+      "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/meme-audio/sfx/vine-boom.mp3",
+      "relativePath": "data/experiments/meme-audio/sfx/vine-boom.mp3",
+      "durationSeconds": 1.254943,
+      "sha256": "c4dadbc0b9cd21b1313ec11845a00d9401bc208ae0f59f54a0282b8cb89d56c2",
+      "bytes": 21230,
+      "sampleRate": 44100,
+      "channels": 2,
+      "sourceUrl": "https://www.myinstants.com/en/instant/vine-boom-sound-70972/",
+      "downloadUrl": "https://www.myinstants.com/media/sounds/vine-boom.mp3",
+      "creator": null,
+      "uploader": null,
+      "creatorVerified": false,
+      "category": "dramatic_impact",
+      "mood": [
+        "ominous",
+        "realization"
+      ],
+      "cue": "Land its leading transient on the reveal or freeze; avoid stacking another heavy impact.",
+      "licenseStatus": "preview_only",
+      "previewOnly": true,
+      "commercialReady": false,
+      "licenseSummary": "Public soundboard download; original rights and commercial reuse permission are unverified. Local experiment only until separately cleared.",
+      "licenseEvidence": {
+        "url": "https://www.myinstants.com/en/terms_of_use.html",
+        "observedAt": "2026-10-07",
+        "summary": "The site grants limited personal noncommercial access. User uploads and a download button do not establish a downstream commercial synchronization license."
+      },
+      "attribution": null,
+      "trim": {
+        "startSeconds": 0.065,
+        "endSeconds": 1.24
+      },
+      "suggestedGainDb": -6,
+      "acquiredAt": "2026-10-07",
+      "audioVerification": "ffprobe decoded metadata and file signature; identity follows the named source page; no human listening audit in this step.",
+      "onsetSeconds": 0.085,
+      "onsetOffsetInTrimSeconds": 0.02
+    },
+    {
+      "id": "bruh",
+      "name": "BRUH",
+      "kind": "sfx",
+      "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/meme-audio/sfx/bruh.mp3",
+      "relativePath": "data/experiments/meme-audio/sfx/bruh.mp3",
+      "durationSeconds": 0.816979,
+      "sha256": "6a04c34422d17b5ad0a62baaf5810dab7e19aa06baf5cbe2002fc750486ff170",
+      "bytes": 14061,
+      "sampleRate": 48000,
+      "channels": 2,
+      "sourceUrl": "https://www.myinstants.com/en/instant/bruh/",
+      "downloadUrl": "https://www.myinstants.com/media/sounds/movie_1.mp3",
+      "creator": null,
+      "uploader": "tyronebigthugs213",
+      "creatorVerified": false,
+      "category": "vocal_reaction",
+      "mood": [
+        "disbelief",
+        "deadpan"
+      ],
+      "cue": "Leave a short reaction pause after the visible mistake, then play the complete word.",
+      "licenseStatus": "preview_only",
+      "previewOnly": true,
+      "commercialReady": false,
+      "licenseSummary": "Public soundboard download; original rights and commercial reuse permission are unverified. Local experiment only until separately cleared.",
+      "licenseEvidence": {
+        "url": "https://www.myinstants.com/en/terms_of_use.html",
+        "observedAt": "2026-10-07",
+        "summary": "The site grants limited personal noncommercial access. User uploads and a download button do not establish a downstream commercial synchronization license."
+      },
+      "attribution": null,
+      "trim": {
+        "startSeconds": 0.025,
+        "endSeconds": 0.65
+      },
+      "suggestedGainDb": -6,
+      "acquiredAt": "2026-10-07",
+      "audioVerification": "ffprobe decoded metadata and file signature; identity follows the named source page; no human listening audit in this step.",
+      "onsetSeconds": 0.045,
+      "onsetOffsetInTrimSeconds": 0.02
+    },
+    {
+      "id": "metal-pipe",
+      "name": "Metal pipe falling",
+      "kind": "sfx",
+      "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/meme-audio/sfx/metal-pipe.mp3",
+      "relativePath": "data/experiments/meme-audio/sfx/metal-pipe.mp3",
+      "durationSeconds": 3.173492,
+      "sha256": "cf1568639d5c99f8d576138c92e5e39fc8e0835c62418a2032edce2b459e2223",
+      "bytes": 51662,
+      "sampleRate": 44100,
+      "channels": 2,
+      "sourceUrl": "https://www.myinstants.com/en/instant/metal-pipe-falling-sound-effect-7737/",
+      "downloadUrl": "https://www.myinstants.com/media/sounds/metal-pipe-falling-sound-effect.mp3",
+      "creator": null,
+      "uploader": "aiden1014",
+      "creatorVerified": false,
+      "category": "comic_impact",
+      "mood": [
+        "chaotic",
+        "absurd"
+      ],
+      "cue": "Land on a body/object impact; allow the ringing decay, or fade after 1.5 seconds.",
+      "licenseStatus": "preview_only",
+      "previewOnly": true,
+      "commercialReady": false,
+      "licenseSummary": "Public soundboard download; original rights and commercial reuse permission are unverified. Local experiment only until separately cleared.",
+      "licenseEvidence": {
+        "url": "https://www.myinstants.com/en/terms_of_use.html",
+        "observedAt": "2026-10-07",
+        "summary": "The site grants limited personal noncommercial access. User uploads and a download button do not establish a downstream commercial synchronization license."
+      },
+      "attribution": null,
+      "trim": {
+        "startSeconds": 0,
+        "endSeconds": 1.6
+      },
+      "suggestedGainDb": -6,
+      "acquiredAt": "2026-10-07",
+      "audioVerification": "ffprobe decoded metadata and file signature; identity follows the named source page; no human listening audit in this step.",
+      "onsetSeconds": 0.005,
+      "onsetOffsetInTrimSeconds": 0.005
+    },
+    {
+      "id": "record-scratch",
+      "name": "Record scratch",
+      "kind": "sfx",
+      "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/meme-audio/sfx/record-scratch.mp3",
+      "relativePath": "data/experiments/meme-audio/sfx/record-scratch.mp3",
+      "durationSeconds": 0.650159,
+      "sha256": "34fe3d8191980d946346034bb726df13826708e8adebdfc6b570f2e31eb36db5",
+      "bytes": 26353,
+      "sampleRate": 44100,
+      "channels": 2,
+      "sourceUrl": "https://www.myinstants.com/en/instant/record-scratch-clean-12972/",
+      "downloadUrl": "https://www.myinstants.com/media/sounds/record-scratch-clean.mp3",
+      "creator": null,
+      "uploader": "first_rate",
+      "creatorVerified": false,
+      "category": "interruption",
+      "mood": [
+        "sudden_stop",
+        "confusion"
+      ],
+      "cue": "Stop or duck the music at the mistake and place scratch on that exact frame.",
+      "licenseStatus": "preview_only",
+      "previewOnly": true,
+      "commercialReady": false,
+      "licenseSummary": "Public soundboard download; original rights and commercial reuse permission are unverified. Local experiment only until separately cleared.",
+      "licenseEvidence": {
+        "url": "https://www.myinstants.com/en/terms_of_use.html",
+        "observedAt": "2026-10-07",
+        "summary": "The site grants limited personal noncommercial access. User uploads and a download button do not establish a downstream commercial synchronization license."
+      },
+      "attribution": null,
+      "trim": {
+        "startSeconds": 0.04,
+        "endSeconds": 0.63
+      },
+      "suggestedGainDb": -6,
+      "acquiredAt": "2026-10-07",
+      "audioVerification": "ffprobe decoded metadata and file signature; identity follows the named source page; no human listening audit in this step.",
+      "onsetSeconds": 0.06,
+      "onsetOffsetInTrimSeconds": 0.02
+    },
+    {
+      "id": "doge-bonk",
+      "name": "Doge bonk",
+      "kind": "sfx",
+      "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/meme-audio/sfx/doge-bonk.mp3",
+      "relativePath": "data/experiments/meme-audio/sfx/doge-bonk.mp3",
+      "durationSeconds": 2.113016,
+      "sha256": "9f5433b549e790d65f4446fcbcf982036b705e23e56f3111f08988eb99d4b8f8",
+      "bytes": 17456,
+      "sampleRate": 44100,
+      "channels": 1,
+      "sourceUrl": "https://www.myinstants.com/en/instant/doge-bonk-84044/",
+      "downloadUrl": "https://www.myinstants.com/media/sounds/bonk_BEtiM8g.mp3",
+      "creator": null,
+      "uploader": "Lord_thcik_ass",
+      "creatorVerified": false,
+      "category": "comic_impact",
+      "mood": [
+        "silly",
+        "minor_fail"
+      ],
+      "cue": "One dry hit on collision; use instead of a bass boom for a smaller gag.",
+      "licenseStatus": "preview_only",
+      "previewOnly": true,
+      "commercialReady": false,
+      "licenseSummary": "Public soundboard download; original rights and commercial reuse permission are unverified. Local experiment only until separately cleared.",
+      "licenseEvidence": {
+        "url": "https://www.myinstants.com/en/terms_of_use.html",
+        "observedAt": "2026-10-07",
+        "summary": "The site grants limited personal noncommercial access. User uploads and a download button do not establish a downstream commercial synchronization license."
+      },
+      "attribution": null,
+      "trim": {
+        "startSeconds": 1.12,
+        "endSeconds": 1.85
+      },
+      "suggestedGainDb": -6,
+      "acquiredAt": "2026-10-07",
+      "audioVerification": "ffprobe decoded metadata and file signature; identity follows the named source page; no human listening audit in this step.",
+      "onsetSeconds": 1.142,
+      "onsetOffsetInTrimSeconds": 0.022
+    },
+    {
+      "id": "anime-wow",
+      "name": "Anime wow",
+      "kind": "sfx",
+      "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/meme-audio/sfx/anime-wow.mp3",
+      "relativePath": "data/experiments/meme-audio/sfx/anime-wow.mp3",
+      "durationSeconds": 4.179592,
+      "sha256": "5118c619f0ab62e181f32d9eacd490441b49aaa7bb8e1be1b6b51e7a3c25debc",
+      "bytes": 67637,
+      "sampleRate": 44100,
+      "channels": 2,
+      "sourceUrl": "https://www.myinstants.com/en/instant/anime-wow/",
+      "downloadUrl": "https://www.myinstants.com/media/sounds/anime-wow-sound-effect.mp3",
+      "creator": null,
+      "uploader": "floppinrobin",
+      "creatorVerified": false,
+      "category": "vocal_reaction",
+      "mood": [
+        "surprise",
+        "ironic_awe"
+      ],
+      "cue": "Use after an impressive or absurd visual reveal, with music ducked during the voice.",
+      "licenseStatus": "preview_only",
+      "previewOnly": true,
+      "commercialReady": false,
+      "licenseSummary": "Public soundboard download; original rights and commercial reuse permission are unverified. Local experiment only until separately cleared.",
+      "licenseEvidence": {
+        "url": "https://www.myinstants.com/en/terms_of_use.html",
+        "observedAt": "2026-10-07",
+        "summary": "The site grants limited personal noncommercial access. User uploads and a download button do not establish a downstream commercial synchronization license."
+      },
+      "attribution": null,
+      "trim": {
+        "startSeconds": 0.16,
+        "endSeconds": 3.3
+      },
+      "suggestedGainDb": -6,
+      "acquiredAt": "2026-10-07",
+      "audioVerification": "ffprobe decoded metadata and file signature; identity follows the named source page; no human listening audit in this step.",
+      "onsetSeconds": 0.18,
+      "onsetOffsetInTrimSeconds": 0.02
+    },
+    {
+      "id": "phonk-execution",
+      "name": "Phonk Execution \u2014 Alex-Productions",
+      "kind": "music",
+      "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/meme-audio/music/phonk-execution-alex-productions.mp3",
+      "relativePath": "data/experiments/meme-audio/music/phonk-execution-alex-productions.mp3",
+      "durationSeconds": 126.6155,
+      "sha256": "f0af7ecad65bcd514089112f441ec26ff2402dd1b5367ee0dad04c937e3839e1",
+      "bytes": 5064678,
+      "sampleRate": 44100,
+      "channels": 2,
+      "sourceUrl": "https://onsound.eu/track/phonk-execution-phonk/",
+      "downloadUrl": "https://media.onsound.eu/2025/02/12140422/phonk-execution.mp3",
+      "creator": "Alex-Productions",
+      "uploader": "Alex-Productions / OnSound",
+      "creatorVerified": true,
+      "category": "drift_phonk",
+      "mood": [
+        "aggressive",
+        "energetic",
+        "dark"
+      ],
+      "cue": "Start a 24-second excerpt at 10.84s; align the measured major energy rise at source 14.84s with the visual payoff (4 seconds into that excerpt). Duck for reactions.",
+      "licenseStatus": "attribution_social_only",
+      "previewOnly": false,
+      "commercialReady": false,
+      "commercialReadyReason": "Creator authorizes attributed social and monetized videos, but paid advertising and several other commercial contexts need a separate purchased license. False prevents blanket campaign clearance.",
+      "licenseSummary": "Creator permits social media and monetized video use with the exact credit below. Paid advertising, in-game/app/software/podcast use and use without credit require a paid license. No paid license purchased.",
+      "licenseEvidence": {
+        "url": "https://onsound.eu/track/phonk-execution-phonk/",
+        "observedAt": "2026-10-07",
+        "localEvidencePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/experiments/meme-audio/onsound-phonk-license-evidence.txt",
+        "summary": "Terms were read directly from the creator product page. This creator-specific permission is narrower than a general commercial license. FMA separately labels its copy CC BY-NC 4.0; use the creator-page terms for this file and do not call it unrestricted CC BY."
+      },
+      "allowedScopes": [
+        "local_experiment",
+        "organic_social_video_with_credit",
+        "monetized_video_with_credit"
+      ],
+      "excludedWithoutPaidLicense": [
+        "paid_advertising",
+        "in_game",
+        "apps",
+        "software",
+        "podcast",
+        "TV",
+        "radio",
+        "cinema",
+        "no_attribution"
+      ],
+      "attribution": "Phonk Powerful | Phonk Execution by Alex-Productions\nhttps://youtu.be/12xpJ2tFUL8\nMusic promoted by https://onsound.eu/",
+      "trim": {
+        "startSeconds": 10.84,
+        "endSeconds": 34.84
+      },
+      "alternateTrims": [
+        {
+          "label": "drop-first 22-second excerpt",
+          "startSeconds": 14.84,
+          "endSeconds": 36.84
+        }
+      ],
+      "firstBeatSeconds": null,
+      "dropSeconds": 14.84,
+      "dropOffsetInRecommendedTrimSeconds": 4.0,
+      "bpmEstimate": 130,
+      "timingEvidence": "Major energy rise measured at 14.84\u201314.90s, consistent with the full waveform. Low-frequency onset autocorrelation suggests approximately130BPM. These are machine-measured edit candidates, not human-auditioned beat/downbeat labels; confirm by ear before final publication.",
+      "suggestedGainDb": -12,
+      "acquiredAt": "2026-10-07",
+      "audioVerification": "Decoded by FFmpeg; waveform inspected. Source has hot decoded peaks, so attenuate before mix and apply a final true-peak limiter. No claim of being a chart-famous or reference-reel song."
+    },
+    {
+      "id": "badly",
+      "name": "Badly \u2014 Alex-Productions",
+      "kind": "music",
+      "path": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/experiments/meme-audio/music/badly-alex-productions.mp3",
+      "relativePath": "data/experiments/meme-audio/music/badly-alex-productions.mp3",
+      "durationSeconds": 81.266925,
+      "sha256": "c943fbc5563cf436d3a47e8a20531f51a3c7de0bcfbfa0ee532c8c23676db457",
+      "bytes": 3250747,
+      "sampleRate": 44100,
+      "channels": 2,
+      "sourceUrl": "https://onsound.eu/track/badly-phonk/",
+      "downloadUrl": "https://media.onsound.eu/2024/07/02111858/Badly--1.mp3",
+      "creator": "Alex-Productions",
+      "uploader": "Alex-Productions / OnSound",
+      "creatorVerified": true,
+      "category": "energetic_phonk",
+      "mood": [
+        "energetic",
+        "aggressive",
+        "punchy"
+      ],
+      "cue": "A quick music entrance: source0\u201318.8s gives a short rising intro and a strong transient at about0.95s. Use a scratch or BRUH to end the phrase.",
+      "licenseStatus": "attribution_social_only",
+      "previewOnly": false,
+      "commercialReady": false,
+      "commercialReadyReason": "Creator authorizes attributed social and monetized videos, but paid advertising and several other commercial contexts need a separate purchased license. False prevents blanket campaign clearance.",
+      "licenseSummary": "Creator permits social media and monetized video use with the exact credit below. Paid advertising, in-game/app/software/podcast use and use without credit require a paid license. No paid license purchased.",
+      "licenseEvidence": {
+        "url": "https://onsound.eu/track/badly-phonk/",
+        "observedAt": "2026-10-07",
+        "localEvidencePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/experiments/meme-audio/onsound-badly-license-evidence.txt",
+        "summary": "Read directly from the creator product page: social media and monetized videos with credit allowed; paid advertising and listed other contexts require a paid license. The downloaded file is the normal Badly version, not the slowed FMA variant."
+      },
+      "allowedScopes": [
+        "local_experiment",
+        "organic_social_video_with_credit",
+        "monetized_video_with_credit"
+      ],
+      "excludedWithoutPaidLicense": [
+        "paid_advertising",
+        "in_game",
+        "apps",
+        "software",
+        "podcast",
+        "TV",
+        "radio",
+        "cinema",
+        "no_attribution"
+      ],
+      "attribution": "Phonk Powerful | Badly by Alex-Productions\nhttps://youtu.be/ayDwvqgY-JQ\nMusic promoted by https://onsound.eu/",
+      "trim": {
+        "startSeconds": 0,
+        "endSeconds": 18.8
+      },
+      "alternateTrims": [],
+      "firstBeatSeconds": null,
+      "dropSeconds": 0.95,
+      "dropOffsetInRecommendedTrimSeconds": 0.95,
+      "bpmEstimate": 130,
+      "timingEvidence": "The first strong energy transient is measured at0.95s after a short rising intro. The file and creator-player metadata specify130BPM. This cue is not a human-auditioned downbeat.",
+      "suggestedGainDb": -12,
+      "acquiredAt": "2026-10-07",
+      "audioVerification": "Decoded by FFmpeg; waveform inspected. Creator file metadata identifies FL Studio20 and release year2024. No claim this is the song in the supplied Instagram reel.",
+      "bpmSource": "Creator player metadata and downloaded MP3 TBPM tag both specify130."
+    }
+  ],
+  "policy": {
+    "defaultUse": "local_experiment",
+    "publicRedistributionOfSourceFiles": false,
+    "publishingRequires": "Every asset must have rights for the intended placement; attribution alone does not clear preview_only assets. Use source links instead of redistributing the raw files.",
+    "syntheticAudio": false
+  },
+  "timingConvention": "All seconds are source-file time. trim.endSeconds is exclusive. The renderer should trim before timing/ducking the clip. Do not confuse source dropSeconds with output placement."
+}

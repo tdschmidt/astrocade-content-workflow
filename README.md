@@ -1,79 +1,112 @@
-# Astrocade Studio
+# Astrocade gameplay-to-video pipeline
 
-A local workflow for discovering Astrocade games, recording native browser gameplay, generating portrait videos, reviewing revisions, and publishing approved videos through Instagram's desktop interface.
+A local TypeScript CLI that discovers Astrocade games, learns their visible controls, explores and records native gameplay, and asks an editorial agent to turn the footage into short portrait videos. It preserves the source, observations, exact model requests, edit plans and media checks beside each result.
 
-**Current status:** live discovery returned **30 games**, and **Crowd Pier Run now passes repeated native capture**, including the Studio's two-capture check. Its tested preset is included, so Create video is enabled without writing a profile. A manually scripted portrait-render check also succeeded. The first Gemini footage analysis timed out; further uploads await explicit permission after an automatic approval-review block. There is **no end-to-end automatically generated live short, verified fresh Instagram account, or published video** yet. See [acceptance evidence](docs/acceptance.md).
+The current scope ends at local candidate videos. There is no GUI, account creation, email integration, publishing service or background job queue. A local review gallery is an optional way to watch generated artifacts. Earlier results and design history remain in [docs](docs/acceptance.md) and the [decision log](docs/design-decisions.md).
 
-## Run
+The [October 7 integration report](docs/pipeline-validation-2026-10-07.md) records fresh whole-pipeline runs, selected videos, observed failures and their regression tests. [CHECKPOINT.md](CHECKPOINT.md) gives the exact local artifact locations and continuation state.
 
-Use Node.js 24 or newer and a local desktop session. Instagram opens a visible browser for any verification checkpoint. Native gameplay capture has been tested on macOS with the pinned Playwright Chromium; other platforms need the same integration checks.
+## Setup
+
+Use Node.js 24+, a desktop session, FFmpeg with libass, and the matching Playwright Chromium. Native capture is tested on macOS.
 
 ```sh
 npm ci
 npm run browser:install
-# macOS; requires a build with libass for captions
-brew install ffmpeg-full
+brew install ffmpeg-full # macOS
+codex login             # sign in with ChatGPT
 npm run doctor
-npm start
 ```
 
-Open **http://127.0.0.1:4310**. FFmpeg's standard Apple Silicon Homebrew path is detected automatically. Elsewhere, put an FFmpeg build with libass on PATH or set `FFMPEG_PATH` and `FFPROBE_PATH`. The licensed Noto Sans caption font is bundled.
+The default inference provider is Codex, using the existing signed-in CLI and `gpt-5.6-sol`; `--model` can select another available model. The adapter refuses API-key authentication. It sends bounded gameplay frames and prompts, uses isolated tool-free requests, and records returned decisions without credentials or private reasoning. Alternatively use `--provider gemini` with `GEMINI_API_KEY` in ignored `.env`. The new editorial planners use Codex; Gemini remains available for capture/analysis and optional speech.
 
-The Setup screen saves credentials locally; `.env` is optional. Copy `.env.example` if preferred. Nonempty environment values override saved settings. Credentials, browser sessions, jobs and media live in ignored `data/`; do not send that directory with the source. JSON files are written atomically with private filesystem permissions. This is local storage, not encrypted secret management.
+FFmpeg/ffprobe are detected at the standard Apple Silicon Homebrew full-build location; elsewhere set `FFMPEG_PATH` and `FFPROBE_PATH` or put them on PATH. The caption font and license are bundled.
 
-| Setup item | When needed | Get it |
-| --- | --- | --- |
-| Gemini API key | Analyzing footage and writing the video | [Google AI Studio key setup](https://ai.google.dev/gemini-api/docs/api-key) |
-| Instagram identity | Creating the fresh account | Intended handle, display name, password and actual owner's birthday, entered locally |
-| Verification inbox | Receiving the registration code | Built-in [Mail.tm](https://docs.mail.tm/) provisioning, or TLS IMAP with password/app password or an existing OAuth access token |
+Meme edits need the real [audio catalog](experiments/meme-audio/README.md). Acquire its files from the recorded sources into their `relativePath` destinations and run `python3 experiments/meme-audio/build-catalog.py`. Binaries stay in ignored `data/`; source credits, hashes and individual usage restrictions stay in metadata. Several soundboard effects are preview-only.
 
-Keys are configured privately on the development machine; the recipient supplies their own. Model access and quota are checked when used. The application does not activate billing. IMAP access tokens are supplied credentials; this project does not implement a provider OAuth enrollment flow.
+Narrated formats default to local Kokoro speech and Faster Whisper recognition at native voice speed. Follow [local speech setup](experiments/local-speech/README.md) once. The Python environment and model weights stay under ignored `data/experiments/local-speech/`; `LOCAL_SPEECH_PYTHON` can select another compatible interpreter. `--narration gemini` uses configured cloud speech and transcription instead. Missing assets or quota failures stop explicitly; providers are never silently relabeled.
 
-## Use
+## Run the whole pipeline
 
-1. **Setup:** enter your Gemini key. The core workflow does not require web research, narrated formats, or shared hosting.
-2. **Studio:** discover games, then choose **Create video**. The default makes one gameplay highlight with balanced selection. The tested Crowd Pier Run preset is added when absent; existing saved edits are preserved. Generation captures gameplay, sends the footage to Google for analysis/writing, and renders the draft. Profile checks are technical capture checks; content quality is assessed during generation.
-3. **Review:** watch the generated video and inspect its caption. Hook edits rerender; post-caption edits reuse the media. Each edit creates a revision requiring fresh approval. A failed provider request preserves completed captures for resume.
-4. **Create the fresh Instagram account:** in Setup, prepare the verification inbox and enter the real owner's account details. Start signup. Ordinary signup and matching email-code steps are automated; unknown screens and identity checks pause in the retained browser for a human checkpoint and resume. Verify the intended account and upload readiness.
-5. **Publish two videos:** approve each exact finished video/caption, then publish. The system checks the account and file, saves intent before Share, and records the resulting permalink. If confirmation is lost, check the original publication before another attempt. Repeat for a second approved video and verify both posts play.
+```sh
+# Discover candidates, explore, analyze, generate an agent edit and render a meme video.
+npm run pipeline
 
-The assignment is complete only when the system has produced and published two real videos to the fresh account. Local fixtures do not meet that requirement. Browser signup/publishing may encounter platform rejection or unsupported screens; see [Instagram research](docs/research-instagram.md).
+# Explore a particular game thoroughly, then edit it.
+npm run pipeline -- --game PUBLIC_ASTROCADE_GAME_URL --play feedback \
+  --capture-seconds 600 --capture-goal "Pursue visible progression, record choices and their actual effects."
 
-Existing optional formats, comparison and selection controls remain under **Options**. Advanced model/voice overrides remain collapsed in Setup for provider access issues. Tavily is only needed for the optional research backend ([Tavily quickstart](https://docs.tavily.com/documentation/quickstart)); none of these extras is a prerequisite for the default highlight workflow.
+# Different formats use the same source capture and evidence pipeline.
+npm run pipeline -- --game PUBLIC_ASTROCADE_GAME_URL --format overview
+npm run pipeline -- --game PUBLIC_ASTROCADE_GAME_URL --format story \
+  --story-source REVIEWED_FACT_LEDGER.json
+```
 
-## Architecture
+| Format | Editorial contract |
+| --- | --- |
+| `meme` (default) | 15–25 seconds of meaningful setup, escalation and consequence. The agent chooses troll-freeze, ironic-fail or velocity. Phonk edits synchronize the main music/visual treatment to the observed climax, then keep at least four seconds of payoff including two seconds of moving aftermath. |
+| `overview` | Roughly 30–45 seconds explaining the game's premise, choices and appeal. Three ranked hook proposals, whole-game evidence, independent script review, real speech and measured caption timings. Relevant gameplay supports the explanation without literal play-by-play. |
+| `story` | Sourced narration over sustained gameplay progression. A required fact ledger grounds the story. Independent review rejects repeated failed sections even if deaths were edited away. Inadequate footage stops before speech generation. |
+| `legacy` | The earlier silent highlight editor, retained to reproduce and resume historical runs. |
 
-`React → Express → one persistent job lane → small workflow/provider modules`
+Meme `--style auto|troll-freeze|ironic-fail|velocity` chooses a specific treatment. Credits stay off the video; native game HUD remains when needed for meaning. Reaction faces attach only to an observed head during a frozen frame. Neither technical validation nor a model's approval predicts audience performance.
 
-- `src/server/games`: public-page discovery, evidence-based ranking, bounded native controls and reusable game profiles.
-- `src/server/media`: separate recorder tab, native VP9 chunks, flush/decode validation, FFmpeg portrait rendering with ASS captions.
-- `src/server/providers`: Google reasoning/speech/transcription and bounded Tavily Search/Extract.
-- `src/server/instagram`: mailbox adapters, resumable signup, persistent identity, exact-revision publication and reconciliation.
-- `src/server/workflow.ts`: orchestration over immutable media and validated JSON state.
-- `src/client`: Studio and Setup over the same server API; the optional research module is retained outside primary navigation.
+For final publication candidates, `--audio-catalog REVIEWED_CATALOG.json` lets the meme agent choose only from that reviewed subset. The catalog and asset hashes are verified and retained on resume. Keep preview-only effects out of a publication catalog and include the required music credit in the eventual post description; selecting a catalog does not itself establish usage rights or publish anything.
 
-Only one mutation runs at a time; previews and status reads remain available. Cancellation waits for cleanup. A restart marks unfinished jobs interrupted and preserves captures, audio and revisions. Resume uses saved artifacts. Human checkpoints release the lane. A crash around Share is resolved by inspecting the original intent, never by assuming the upload failed.
+## Continue or revise
 
-The source handoff needs no Codex connector, personal browser profile, database, worker cluster, public media bucket or Meta developer enrollment. The recipient configures their own credentials. The verified Crowd Pier Run preset is included. A complete automatic live run and the two published results are still required for the final handoff.
+```sh
+# Save source first; capture includes discovery and learning.
+npm run pipeline -- --game PUBLIC_ASTROCADE_GAME_URL --stage capture
 
-## Verify
+# Analyze without drafting or rendering.
+npm run pipeline -- --from-run data/runs/SOURCE_RUN --stage analyze
+
+# Generate a new version through the same pipeline, preserving the original.
+npm run pipeline -- --from-run data/runs/SOURCE_RUN --format meme
+npm run pipeline -- --from-run data/runs/SOURCE_RUN --format overview --narration local
+
+# Concrete editorial correction, optionally with independently reviewed candidate windows.
+npm run pipeline -- --from-run data/runs/SOURCE_RUN --format meme \
+  --edit-feedback REVIEW.txt --source-windows SOURCE_WINDOWS.json
+
+# Continue an interrupted run using its saved configuration.
+npm run pipeline -- --resume data/runs/RUN_DIRECTORY
+```
+
+`--stage discover|capture|analyze|edit|all` controls the stopping point. `--candidates 1-5` defaults to three. `--play auto` chooses a tested timed profile where suitable, otherwise assesses screenshot feedback before timed fallback. `--brief` supplies an audience/voice JSON; `--help` describes all options. A new explicit capture goal is limited to 800 characters.
+
+Each run is locked against concurrent resume. `--from-run` verifies and references the saved recordings without modifying them. `--resume` preserves its brief, format, source windows, feedback and story source; changing an input or media hash fails instead of silently mixing versions. Failed editor attempts remain on disk. Narrated stages retain exact waveforms for recognition/validation recovery. A completed run validates and reuses its final video without generating another plan.
+
+Source-review windows are candidate evidence, not final cuts. The [window contract](experiments/category-batch/README.md) binds them to a source hash; each is decoded again and the editorial agent selects the actual edit. The eight-category handoff and portable exploration goals live in [category-batch](experiments/category-batch/games.json).
+
+## Gameplay and evidence
+
+The agent uses only visible game controls and ordinary native browser inputs. It first tests a control, then practices and pursues attainable features, upgrades, choices and later stages. Opening a menu, pressing a key or claiming success does not prove gameplay progress. Capture preserves full choice → change → use sequences for alternative narratives.
+
+New exploration profiles allow up to ten minutes and forty decisions; wall time includes inference. Fresh frames taken immediately before input distinguish autonomous game changes from action effects. During-action samples help find brief abilities. Screenshots capture the full viewport and crop locally to avoid Chromium's cross-origin screenshot/input offset bug. Hidden DOM text is filtered; visible frames still determine terminal states.
+
+This is sparse visual feedback, not a reflex player. Moving hazards and short timers can defeat it while inference runs. A long recording is not proof of thorough play. Traces distinguish completed, partial and rejected attempts, and source analysis can reject a game with no useful consequence.
+
+A finished run contains `report.md`, `run.json`, `trace.jsonl`, source recordings, source-frame evidence, the generated plan, `caption.txt`, and the final MP4 under `editing-*`. The integrated renderers produce 720×1280 H.264/30 fps with AAC audio. Inspect the actual output at phone size and with sound. Media and provider artifacts stay in ignored `data/` and are not included in GitHub clones.
+
+## Code and checks
+
+- `src/core`: CLI, selection, stage orchestration, evidence and resume.
+- `src/editing`: integrated meme/overview/story orchestration and input contracts.
+- `src/server/games`: discovery, visible inspection, native controls and recording.
+- `src/server/media` and `providers`: media primitives and bounded inference.
+- `experiments`: reusable versioned editorial schemas, prompts, renderers and historical examples. The category adapter delegates to the production meme editor.
 
 ```sh
 npm run check
-```
+npm run check:editing
 
-This runs strict TypeScript checks, unit/local HTTP tests and the production UI build. Browser/media integration tests are opt-in because they launch Chromium and require FFmpeg with libass:
-
-```sh
-RUN_BROWSER_TESTS=1 RUN_BROWSER_MEDIA_TESTS=1 RUN_RENDER_TESTS=1 \
-INSTAGRAM_BROWSER_FIXTURE=1 \
+# Native browser/media fixtures, with no live provider calls or publishing.
+RUN_BROWSER_TESTS=1 RUN_BROWSER_MEDIA_TESTS=1 RUN_RENDER_TESTS=1 RUN_FRAME_TESTS=1 \
 node --import tsx --test --test-concurrency=1 'src/**/*.test.ts'
 ```
 
-Tests cover native input/capture cleanup, recorder finalization, playable portrait output, timestamp bounds, email freshness, approval invalidation, lost Share confirmation, restart recovery, local authentication and artifact access. Instagram fixtures intercept requests and make **no live posts**. Google SDK wire-contract fixtures make **no provider requests**. Live provider capacity, game compatibility and Instagram acceptance remain separate checks.
+CI runs core and editing checks. The decision log records scope changes and observed failures. Keep `.env`, local credentials, model weights and unselected run data private; hand over the source, lockfile, setup instructions and selected output/evidence artifacts.
 
-Unlike the application, standalone media tests use `ffmpeg` on PATH unless overridden. On Apple Silicon with Homebrew's keg-only full build, prefix the test command with `FFMPEG_PATH=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg`; its sibling `ffprobe` is detected. The final full opt-in run passed **83 tests, with no skips**, including the loading-overlay, provider-bound and preset cases, on the documented Mac environment. Typecheck and the production build also passed. Workflow regression tests also verify that a timed profile requires two successful captures without a Google key or content-analysis call.
-
-## Design record
-
-The [plan](PLAN.md), [decision log](docs/design-decisions.md), [requirements audit](docs/requirements-audit.md) and focused research documents explain the decisions and rejected alternatives. [Acceptance evidence](docs/acceptance.md) records what is demonstrated versus still blocked. Commits are incremental and the lockfile pins the tested library versions.
+The [final publication candidate report](docs/publication-finalists-2026-10-07.md) records the broader comparison, selected local deliverables, audio credits and pipeline fixes found during production. Media stays local under `data/`; it is not part of the GitHub checkout.

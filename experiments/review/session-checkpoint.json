@@ -1,0 +1,36 @@
+{
+  "status": "complete",
+  "userRequest": "One fresh best video for each of three editing styles, applying feedback; show together in one gallery.",
+  "completed": [
+    {
+      "id": "golem-plot-armor-v3",
+      "path": "data/experiments/troll-editor/renders/golem-plot-armor-v3.mp4",
+      "duration": 18.1,
+      "review": "data/experiments/troll-editor/evidence/golem-plot-armor-v3/review.json"
+    },
+    {
+      "id": "ben10-overview-v3",
+      "path": "data/experiments/game-overview/renders/ben10-overview-v3.mp4",
+      "duration": 30.4,
+      "review": "data/experiments/game-overview/best-v2/review/independent/review.json"
+    },
+    {
+      "id": "venus-clock-v1",
+      "path": "data/experiments/story-background/renders/venus-clock-v1.mp4",
+      "duration": 37.8,
+      "review": "data/experiments/story-background/venus-clock-independent-review/review.json"
+    }
+  ],
+  "gallery": "http://127.0.0.1:8777/review/index.html",
+  "galleryBuilder": "node experiments/review/build.mjs",
+  "speech": "New local Kokoro narration; Gemini ASR for story/Fasttrack/Four Arms; local Faster Whisper small.en for Cannonbolt. Actual labels and source hashes retained.",
+  "sharedDependencies": "Troll renderer/schema/catalog unchanged. Isolated masteringcopy lowered final mix3dB, originalpeakguard retained.",
+  "ownership": "Other task owns core/category-batch and README changes. Do not stage them here. Our experimentpackages left uncommitted.",
+  "galleryState": {
+    "current": 3,
+    "earlier": 16,
+    "collection": "experiments/review/current.json",
+    "page": "data/experiments/review/index.html",
+    "server": "python3 -m http.server 8777 --bind 127.0.0.1 --directory data/experiments"
+  }
+}

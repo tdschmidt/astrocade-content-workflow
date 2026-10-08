@@ -7,36 +7,24 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "node --import tsx --watch src/server/index.ts",
-    "start": "node --import tsx src/server/index.ts",
-    "build": "vite build",
+    "start": "node --import tsx src/core/cli.ts",
+    "pipeline": "node --import tsx src/core/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
-    "check": "npm run typecheck && npm test && npm run build",
+    "check": "npm run typecheck && npm test",
+    "check:editing": "tsc --project tsconfig.editing.json && node --import tsx --test \"experiments/**/*.test.ts\"",
     "browser:install": "playwright install chromium --no-shell",
     "doctor": "node --import tsx src/server/doctor.ts"
   },
   "dependencies": {
     "@google/genai": "2.27.0",
-    "cookie-session": "2.1.1",
-    "express": "5.2.1",
-    "imapflow": "2.2.6",
-    "mailparser": "3.9.36",
     "playwright": "1.63.0",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
+    "sharp": "0.35.5",
     "tsx": "4.23.15",
     "zod": "4.6.5"
   },
   "devDependencies": {
-    "@types/cookie-session": "2.0.49",
-    "@types/express": "5.0.6",
-    "@types/mailparser": "3.9.0",
     "@types/node": "26.6.4",
-    "@types/react": "19.3.0",
-    "@types/react-dom": "19.3.0",
-    "@vitejs/plugin-react": "6.1.2",
-    "typescript": "7.0.2",
-    "vite": "8.3.3"
+    "typescript": "7.0.2"
   }
 }

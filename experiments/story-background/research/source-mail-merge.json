@@ -1,0 +1,61 @@
+{
+  "id": "printer-ink",
+  "source_type": "public_reddit_post",
+  "title": "Mail Merge Documents will waste printer ink.",
+  "url": "https://www.reddit.com/r/MaliciousCompliance/comments/uop6jc/mail_merge_documents_will_waste_printer_ink/",
+  "author": "CommonwealthGhost",
+  "community": "r/MaliciousCompliance",
+  "published_date": "2022-05-13",
+  "date_basis": "Date shown in primary Reddit search result",
+  "accessed_at": "2026-10-07",
+  "content_access": "Full primary post read; author verified on primary page",
+  "observed_score": 4585,
+  "engagement_basis": "Cached primary Reddit search result observed 2026-10-07; not a live count or current-popularity claim",
+  "truth_status": "Unverified personal account, not independently corroborated",
+  "grounded_beats": [
+    {
+      "id": "setup",
+      "fact": "Office workers completed vehicle-repair forms by hand; about 70 percent of each form repeated."
+    },
+    {
+      "id": "conflict",
+      "fact": "The poster proposed spreadsheet-assisted printing. The manager objected to ink use."
+    },
+    {
+      "id": "action",
+      "fact": "On their last day, the poster built a spreadsheet in 20 minutes."
+    },
+    {
+      "id": "payoff",
+      "fact": "The three-person morning workload was printed in under 30 minutes."
+    },
+    {
+      "id": "ending",
+      "fact": "The poster delivered the forms, took tea through lunch, collected belongings, and left."
+    }
+  ],
+  "forbidden_inventions": [
+    "Manager was fired",
+    "Company policy changed",
+    "Poster received a raise",
+    "Specific money saved",
+    "Poster's gender",
+    "Independent verification",
+    "A consequence beyond the stated departure"
+  ],
+  "writer_brief": {
+    "target_words": [
+      100,
+      110
+    ],
+    "target_seconds": [
+      35,
+      45
+    ],
+    "voice": "Third-person attributed retelling, fresh language, conversational",
+    "structure": "Brief hook, then A Reddit user described framing; setup; rejected shortcut; last-day reveal; short commentary ending",
+    "attribution": "Spoken Reddit framing plus off-screen u/CommonwealthGhost and r/MaliciousCompliance credit; retain permalink in provenance",
+    "commentary": "A brief clearly editorial final line is allowed; do not add events",
+    "proposed_retelling_path": "experiments/story-background/research/proposed-mail-merge.txt"
+  }
+}

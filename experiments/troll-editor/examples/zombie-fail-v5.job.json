@@ -1,0 +1,46 @@
+{
+  "id": "zombie-fail-v5",
+  "title": "Fire was only the warm-up",
+  "style": "ironic-fail",
+  "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/runs/2026-10-07T19-15-45-196Z-b9a7a1/game-01KNZ88KS7SHE4H82X4R336N9V/532148ea-0c5d-4873-b902-df5898d077ad.webm",
+  "start": 67.5,
+  "end": 144.8,
+  "fps": 4,
+  "observationWindows": [
+    {
+      "start": 67.5,
+      "end": 75.8,
+      "fps": 1
+    },
+    {
+      "start": 136.7,
+      "end": 144.8,
+      "fps": 2
+    },
+    {
+      "start": 141.48,
+      "end": 141.85,
+      "fps": 8
+    },
+    {
+      "start": 141.525,
+      "end": 141.59,
+      "fps": 8
+    },
+    {
+      "start": 141.595,
+      "end": 141.72,
+      "fps": 8
+    },
+    {
+      "start": 143,
+      "end": 144.5,
+      "fps": 4
+    }
+  ],
+  "minDuration": 18,
+  "maxDuration": 25,
+  "audioCatalogPath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/experiments/meme-audio/catalog.json",
+  "brief": "Revise the story structure in response to user feedback. The previous main bass drop at output3.93 on an early fire reaction was too small/early; later bomb explosion was the actual climax. Choose a NEW edit, keeping the same real flame-then-bomb chronology. Rank moments before effects. Fire is setup: the zombie bends/scorches but remains recognizable; a restrained early familiar sound or brief clean head hold may acknowledge its endurance, but no dominant bass/grayscale/deepfry/shake there. The later bomb descends, burns its fuse, then actually ruptures and throws/dismembers the cartoon specimen. That decisive change must receive the single main visual+music drop late in the edit. Dense30fps source review: at141.500 bomb remains intact, first orange blast ring at141.533333, large flash141.566667, launch/head still visible141.600\u2013141.700, head offscreen after141.733. Supplied PTS samples around those times independently show the onset and attachable head. Mark the real onset around141.53 as narrative primary anchor and align music.dropAt plus dominant bw/deepfry start and strongest punch to its mapped output within2renderframes. You may show a few frames of contact in the treatment then freeze an exact supplied intact-head frame around141.6, face tightly aligned, and resume clean. Never overlay face on flying fragments or scenery. Freeze-only face policy/crop x30,y0,660x1176/zoom1 applies. Preserve clean real consequence until counter02 is visible around143.5\u2013144, then end with a short clear result; stop before the later disposal/reset sequence. You can accelerate postblast falling debris while keeping it readable. Build18\u201325sec of meaningful distinct action with short anticipation slowdown if warranted; do not stretch idle or replay action. The main drop should resolve this escalation near the end, not start a second section. Use actual real phonk-execution sourceStart14.84 with genuine lower-volume intro, and few catalog SFX. Do not stack long impactSFX over the phonk attack. At most3 short captions; no names/watermarks. Return complete narrativeBeats and executable plan, independently choose precise cuts/speeds/effects from observed evidence.",
+  "requireNarrativeBeats": true
+}

@@ -1,0 +1,10 @@
+{
+  "id": "crowd-fail",
+  "style": "ironic-fail",
+  "title": "The math was optional",
+  "sourcePath": "data/runs/variety-2026-10-07-31-crowd-pier-run/game-01M2YWFH66FH6MMVW5AE66NX7S/183993b4-4100-40c8-a7d2-409c58f0fc67.webm",
+  "start": 4,
+  "end": 12,
+  "fps": 4,
+  "brief": "The crowd approaches green +6 and red negative gates, goes right through -5, and visibly drops from 10 to 5. It then runs toward a green +4 gate, takes it, and recovers to 9. The recovery is partial, not a win. Make an ironic confident-setup/fail/recovery edit. Keep both gate contacts, labels, and the top-center crowd counter legible. Avoid covering the runners in the lower-middle. The source is already 720x1280 portrait and silent."
+}

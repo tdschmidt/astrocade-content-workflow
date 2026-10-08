@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import test from 'node:test';
 import { chromium } from 'playwright';
-import { discoverGames } from './discovery.js';
+import { balanceDiscoverySources, discoverGames } from './discovery.js';
 
 test('discovery reads current image-alt titles without treating unlabeled badges as metrics', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
   const observed = await readFile(new URL('./fixtures/discovery-live-cards.html', import.meta.url), 'utf8');
@@ -40,4 +40,39 @@ test('discovery reads current image-alt titles without treating unlabeled badges
   assert.equal(result.candidates[7]!.title, 'slug fallback');
   assert.equal(result.candidates[7]!.titleSource, 'url_slug');
   assert.deepEqual(result.candidates[7]!.metrics, []);
+});
+
+test('discovery balances sources without losing repeated-source evidence', () => {
+  const candidate = (id: string, sources: string[]) => ({ id, title: id, titleSource: 'visible_text' as const, url: `https://www.astrocade.com/games/${id}/${id}`, metrics: [], observations: sources.map(sourceUrl => ({ sourceUrl, observedAt: '2026-10-07T00:00:00Z', cardText: id })) });
+  const games = [candidate('a', ['first', 'second']), candidate('b', ['first']), candidate('c', ['first']), candidate('d', ['second']), candidate('e', ['third'])];
+  const balanced = balanceDiscoverySources(games, ['first', 'second', 'third'], 3);
+  assert.deepEqual(balanced.map(game => game.id), ['a', 'd', 'e']);
+  assert.equal(balanced[0]!.observations.length, 2);
+  assert.equal(balanceDiscoverySources(games, ['empty', 'first', 'second', 'third'], 20).length, 5);
+});
+
+test('discovery waits for visible hydration and scrolls the inner catalog past an unchanged viewport', { skip: process.env.RUN_BROWSER_TESTS !== '1', timeout: 20000 }, async t => {
+  const html = `<html><head><base href="https://www.astrocade.com/"><style>
+    body{margin:0;overflow:hidden}#catalog{margin-left:100px;width:600px;height:600px;overflow-y:auto}
+    article{height:180px}.animate-pulse{width:200px;height:80px;background:#ccc}
+  </style></head><body><div id="catalog">
+    <article><a href="/games/initial/initial"><h3>Initial game</h3><div class="animate-pulse"></div></a></article>
+    <div id="pending" class="animate-pulse"></div><div style="height:2400px"></div>
+  </div><script>
+    const catalog=document.getElementById('catalog');
+    function card(id,title){const node=document.createElement('article');node.innerHTML='<a href="/games/'+id+'/'+id+'"><h3>'+title+'</h3></a>';catalog.append(node)}
+    setTimeout(()=>{card('hydrated','Hydrated rhythm');document.getElementById('pending').remove()},1600);
+    let added=false;catalog.addEventListener('scroll',()=>{if(!added&&catalog.scrollTop>1000){added=true;card('later','Later strategy')}});
+  </script></body></html>`;
+  const server = createServer((_request, response) => { response.setHeader('Content-Type', 'text/html'); response.end(html); });
+  await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  t.after(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Fixture server did not bind');
+  const browser = await chromium.launch({ channel: 'chromium', headless: true });
+  t.after(() => browser.close());
+  const result = await discoverGames({ browser, urls: [`http://127.0.0.1:${address.port}/`], allowLocalSources: true, scrollPages: 2 });
+  assert.equal(result.status, 'ok');
+  assert.deepEqual(result.candidates.map(candidate => candidate.title), ['Initial game', 'Hydrated rhythm', 'Later strategy']);
+  assert.equal(result.sources[0]!.candidateCount, 3);
 });

@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "id": "zombie-fail",
+  "title": "He is probably fine",
+  "style": "ironic-fail",
+  "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/runs/2026-10-07T19-15-45-196Z-b9a7a1/game-01KNZ88KS7SHE4H82X4R336N9V/532148ea-0c5d-4873-b902-df5898d077ad.webm",
+  "segments": [
+    {
+      "kind": "clip",
+      "start": 138.011,
+      "end": 141.51,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "freeze",
+      "at": 141.51,
+      "duration": 0.87,
+      "visual": "bw",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 141.51,
+      "end": 141.777,
+      "speed": 1,
+      "visual": "deepfry",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 141.777,
+      "end": 145.143,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    }
+  ],
+  "captions": [
+    {
+      "start": 0.2,
+      "end": 2.8,
+      "text": "He is probably fine",
+      "position": "top",
+      "emphasis": false
+    }
+  ],
+  "stickers": [
+    {
+      "start": 4.37,
+      "end": 4.64,
+      "asset": "reaction",
+      "x": 0.17,
+      "y": 0.25,
+      "size": 0.2
+    }
+  ],
+  "punches": [
+    {
+      "at": 4.5,
+      "duration": 0.2,
+      "strength": 0.45
+    }
+  ],
+  "soundCues": [
+    {
+      "at": 3.5,
+      "kind": "record-stop",
+      "gainDb": -8
+    },
+    {
+      "at": 4.5,
+      "kind": "impact",
+      "gainDb": -9
+    },
+    {
+      "at": 6.51,
+      "kind": "ping",
+      "gainDb": -12
+    }
+  ],
+  "music": {
+    "asset": "ironic",
+    "dropAt": 4.64,
+    "gainDb": -9
+  },
+  "rationale": "The visible causal sequence is preserved: the burning fuse approaches the bomb while the suspended zombie remains above it; the bomb erupts around source 141.644; the ragdoll scatters; debris settles; and SPECIMENS visibly changes from 01 to 02 around source 143.643. The ironic premise describes only the zombie's predicament, not player failure. The failure beat is the fuse reaching the bomb at source 141.510/output 3.50, marked by the record-stop and a real-frame grayscale hold. The distinct ugly reaction runs from output 4.37–4.64, containing the observed explosion onset, with the reaction sticker safely in the empty upper-left wall. Clean gameplay resumes at 4.64, which is also the named post-failure music drop, allowing the true airborne consequence and counter update to play out. Timing: 3.50s clean clip + 0.87s freeze + 0.27s deep-fried clip + 3.37s clean clip = 8.01s. Zoom remains 1 so the upper-right counter, bomb contact, character, and controls stay visible; the ending is clean and resolved."
+}

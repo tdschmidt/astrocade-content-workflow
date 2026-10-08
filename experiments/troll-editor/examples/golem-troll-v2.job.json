@@ -1,0 +1,30 @@
+{
+  "id": "golem-troll-v2",
+  "title": "The wall keeps collecting",
+  "style": "troll-freeze",
+  "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/runs/variety-2026-10-07-10-kick-the-buddy-x-irongolem/game-01M38GNMGHSB58XT9J7KA8XN2S/c58e0fd8-9d5e-401c-8665-4aceb082c5fa.webm",
+  "start": 64.5,
+  "end": 112,
+  "fps": 4,
+  "observationWindows": [
+    {
+      "start": 64.5,
+      "end": 72,
+      "fps": 4
+    },
+    {
+      "start": 91.5,
+      "end": 98,
+      "fps": 4
+    },
+    {
+      "start": 104.5,
+      "end": 112,
+      "fps": 4
+    }
+  ],
+  "minDuration": 15,
+  "maxDuration": 25,
+  "audioCatalogPath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/experiments/meme-audio/catalog.json",
+  "brief": "The user found the first edits too short and the floating troll face wrong. Build an honest 15\u201325 second escalation from three distinct visible golem tumbles/collisions/recoveries, in source order. Keep actual launch/contact/recovery of each; remove the unobserved idle gaps. There are counter gains and a late spiral-eyed stagger; do not invent a win or death. Use short captions and real familiar SFX from catalog, then the real phonk track phonk-execution with sourceStart14.84 (machine-measured candidate energy rise; not verified downbeat). Choose one actual supplied source frame showing the HEAD for a .7\u20131.0sec freeze; attach reaction face tightly to that head after crop. No generic sky sticker; stickers=[]. Keep zoom1, crop x30/y0/660x1176 to remove platform footer only, then transform head box precisely. Show character continuation after the face disappears. Avoid game names or watermarks."
+}

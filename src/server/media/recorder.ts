@@ -63,7 +63,7 @@ export async function createGameCapture(options: CaptureOptions): Promise<GameCa
   if (options.signal?.aborted) throw abortError();
   const { width, height } = options.viewport;
   if (![width, height].every(value => Number.isInteger(value) && value >= 240 && value <= 3840)) throw new Error('Invalid capture viewport');
-  if (!Number.isFinite(options.maxDurationMs) || options.maxDurationMs <= 0 || options.maxDurationMs > 180_000) throw new Error('Capture duration must be between 0 and 180 seconds');
+  if (!Number.isFinite(options.maxDurationMs) || options.maxDurationMs <= 0 || options.maxDurationMs > 605_000) throw new Error('Capture duration must be between 0 and 605 seconds');
   if (!options.outputPath.endsWith('.webm')) throw new Error('Native captures must use a .webm output path');
   await ensureNewOutput(options.outputPath);
   await mkdir(dirname(options.outputPath), { recursive: true });

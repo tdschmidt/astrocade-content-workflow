@@ -47,6 +47,7 @@ export async function discoverGames(options: {
   allowLocalSources?: boolean;
   executablePath?: string;
   timeoutMs?: number;
+  scrollPages?: number;
 } = {}): Promise<DiscoveryResult> {
   const urls = options.urls ?? defaultDiscoveryUrls;
   if (!urls.length || urls.length > 10) throw new Error('Discovery requires between one and ten source pages.');
@@ -55,7 +56,8 @@ export async function discoverGames(options: {
     const astrocade = url.protocol === 'https:' && ['www.astrocade.com', 'astrocade.com'].includes(url.hostname);
     if (!astrocade && !isAllowedGameUrl(value, options.allowLocalSources)) throw new Error('Discovery sources must be Astrocade pages.');
   }
-  const limit = Math.min(100, Math.max(1, options.limit ?? 30));
+  const limit = Math.min(100, Math.max(1, options.limit ?? 60));
+  const scrollPages = Math.min(3, Math.max(0, options.scrollPages ?? 2));
   const observedAt = new Date().toISOString();
   options.signal?.throwIfAborted();
   const browser = options.browser ?? await chromium.launch({ channel: 'chromium', headless: true, executablePath: options.executablePath });
@@ -73,6 +75,13 @@ export async function discoverGames(options: {
         const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: options.timeoutMs ?? 15000 });
         if (response && response.status() >= 400) throw new Error(`HTTP ${response.status()}`);
         await page.locator('a[href*="/games/"]').first().waitFor({ state: 'attached', timeout: Math.min(options.timeoutMs ?? 5000, 5000) }).catch(() => {});
+        // A few server-rendered cards appear before the category catalog hydrates.
+        // Wait for visible content placeholders, not lazy thumbnail downloads.
+        await page.waitForFunction(() => document.readyState === 'complete' && !Array.from(document.querySelectorAll('[aria-busy="true"],[role="progressbar"],.animate-pulse')).some(element => {
+          if (element.closest('a[href*="/games/"]')) return false;
+          const bounds = element.getBoundingClientRect();
+          return bounds.width > 0 && bounds.height > 0 && bounds.bottom > 0 && bounds.right > 0 && bounds.top < innerHeight && bounds.left < innerWidth;
+        }), undefined, { timeout: Math.min(options.timeoutMs ?? 5000, 5000) }).catch(() => {});
         options.signal?.throwIfAborted();
         const body = (await page.locator('body').innerText()).slice(0, 5000);
         if (/you(?:'|’)re offline|you are offline|check your internet connection/i.test(body)) {
@@ -80,7 +89,9 @@ export async function discoverGames(options: {
         } else if (/\/accounts\/login|\/login(?:\?|$)/.test(page.url())) {
           source.status = 'authentication_required'; source.message = 'This discovery page redirected to sign-in.';
         } else {
-          const links = await page.locator('a[href*="/games/"]').evaluateAll(anchors => anchors.map(anchor => {
+          const links = [];
+          for (let pass = 0; pass <= scrollPages; pass++) {
+          links.push(...await page.locator('a[href*="/games/"]').evaluateAll(anchors => anchors.slice(0, 300).map(anchor => {
             const element = anchor as HTMLAnchorElement;
             const explicitCard = element.closest('article, [data-testid="game-card"], [data-game-id], [role="listitem"]') as HTMLElement | null;
             const parent = element.parentElement;
@@ -110,7 +121,29 @@ export async function discoverGames(options: {
               text: [card.innerText, imageAlt ? `Image alt: ${imageAlt}` : '', ...metricLabels].filter(Boolean).join('\n').slice(0, 1500),
               metricText: [card.innerText, ...metricLabels].join('\n'),
             };
-          }));
+          })));
+          if (pass === scrollPages) break;
+          const count = await page.locator('a[href*="/games/"]').count();
+          // The catalog scrolls inside its own div; wheel over that surface.
+          const scrollTarget = await page.locator('a[href*="/games/"]').first().evaluate(element => {
+            for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+              if (!['auto', 'scroll'].includes(getComputedStyle(parent).overflowY) || parent.scrollHeight <= parent.clientHeight + 1) continue;
+              if (parent.scrollTop + parent.clientHeight >= parent.scrollHeight - 1) return null;
+              const bounds = parent.getBoundingClientRect();
+              const left = Math.max(0, bounds.left), right = Math.min(innerWidth, bounds.right);
+              const top = Math.max(0, bounds.top), bottom = Math.min(innerHeight, bounds.bottom);
+              return right > left && bottom > top ? { x: (left + right) / 2, y: (top + bottom) / 2 } : null;
+            }
+            const root = document.scrollingElement;
+            return root && root.scrollTop + innerHeight < root.scrollHeight - 1 ? { x: innerWidth / 2, y: innerHeight / 2 } : null;
+          }).catch(() => null);
+          if (!scrollTarget) break;
+          await page.mouse.move(scrollTarget.x, scrollTarget.y);
+          await page.mouse.wheel(0, 850);
+          await page.waitForFunction(previous => document.querySelectorAll('a[href*="/games/"]').length > previous, count, { timeout: 1200 }).catch(() => {});
+          // A viewport can contain only already-loaded cards. Continue the
+          // bounded scroll budget so the next viewport can reveal another row.
+          }
           for (const link of links) {
             const gameUrl = canonicalGameUrl(link.url, url);
             if (!gameUrl) continue;
@@ -122,14 +155,13 @@ export async function discoverGames(options: {
               if (!existing.observations.some(o => o.sourceUrl === url)) existing.observations.push(observation);
               continue;
             }
-            if (candidates.size >= limit) continue;
             const title = link.visibleTitle || link.alt || decodeURIComponent(parts.at(-2)!).replaceAll('-', ' ');
             const creator = link.creator || link.text.match(/(?:^|\n)\s*(?:by|creator:)\s+([^\n]{1,100})/i)?.[1]?.trim();
             let thumbnailUrl: string | undefined;
             try { const thumbnail = new URL(link.thumbnailUrl, url); if (link.thumbnailUrl && /^https?:$/.test(thumbnail.protocol)) thumbnailUrl = thumbnail.href; } catch { /* Missing or malformed artwork is unknown. */ }
             candidates.set(gameUrl, { id, url: gameUrl, title, titleSource: link.visibleTitle ? 'visible_text' : link.alt ? 'image_alt' : 'url_slug', creator, thumbnailUrl, metrics: parsePublicMetrics(link.metricText), observations: [observation] });
           }
-          source.candidateCount = links.filter(l => canonicalGameUrl(l.url, url)).length;
+          source.candidateCount = new Set(links.map(l => canonicalGameUrl(l.url, url)).filter(Boolean)).size;
           source.status = source.candidateCount ? 'ok' : 'empty';
           if (!source.candidateCount) source.message = 'The loaded page contained no recognized public game links.';
         }
@@ -138,7 +170,6 @@ export async function discoverGames(options: {
         source.status = 'unreachable';
         source.message = error instanceof Error ? error.message.split('\n')[0] : 'Page could not be reached.';
       } finally { sources.push(source); await page.close().catch(() => {}); }
-      if (candidates.size >= limit) break;
     }
   } finally {
     options.signal?.removeEventListener('abort', abort);
@@ -146,5 +177,20 @@ export async function discoverGames(options: {
     if (!options.browser) await browser.close();
   }
   const failed = sources.filter(s => !['ok', 'empty'].includes(s.status)).length;
-  return { observedAt, candidates: [...candidates.values()], sources, status: candidates.size ? failed ? 'partial' : 'ok' : failed === sources.length ? 'unavailable' : 'empty' };
+  return { observedAt, candidates: balanceDiscoverySources([...candidates.values()], urls, limit), sources, status: candidates.size ? failed ? 'partial' : 'ok' : failed === sources.length ? 'unavailable' : 'empty' };
+}
+
+/** Round-robin source coverage prevents the first page from consuming the quota. */
+export function balanceDiscoverySources(candidates: GameCandidate[], urls: string[], limit: number): GameCandidate[] {
+  const queues = urls.map(url => candidates.filter(candidate => candidate.observations.some(observation => observation.sourceUrl === url)));
+  const selected = new Map<string, GameCandidate>();
+  while (selected.size < limit && queues.some(queue => queue.length)) {
+    for (const queue of queues) {
+      while (queue.length && selected.has(queue[0]!.id)) queue.shift();
+      const next = queue.shift();
+      if (next) selected.set(next.id, next);
+      if (selected.size === limit) break;
+    }
+  }
+  return [...selected.values()];
 }

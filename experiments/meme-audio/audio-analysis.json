@@ -1,0 +1,41 @@
+{
+  "method": "5ms RMS windows at22.05kHz mono, main energy >8%peakRMS or.003. Approximate trimming helper, not perceptual listening.",
+  "sfx": {
+    "bruh": {
+      "onsetSeconds": 0.045,
+      "endOfMainEnergySeconds": 0.494,
+      "peakRms": 0.596,
+      "decodedPeak": 1.022
+    },
+    "anime-wow": {
+      "onsetSeconds": 0.18,
+      "endOfMainEnergySeconds": 2.784,
+      "peakRms": 0.325,
+      "decodedPeak": 0.815
+    },
+    "metal-pipe": {
+      "onsetSeconds": 0.005,
+      "endOfMainEnergySeconds": 2.15,
+      "peakRms": 0.377,
+      "decodedPeak": 0.968
+    },
+    "record-scratch": {
+      "onsetSeconds": 0.06,
+      "endOfMainEnergySeconds": 0.579,
+      "peakRms": 0.228,
+      "decodedPeak": 0.626
+    },
+    "doge-bonk": {
+      "onsetSeconds": 1.142,
+      "endOfMainEnergySeconds": 1.477,
+      "peakRms": 0.525,
+      "decodedPeak": 0.906
+    },
+    "vine-boom": {
+      "onsetSeconds": 0.085,
+      "endOfMainEnergySeconds": 1.232,
+      "peakRms": 1.206,
+      "decodedPeak": 1.34
+    }
+  }
+}

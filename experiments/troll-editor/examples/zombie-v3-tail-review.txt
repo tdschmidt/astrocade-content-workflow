@@ -1,0 +1,125 @@
+Actual visual QA: the existing edit has correctly attached face, real soundtrack lead-in, matching SFX, and the genuine counter02 aftermath. But the final source146.977s begins a new specimen respawn and ends on an unresolved partial body. Make the smallest source-end trim so the final view is the completed explosion aftermath, before new specimen parts appear. Inspect the dense tail frames. Keep all earlier edit choices and exact attached-head coordinates unchanged; only final source end/duration must change. Existing plan below (update id to current job id).
+
+{
+  "version": 1,
+  "id": "zombie-fail-v2",
+  "title": "The second idea was worse",
+  "style": "ironic-fail",
+  "sourcePath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/data/runs/2026-10-07T19-15-45-196Z-b9a7a1/game-01KNZ88KS7SHE4H82X4R336N9V/532148ea-0c5d-4873-b902-df5898d077ad.webm",
+  "sourceCrop": {
+    "x": 30,
+    "y": 0,
+    "width": 660,
+    "height": 1176
+  },
+  "audioCatalogPath": "/Users/theoschmidt/Documents/ChatGPT/Astrocade/experiments/meme-audio/catalog.json",
+  "segments": [
+    {
+      "kind": "clip",
+      "start": 67.513,
+      "end": 70.53,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "freeze",
+      "at": 70.53,
+      "duration": 0.9,
+      "visual": "bw",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 70.53,
+      "end": 71.03,
+      "speed": 1,
+      "visual": "deepfry",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 71.03,
+      "end": 75.78,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    },
+    {
+      "kind": "clip",
+      "start": 136.711,
+      "end": 146.977,
+      "speed": 1,
+      "visual": "clean",
+      "zoom": 1
+    }
+  ],
+  "captions": [
+    {
+      "start": 0.2,
+      "end": 2.8,
+      "text": "Surely fire helps",
+      "position": "top",
+      "emphasis": false
+    },
+    {
+      "start": 9.35,
+      "end": 11.8,
+      "text": "The second idea was worse",
+      "position": "top",
+      "emphasis": true
+    }
+  ],
+  "stickers": [],
+  "faceAttachments": [
+    {
+      "segmentIndex": 1,
+      "asset": "reaction",
+      "coordinateSpace": "output-pixels",
+      "headBox": {
+        "x": 311,
+        "y": 400,
+        "width": 101,
+        "height": 114
+      },
+      "scale": 1.18,
+      "rotationDegrees": 18,
+      "evidence": "At exact source 70.530s, the intact tilted zombie head occupies approximately raw source x315\u2013408 and y368\u2013473; applying the declared crop mapping gives approximately output x311, y400, width101, height114."
+    }
+  ],
+  "punches": [
+    {
+      "at": 14.18,
+      "duration": 0.28,
+      "strength": 0.82
+    }
+  ],
+  "soundCues": [
+    {
+      "at": 3.03,
+      "kind": "record-stop",
+      "assetId": "record-scratch",
+      "sourceStart": 0.04,
+      "duration": 0.59,
+      "gainDb": -8
+    },
+    {
+      "at": 14.18,
+      "kind": "impact",
+      "assetId": "vine-boom",
+      "sourceStart": 0.065,
+      "duration": 1.175,
+      "gainDb": -8
+    }
+  ],
+  "music": {
+    "asset": "ironic",
+    "dropAt": 3.93,
+    "assetId": "phonk-execution",
+    "sourceStart": 14.84,
+    "leadInSeconds": 3.93,
+    "leadInGainDb": -18,
+    "gainDb": -12
+  },
+  "rationale": "Truthful escalation: clean footage shows the flame reaching the zombie, followed by visible scorching and bending; the exact observed 70.530s reaction becomes a 0.90s grayscale interruption with the reaction face attached tightly to the real tilted head. A 0.50s deep-fried continuation is the single ugly reaction beat, then clean gameplay resumes. The later observed window is introduced by an honest forward jump cut and preserves the bomb\u2019s fall, burning fuse, explosion, scattered remains, and the SPECIMENS counter changing from 01 to 02 without calling it a win or death. Rounded timing: 3.03 + 0.90 + 0.50 + 4.75 + 10.27 = 19.45s. The record scratch marks the flame reaction/failure beat at output 3.03s; the phonk drop marks clean resumption immediately after the hold at 3.93s, using 3.93s of genuine preceding waveform from source 10.91s. The explosion lands near output 14.18s with one restrained impact and punch. Zoom remains 1; captions stay top-center away from the upper-right counter, central contact, fuse, and bottom controls; the ending remains clean long enough to show the incremented counter and aftermath."
+}

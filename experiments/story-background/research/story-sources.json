@@ -1,0 +1,78 @@
+{
+  "researched_at": "2026-10-07",
+  "selection_policy": "Short, non-graphic, low-stakes stories with a legible payoff; original attributed retellings, not verbatim narration",
+  "publication_status": "Local experiment only; nothing sent or published",
+  "engagement_note": "Scores below were exposed by the search tool's cached Reddit results during this research. They are observed snapshots, not verified live totals or evidence of present popularity.",
+  "stories": [
+    {
+      "id": "printer-ink",
+      "recommended_order": 1,
+      "source_title": "Mail Merge Documents will waste printer ink.",
+      "url": "https://www.reddit.com/r/MaliciousCompliance/comments/uop6jc/mail_merge_documents_will_waste_printer_ink/",
+      "author": "CommonwealthGhost",
+      "community": "r/MaliciousCompliance",
+      "published_date": "2022-05-13",
+      "published_date_basis": "Date shown in primary Reddit search result",
+      "observed_score": 4585,
+      "score_observed_at": "2026-10-07",
+      "score_basis": "Cached primary Reddit search result, not live page counter",
+      "content_access": "Full primary post read; author verified on primary page",
+      "truth_status": "Unverified personal account; no independent corroboration",
+      "fact_ledger_path": "experiments/story-background/research/source-mail-merge.json",
+      "proposed_retelling_path": "experiments/story-background/research/proposed-mail-merge.txt",
+      "commentary_boundary": "The final sentence is editorial commentary; preceding events are attributed to the poster.",
+      "attribution_overlay": "Adapted from u/CommonwealthGhost · r/MaliciousCompliance",
+      "editorial_notes": [
+        "Keep narrator in third person; do not impersonate the poster.",
+        "Do not invent firing, revenge fallout, a changed company policy, or a monetary saving.",
+        "Avoid implying that the post's time estimates were independently measured."
+      ]
+    },
+    {
+      "id": "ice-cream-math",
+      "recommended_order": 2,
+      "source_title": "The Cheap Ice Cream",
+      "url": "https://www.reddit.com/r/MaliciousCompliance/comments/1kl0j70/the_cheap_ice_cream/",
+      "author": "OberonDiver",
+      "community": "r/MaliciousCompliance",
+      "published_date": "2025-05-12",
+      "published_date_basis": "Date shown in primary Reddit search result",
+      "observed_score": 656,
+      "score_observed_at": "2026-10-07",
+      "score_basis": "Cached primary Reddit search result, not live page counter",
+      "content_access": "Full primary post read; author verified on primary page",
+      "truth_status": "Unverified personal account; no independent corroboration",
+      "factual_beats": [
+        "Hardware-store worker hears the boss mocking them.",
+        "A grocery list asks for a quart of vanilla ice cream.",
+        "Worker buys two premium pints; boss points out a cheaper larger option."
+      ],
+      "narration": "This grocery errand came with a very small revenge budget. Reddit user OberonDiver says they overheard their hardware-store boss mocking them to friends. A little later, that same boss handed them money and a shopping list. One item was a quart of vanilla ice cream. The grocery store didn't have that size, so the employee bought two pints of the expensive brand instead. Same amount of ice cream. Back at work, the boss pointed out that a half-gallon of cheaper ice cream would have cost less than just one of those pints. The employee already knew. My verdict: the arithmetic was correct. The customer service had simply become extremely literal.",
+      "commentary_boundary": "The final two sentences are editorial commentary; the story events are attributed to the poster.",
+      "attribution_overlay": "Adapted from u/OberonDiver · r/MaliciousCompliance",
+      "editorial_notes": [
+        "Use generic boss and worker labels; no invented names or identifying details.",
+        "Do not add a confrontation, dismissal, or later consequence; none is supplied.",
+        "Leave out the source's profanity and unsupported personal character claims."
+      ]
+    }
+  ],
+  "informational_alternative": {
+    "id": "venus-day",
+    "title": "Venus's day has a catch",
+    "source_title": "All About Venus",
+    "source_organization": "NASA Space Place / NASA JPL-Caltech",
+    "url": "https://spaceplace.nasa.gov/all-about-venus/en/",
+    "accessed_at": "2026-10-07",
+    "publication_date": null,
+    "publication_date_note": "No precise publication date verified from the retrieved page",
+    "truth_status": "Scientific facts checked against NASA; definitions retained",
+    "narration": "A day on Venus can be longer than its year, but there's a catch. According to NASA, Venus needs about two hundred forty-three Earth days to turn once, while one trip around the Sun takes only two hundred twenty-five. That's the planet's rotation day. A sunrise-to-sunrise day is different: it lasts about one hundred seventeen Earth days. Venus also spins opposite to Earth, so the Sun would rise in the west and set in the east. Same planet, two different meanings of day. That's why the definition matters.",
+    "attribution_overlay": "Source: NASA Space Place · All About Venus",
+    "editorial_notes": [
+      "Do not shorten the script to the misleading assertion that sunrise-to-sunrise takes 243 days.",
+      "The gameplay is visual background, not a depiction or simulation of Venus.",
+      "This shorter alternative can run about 35–40 seconds with deliberate delivery; do not add silent padding to force 60 seconds."
+    ]
+  }
+}

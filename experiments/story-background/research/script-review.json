@@ -1,0 +1,58 @@
+{
+  "reviewed_at": "2026-10-07",
+  "draft_path": "data/experiments/story-background/mail-merge-draft-v1/draft.json",
+  "draft_sha256": "338650f5b06269ff55fba0a5772e482894a9706a095a959b95f48963f17397bc",
+  "source_path": "experiments/story-background/research/source-mail-merge.json",
+  "primary_post": "https://www.reddit.com/r/MaliciousCompliance/comments/uop6jc/mail_merge_documents_will_waste_printer_ink/",
+  "narration_word_count": 107,
+  "factual_status": "pass",
+  "metadata_status": "revise",
+  "creative_status": "usable_with_minor_ending_revision",
+  "unsupported_story_claims": [],
+  "qualification": {
+    "status": "pass",
+    "reason": "Sentence two explicitly identifies an unverified Reddit account; narration stays in third person. The opening claim falls within that immediately supplied frame."
+  },
+  "findings": [
+    {
+      "id": "truncated-attribution",
+      "priority": "required",
+      "field": "attribution",
+      "problem": "The attribution ends with ': https' instead of the full permalink. Author and community survive, but the draft's own source link is unusable.",
+      "recommendation": "Restore the exact primary post URL from the source ledger. Prefer dedicated author, community, and sourceUrl fields or exact-copy validation instead of asking the language model to reconstruct source metadata."
+    },
+    {
+      "id": "opening-evidence-map",
+      "priority": "minor",
+      "field": "evidence[0].beatIds",
+      "problem": "The word 'faster' is supported by the later observed result, while the current map references only the rejection beat.",
+      "recommendation": "Include payoff with conflict in the first sentence's evidence mapping. The narration itself is supported by the full ledger."
+    },
+    {
+      "id": "spoken-editorial-label",
+      "priority": "recommended",
+      "field": "narration final sentence",
+      "problem": "The phrase 'Editorially, the sharpest part is' reads like an internal production note and weakens an otherwise clear resolution.",
+      "recommendation": "Use a short conversational observation, marked as commentary only in metadata. For example: 'That was one expensive way to save ink.' Do not add a manager reaction or later outcome."
+    }
+  ],
+  "sentence_review": [
+    {"sentence_number": 1, "status": "supported", "recommended_beat_ids": ["conflict", "payoff"]},
+    {"sentence_number": 2, "status": "supported_and_qualified", "recommended_beat_ids": ["setup"]},
+    {"sentence_number": 3, "status": "supported", "recommended_beat_ids": ["conflict"]},
+    {"sentence_number": 4, "status": "supported", "recommended_beat_ids": ["action"]},
+    {"sentence_number": 5, "status": "supported", "recommended_beat_ids": ["payoff"], "note": "The preceding context makes clear that 'workload' means the forms; avoid separating this sentence into a misleading standalone title."},
+    {"sentence_number": 6, "status": "supported", "recommended_beat_ids": ["ending"]},
+    {"sentence_number": 7, "status": "permitted_commentary", "recommended_beat_ids": ["conflict", "action", "payoff", "ending"]}
+  ],
+  "hook_and_payoff": {
+    "hook": "Concrete central contradiction; reveals the ink objection but preserves the last-day solution.",
+    "payoff": "Clear three-person paperwork result and departure, with no artificial cliffhanger or invented fallout.",
+    "pacing": "107 words fits the requested script budget; actual 35–45 second duration must be measured after synthesis."
+  },
+  "prompt_review": {
+    "status": "generally_sound",
+    "material_suggestion": "State explicitly that commentary labels belong in metadata, not spoken narration. Preserve source identifiers through deterministic copying or validation."
+  },
+  "scope_limit": "Text/source review only. No generated audio, caption timing, or video playback was assessed in this pass. Draft was not modified."
+}
