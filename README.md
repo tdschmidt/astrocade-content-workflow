@@ -4,6 +4,8 @@ A local TypeScript CLI that discovers Astrocade games, learns their visible cont
 
 The current scope ends at local candidate videos. There is no GUI, account creation, email integration, publishing service or background job queue. A local review gallery is an optional way to watch generated artifacts. Earlier results and design history remain in [docs](docs/acceptance.md) and the [decision log](docs/design-decisions.md).
 
+The [October 7 integration report](docs/pipeline-validation-2026-10-07.md) records fresh whole-pipeline runs, selected videos, observed failures and their regression tests. [CHECKPOINT.md](CHECKPOINT.md) gives the exact local artifact locations and continuation state.
+
 ## Setup
 
 Use Node.js 24+, a desktop session, FFmpeg with libass, and the matching Playwright Chromium. Native capture is tested on macOS.

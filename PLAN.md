@@ -37,6 +37,8 @@ Capture-budget expiration releases inputs and finalizes the source. Later contro
 
 ## Acceptance and current status
 
+The latest three-format workflow is integrated into the main CLI. Retired GUI/account/publishing components have been removed, and two fresh ten-minute capture-to-video runs plus the continued category batch exercise the integrated path. See the [current validation report](docs/pipeline-validation-2026-10-07.md) and [checkpoint](CHECKPOINT.md) for selected candidates, remaining review limits and exact local evidence. The paragraphs below record earlier milestones, not the current output selection.
+
 Earlier runs established discovery, native input/capture, source reuse, portrait rendering, and truthful editing across several games. The [21-video functional batch](docs/variety-results.md) is historical system evidence; it was not approved as the current humor or gameplay standard.
 
 The earlier approximately 8.1-second Ben 10 reel was rejected as insufficient gameplay. Two fresh captures exercised the improved controller; the second recorded 431.832 seconds and independently demonstrated street movement, a fire projectile, and sustained combined movement/flight across city blocks. The editor recovered the brief projectile through action-observation hints and produced multi-shot reels from unchanged source footage. See [the gameplay improvement report](docs/ben10-gameplay-results.md) for the selected render, comparisons, exact evidence, tests and failures. No target hit or completed navigation route was established; the agent correctly stopped after losing the route and failing to recover it.

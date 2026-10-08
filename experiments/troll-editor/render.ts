@@ -46,6 +46,8 @@ export function makeCaptions(plan: EditPlan, fontFamily = 'Noto Sans'): string {
 }
 
 function tempo(speed: number): string {
+  // WSOLA can move transients even at 1×; unchanged playback needs no resampling.
+  if (speed === 1) return 'anull';
   return speed > 2 ? `atempo=2,atempo=${num(speed / 2)}` : `atempo=${num(speed)}`;
 }
 
@@ -109,8 +111,8 @@ export function finalFilter(plan: EditPlan, duration: number, stickerInput: numb
   }
   filters.push(`[${video}]subtitles=captions.ass:fontsdir=fonts,format=yuv420p[video]`);
   const audioLabels = ['[game]', '[music]'];
-  // Stream-copy concatenation retains AAC priming packets at each cut. Restore
-  // a continuous sample clock before amix can inherit those discontinuities.
+  // Keep the decoded native track on the same continuous sample clock as the
+  // independently timed music and sound cues.
   filters.push(`[0:a]aresample=48000:async=1:first_pts=0,atrim=duration=${num(duration)},asetpts=N/SR/TB[game]`);
   const selectedMusic=musicWindow(plan,duration);
   const musicStartOutput = selectedMusic.outputStart;
@@ -202,12 +204,14 @@ export async function renderEdit(options: RenderOptions): Promise<Record<string,
       const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', ...sourceSeekArgs(mapping.sourceStart), '-reinit_filter', '0', '-i', plan.sourcePath,
         '-filter_complex_threads', '1', '-filter_complex', segmentFilter(segment, mapping, !!source.audio, plan.sourceCrop, source.video),
         '-map', '[video]', '-map', '[audio]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-fps_mode', 'cfr',
-        '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2', '-t', num(mapping.outputEnd - mapping.outputStart), join(work, `segment-${index}.mp4`)];
+        // AAC priming/padding accumulates when independently encoded segments
+        // are stream-copy concatenated. Encode audio only once, in the final MP4.
+        '-c:a', 'pcm_f32le', '-ar', '48000', '-ac', '2', '-t', num(mapping.outputEnd - mapping.outputStart), join(work, `segment-${index}.mov`)];
       await runProcess(ffmpeg, args, { signal: options.signal, cwd: work, timeoutMs: 180_000 });
     }
-    await writeFile(join(work, 'segments.txt'), plan.segments.map((_, index) => `file 'segment-${index}.mp4'\nduration ${num(timeline[index]!.outputEnd - timeline[index]!.outputStart)}`).join('\n'));
-    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-f', 'concat', '-safe', '1', '-i', 'segments.txt', '-c', 'copy', '-movflags', '+faststart', 'base.mp4'], { signal: options.signal, cwd: work, timeoutMs: 60_000 });
-    const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-i', 'base.mp4'];
+    await writeFile(join(work, 'segments.txt'), plan.segments.map((_, index) => `file 'segment-${index}.mov'\nduration ${num(timeline[index]!.outputEnd - timeline[index]!.outputStart)}`).join('\n'));
+    await runProcess(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-f', 'concat', '-safe', '1', '-i', 'segments.txt', '-c', 'copy', '-movflags', '+faststart', 'base.mov'], { signal: options.signal, cwd: work, timeoutMs: 60_000 });
+    const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-i', 'base.mov'];
     let input = 1;
     const stickerInput = plan.stickers.length + plan.faceAttachments.length ? input++ : undefined;
     if (stickerInput !== undefined) args.push('-loop', '1', '-framerate', '30', '-i', join(assets, 'reaction.png'));

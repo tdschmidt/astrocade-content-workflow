@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { delayedAudioFilter, experimentTools, finalFilter, makeCaptions, segmentFilter } from './render.js';
+import { delayedAudioFilter, experimentTools, finalFilter, makeCaptions, renderEdit, segmentFilter } from './render.js';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -177,6 +177,38 @@ test('a changing decoded source size cannot corrupt the saved gameplay crop or i
       const red = pixels[frame * 3]!, green = pixels[frame * 3 + 1]!, blue = pixels[frame * 3 + 2]!;
       assert.ok(frame < 24 ? red > 190 && blue < 30 : blue > 190 && red < 30, `The saved crop contains corrupted or mistimed pixels at frame ${frame}`);
       assert.ok(green < 30, 'No green uninitialized edge pixels or next-window source leaks into the crop');
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('native game sounds stay aligned with their pictures across repeated short cuts', { timeout: 90_000 }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'troll-native-audio-joins-'));
+  const ffmpeg = experimentTools().ffmpegPath ?? 'ffmpeg';
+  try {
+    const sourcePath = join(dir, 'source.mov'), outputPath = join(dir, 'rendered.mp4');
+    // Six visible flashes and matching sounds. PCM input makes any accumulated
+    // delay a renderer defect rather than pre-existing source encoder padding.
+    await runProcess(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i',
+      "color=black:s=72x128:r=30:d=3,drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='between(mod(t,0.5),0.19,0.23)'",
+      '-f', 'lavfi', '-i', 'aevalsrc=0.3*sin(2*PI*1000*t)*between(mod(t\\,0.5)\\,0.2\\,0.22):s=48000:d=3',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'pcm_f32le', '-ar', '48000', '-ac', '2', sourcePath]);
+    await runProcess(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-t', '3', join(dir, 'velocity.wav')]);
+    const planPath = join(dir, 'plan.json');
+    await writeFile(planPath, JSON.stringify({ ...validPlan(), sourcePath, style: 'velocity',
+      segments: Array.from({ length: 6 }, (_, index) => ({ kind: 'clip', start: index / 2, end: (index + 1) / 2, speed: 1 })),
+      stickers: [], captions: [], punches: [], soundCues: [], music: { asset: 'velocity', dropAt: 0 } }));
+    await renderEdit({ planPath, outputPath, assetsPath: dir });
+    await runProcess(ffmpeg, ['-v', 'error', '-i', outputPath, '-map', '0:a:0', '-ac', '1', '-ar', '48000', '-f', 'f32le', join(dir, 'samples.f32')]);
+    await runProcess(ffmpeg, ['-v', 'error', '-i', outputPath, '-vf', 'scale=1:1', '-pix_fmt', 'gray', '-f', 'rawvideo', join(dir, 'frames.gray')]);
+    const bytes = await readFile(join(dir, 'samples.f32')), samples = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.length / 4);
+    const frames = await readFile(join(dir, 'frames.gray'));
+    assert.equal(frames.length, 90, 'Short cuts preserve the complete picture clock');
+    for (let index = 0; index < 6; index++) {
+      const expected = index / 2 + 0.2;
+      const onset = samples.findIndex((value, sample) => sample >= index * 24000 && Math.abs(value) > 0.04) / 48000;
+      assert.ok(Math.abs(onset - expected) < 0.01, `Native sound ${index} begins at ${onset}s, expected ${expected}s without cumulative AAC padding`);
+      const frame = Math.round(expected * 30);
+      assert.ok(Math.max(...frames.subarray(frame - 1, frame + 2)) > 230, `The matching source flash stays within one frame of ${expected}s`);
     }
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
