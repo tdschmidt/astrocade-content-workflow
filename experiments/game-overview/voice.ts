@@ -20,7 +20,7 @@ await writeFile(resolve(output,'input-draft.json'),JSON.stringify(draft,null,2))
 const results=await Promise.allSettled(draft.chapters.map(async(chapter:{id:string,narration:string})=>{
  const chapterPath=resolve(output,`${chapter.id}-draft.json`);
  await writeFile(chapterPath,JSON.stringify({narration:chapter.narration},null,2));
- return narrate(chapterPath,resolve(output,chapter.id),{tempo,allowZeroLengthWords:true,...(audioLabel?{audioLabel}:{}),...(reuse?{audioPath:resolve(reuse,chapter.id,reuseInput?'input-narration.wav':'narration.wav')}:{})});
+ return narrate(chapterPath,resolve(output,chapter.id),{unit:'chapter',tempo,allowZeroLengthWords:true,...(audioLabel?{audioLabel}:{}),...(reuse?{audioPath:resolve(reuse,chapter.id,reuseInput?'input-narration.wav':'narration.wav')}:{})});
 }));
 await writeFile(resolve(output,'results.json'),JSON.stringify(results.map((r,i)=>({chapter:draft.chapters[i].id,status:r.status,...(r.status==='fulfilled'?{path:r.value}:{error:String(r.reason)})})),null,2));
 if(results.some(r=>r.status==='rejected'))throw new Error('At least one chapter failed; review saved audio/transcript evidence before resuming. Do not regenerate to evade a mismatch.');

@@ -11,13 +11,16 @@ import { canonicalSpeechTokens, speechTranscriptWarnings } from './speech-valida
 import { z } from 'zod';
 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
-export interface NarrationOptions { audioPath?: string; audioLabel?: string; transcriptPath?: string; tempo?: number; allowZeroLengthWords?:boolean; signal?:AbortSignal }
+export interface NarrationOptions { audioPath?: string; audioLabel?: string; transcriptPath?: string; tempo?: number; unit?: 'standalone' | 'chapter'; allowZeroLengthWords?:boolean; signal?:AbortSignal }
 const SavedTranscript = z.object({provider:z.string().min(1),audioSha256:z.string().regex(/^[a-f0-9]{64}$/u),text:z.string(),words:z.array(z.object({text:z.string(),startSeconds:z.number(),endSeconds:z.number()})).min(1)}).passthrough();
 
 export async function narrate(draftPath: string, output: string, options: NarrationOptions = {}) {
   options.signal?.throwIfAborted();
   const tempo = options.tempo ?? 1;
   if (!Number.isFinite(tempo) || tempo < 0.8 || tempo > 1.3) throw new Error('Narration tempo must be between 0.8 and 1.3');
+  const unit = options.unit ?? 'standalone';
+  if (unit !== 'standalone' && unit !== 'chapter') throw new Error('Narration unit must be standalone or chapter');
+  const durationPolicy = { unit, minimumSeconds: unit === 'chapter' ? 1 : 5, maximumSeconds: 90 };
   const raw = await readFile(draftPath, 'utf8'), draft = JSON.parse(raw);
   if (typeof draft.narration !== 'string' || !draft.narration.trim()) throw new Error('Draft needs narration');
   const reusedAudioPath = options.audioPath ? resolve(options.audioPath) : undefined;
@@ -38,6 +41,7 @@ export async function narrate(draftPath: string, output: string, options: Narrat
     savedTranscriptPath: options.transcriptPath ? resolve(options.transcriptPath) : null,
     resume: { reuseExistingAudio: !!reusedAudioPath, sourceAudioPath: reusedAudioPath ?? null, sourceAudioSha256: reusedBytes ? hash(reusedBytes) : null },
     tempo: { multiplier: tempo, method: 'FFmpeg atempo; preserves pitch', transcribeAfterTempoChange: true },
+    durationPolicy,
     captionTimingMode:options.allowZeroLengthWords?'phrase':'word',
   };
   await writeFile(resolve(output, 'request.json'), JSON.stringify(request, null, 2));
@@ -68,10 +72,10 @@ export async function narrate(draftPath: string, output: string, options: Narrat
     if (tempo === 1) await writeFile(audioPath, await readFile(inputAudioPath), { flag: 'wx' });
     else await runProcess(mediaExecutables(cfg.mediaTools).ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-i', inputAudioPath, '-map', '0:a:0', '-af', `atempo=${tempo}`, '-c:a', 'pcm_s16le', audioPath], { timeoutMs: 120_000,signal:options.signal });
     const info = await probeMedia(audioPath, cfg.mediaTools,options.signal);
-    if (!info.audio || info.durationSeconds < 5 || info.durationSeconds > 90) throw new Error('Speech must contain audio and last 5–90 seconds');
+    if (!info.audio || info.durationSeconds < durationPolicy.minimumSeconds || info.durationSeconds > durationPolicy.maximumSeconds) throw new Error(`Speech must contain audio and last ${durationPolicy.minimumSeconds}–${durationPolicy.maximumSeconds} seconds (${unit})`);
     const audioSha256 = hash(await readFile(audioPath));
     event({ stage: 'tempo', status: 'completed', multiplier: tempo, durationSeconds: info.durationSeconds, audioSha256 });
-    await writeFile(resolve(output, 'audio-provenance.json'), JSON.stringify({ inputAudioPath, inputAudioSha256: hash(await readFile(inputAudioPath)), inputMedia: inputInfo, finalAudioPath: audioPath, finalAudioSha256: audioSha256, finalMedia: info, reusedFrom: reusedAudioPath ?? null, tempo }, null, 2));
+    await writeFile(resolve(output, 'audio-provenance.json'), JSON.stringify({ inputAudioPath, inputAudioSha256: hash(await readFile(inputAudioPath)), inputMedia: inputInfo, finalAudioPath: audioPath, finalAudioSha256: audioSha256, finalMedia: info, reusedFrom: reusedAudioPath ?? null, tempo, durationPolicy }, null, 2));
     // Transcribe the actual retimed waveform. Never divide old timestamps or
     // regenerate speech to evade a transcript mismatch.
     const savedTranscript = options.transcriptPath ? SavedTranscript.parse(JSON.parse(await readFile(resolve(options.transcriptPath),'utf8'))) : undefined;
@@ -90,7 +94,7 @@ export async function narrate(draftPath: string, output: string, options: Narrat
     if (!words.length) issues.push('No real word timestamps were returned');
     const validation = { audio: info, audioSha256, wordCount: words.length, transcriptWarnings: issues,
       transcriptComparison: 'Bounded English-number normalization before transcript comparison; no material mismatch flagged is not a listening review.',
-      sourceScript: draft.narration, recognizedText: transcript.text, canonicalScriptTokens: canonicalSpeechTokens(draft.narration), canonicalTranscriptTokens: canonicalSpeechTokens(transcript.text), tempo,
+      sourceScript: draft.narration, recognizedText: transcript.text, canonicalScriptTokens: canonicalSpeechTokens(draft.narration), canonicalTranscriptTokens: canonicalSpeechTokens(transcript.text), tempo, durationPolicy,
       zeroLengthProviderWords:words.filter(w=>w.start===w.end),captionTimingMode:options.allowZeroLengthWords?'phrase':'word' };
     await writeFile(resolve(output, 'validation.json'), JSON.stringify(validation, null, 2));
     if (issues.length) {

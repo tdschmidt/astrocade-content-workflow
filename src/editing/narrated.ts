@@ -206,7 +206,7 @@ export async function verifySavedNarration(recordPath:string,checkpointPath:stri
  if(saved.script!==script||checkpoint.scriptSha256!==sha(script)||resolve(checkpoint.path)!==resolve(saved.path)||await fileHash(saved.path)!==checkpoint.sha256)throw new Error('Saved narration waveform or script changed; resume cannot reuse it.');
 }
 
-async function speech(draftPath: string, output: string, narration: 'local' | 'gemini', signal?: AbortSignal): Promise<string> {
+async function speech(draftPath: string, output: string, narration: 'local' | 'gemini', unit: 'standalone' | 'chapter', signal?: AbortSignal): Promise<string> {
   await mkdir(output, { recursive: true });
   const raw = await readFile(draftPath, 'utf8'), draft = JSON.parse(raw) as { chapters?: Array<{ id: string; narration: string }>; narration?: string };
   const chapters = draft.chapters ?? [{ id: 'story', narration: draft.narration ?? '' }];
@@ -260,7 +260,7 @@ async function speech(draftPath: string, output: string, narration: 'local' | 'g
     }
     const attempt = await mkdtemp(join(folder, 'validation-attempt-'));
     const resultFolder = join(attempt, 'result');
-    try { await narrate(chapterDraft, resultFolder, { audioPath, transcriptPath, audioLabel, tempo: 1, allowZeroLengthWords: true, signal }); }
+    try { await narrate(chapterDraft, resultFolder, { audioPath, transcriptPath, audioLabel, unit, tempo: 1, allowZeroLengthWords: true, signal }); }
     catch (error) {
       const retainedWave=join(resultFolder,'input-narration.wav');
       if(narration==='gemini' && await exists(retainedWave) && !await exists(retainedPath)){
@@ -359,7 +359,7 @@ export async function renderNarrated(options: NarratedOptions): Promise<Narrated
       }
       const correctedEvidence = await samples(prepared.path, ledger.chapters.map(chapter => ({ start: chapter.allowedStart, end: chapter.allowedEnd })), join(output, `overview-corrected-evidence-${timingVersion}`), 2, signal);
       await runNarratedAgentStage(provider, join(output, `overview-script-review-${timingVersion}`), `Independently review this game overview against the actual images and evidence ledger. Factual speech may draw on ANY verified game fact, not only simultaneous shots. It must explain what the game is, player choices and appeal, beginning with the selected premise hook. Reject literal shot-by-shot movement commentary, a roster roll-call, invented goals, fake personal experience, unsupported whole-game claims or misleading chronology. Inspect every spoken factual assertion, not just supplied claim citations. approved means script ready for speech only; no listening or final visual approval.\nLEDGER\n${JSON.stringify(ledger)}\nDRAFT\n${JSON.stringify(draft)}\n${correctedEvidence.timestamps}`, Review, correctedEvidence.media, reviewIssues, signal);
-      const voice = await speech(draftPath, join(output, 'voice'), options.narration, signal);
+      const voice = await speech(draftPath, join(output, 'voice'), options.narration, 'chapter', signal);
       planPath = join(output, `plan-${timingVersion}.json`);
       if (!await exists(planPath)) {
         const assembly = await mkdtemp(join(output, 'assembly-'));
@@ -388,7 +388,7 @@ export async function renderNarrated(options: NarratedOptions): Promise<Narrated
       const reviewPath = join(output, 'story-review.json');
       if (!await exists(reviewPath)) await reviewStory(resolve(options.storySourcePath!), draftPath, reviewPath, { model: options.model, signal });
       const review = Review.parse(await readJson(reviewPath)); if (reviewIssues(review).length) throw new Error(reviewIssues(review).join('; '));
-      const voice = await speech(draftPath, join(output, 'voice'), options.narration, signal);
+      const voice = await speech(draftPath, join(output, 'voice'), options.narration, 'standalone', signal);
       planPath = join(output, `plan-${timingVersion}.json`);
       if (!await exists(planPath)) await assemble(resolve(options.storySourcePath!), draftPath, join(voice, 'story', 'narration.json'), backgroundPath, planPath);
       const draft = z.object({ title: z.string() }).passthrough().parse(await readJson(draftPath)); title = draft.title;
